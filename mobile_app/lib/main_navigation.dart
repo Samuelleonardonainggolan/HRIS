@@ -1,6 +1,4 @@
-// lib/main_navigation.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:mobile_app/pages/dashboard_page.dart';
 import 'package:mobile_app/pages/history_page.dart';
 import 'package:mobile_app/pages/request_page.dart';
@@ -16,7 +14,7 @@ class MainNavigationPage extends StatefulWidget {
 
 class _MainNavigationPageState extends State<MainNavigationPage> {
   int _selectedIndex = 0;
-  
+
   final List<Widget> _pages = [
     const EmployeeDashboardPage(),
     const HistoryPage(),
@@ -24,66 +22,40 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     const ProfilePage(),
   ];
 
-  final List<Map<String, dynamic>> _navItems = [
-    {'icon': Icons.home_rounded, 'label': 'Home'},
-    {'icon': Icons.history_rounded, 'label': 'History'},
-    {'icon': Icons.note_add_rounded, 'label': 'Request'},
-    {'icon': Icons.person_rounded, 'label': 'Profile'},
-  ];
-
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) {
-        if (didPop) return;
-        _showExitDialog(context);
-      },
-      child: Scaffold(
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: _pages,
-        ),
-        bottomNavigationBar: _buildBottomNavigationBar(),
-      ),
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return Container(
-      height: 75,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(25),
-          topRight: Radius.circular(25),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -5),
+    return Scaffold(
+      body: _pages[_selectedIndex],
+      bottomNavigationBar: Container(
+        height: 70,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(25),
+            topRight: Radius.circular(25),
           ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: List.generate(_navItems.length, (index) {
-          return _buildNavItem(
-            icon: _navItems[index]['icon'],
-            label: _navItems[index]['label'],
-            index: index,
-          );
-        }),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 15,
+              offset: const Offset(0, -3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildNavItem(Icons.dashboard_rounded, "Dashboard", 0),
+            _buildNavItem(Icons.history_rounded, "History", 1),
+            _buildNavItem(Icons.request_page_rounded, "Request", 2),
+            _buildNavItem(Icons.person_rounded, "Profile", 3),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildNavItem({
-    required IconData icon,
-    required String label,
-    required int index,
-  }) {
+  Widget _buildNavItem(IconData icon, String label, int index) {
     final isSelected = _selectedIndex == index;
     
     return InkWell(
@@ -92,79 +64,32 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           _selectedIndex = index;
         });
       },
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppTheme.primaryColor.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              color: isSelected ? AppTheme.primaryColor : Colors.grey.shade400,
-              size: 24,
+              color: isSelected 
+                  ? AppTheme.primaryColor
+                  : const Color(0xFF94A3B8),
+              size: 22,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? AppTheme.primaryColor : Colors.grey.shade500,
+                color: isSelected 
+                    ? AppTheme.primaryColor
+                    : const Color(0xFF64748B),
               ),
             ),
-            if (isSelected)
-              Container(
-                margin: const EdgeInsets.only(top: 4),
-                height: 3,
-                width: 20,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
           ],
         ),
       ),
-    );
-  }
-
-  void _showExitDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Exit App'),
-          content: const Text('Are you sure you want to exit?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.errorColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-                SystemNavigator.pop();
-              },
-              child: const Text('Exit'),
-            ),
-          ],
-        );
-      },
     );
   }
 }

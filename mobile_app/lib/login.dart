@@ -1,8 +1,10 @@
 // lib/pages/login_page.dart (bagian yang diupdate)
 import 'package:flutter/material.dart';
-import 'package:mobile_app/dashboard.dart';
 import 'package:mobile_app/theme/app_theme.dart';
+import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/main_navigation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 class EmployeeLoginPage extends StatefulWidget {
   const EmployeeLoginPage({super.key});
@@ -17,18 +19,19 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _scaleAnimation;
-  
+
   bool _isKeyboardVisible = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -41,15 +44,13 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
       ),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-      ),
-    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+          ),
+        );
 
     _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(
@@ -111,7 +112,8 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                     constraints: const BoxConstraints(maxWidth: 420),
                     child: SingleChildScrollView(
                       physics: const BouncingScrollPhysics(),
-                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: EdgeInsets.only(
                         left: 24,
                         right: 24,
@@ -276,7 +278,10 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 decoration: InputDecoration(
                   hintText: "Email Address",
                   hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                  prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.primaryColor),
+                  prefixIcon: const Icon(
+                    Icons.email_outlined,
+                    color: AppTheme.primaryColor,
+                  ),
                   filled: true,
                   fillColor: Colors.white,
                   border: OutlineInputBorder(
@@ -289,17 +294,29 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primaryColor,
+                      width: 2,
+                    ),
                   ),
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: AppTheme.errorColor, width: 1),
+                    borderSide: const BorderSide(
+                      color: AppTheme.errorColor,
+                      width: 1,
+                    ),
                   ),
                   focusedErrorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: AppTheme.errorColor, width: 2),
+                    borderSide: const BorderSide(
+                      color: AppTheme.errorColor,
+                      width: 2,
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
                 ),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
@@ -363,10 +380,15 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                     decoration: InputDecoration(
                       hintText: "Password",
                       hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                      prefixIcon: const Icon(Icons.lock_outline, color: AppTheme.primaryColor),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: AppTheme.primaryColor,
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                          isPasswordVisible
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                           color: AppTheme.primaryColor,
                         ),
                         onPressed: () {
@@ -387,17 +409,29 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                        borderSide: const BorderSide(
+                          color: AppTheme.primaryColor,
+                          width: 2,
+                        ),
                       ),
                       errorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppTheme.errorColor, width: 1),
+                        borderSide: const BorderSide(
+                          color: AppTheme.errorColor,
+                          width: 1,
+                        ),
                       ),
                       focusedErrorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(color: AppTheme.errorColor, width: 2),
+                        borderSide: const BorderSide(
+                          color: AppTheme.errorColor,
+                          width: 2,
+                        ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -490,16 +524,53 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
   }
 
   // ================= FUNCTIONS =================
-void _handleLogin() {
-    FocusScope.of(context).unfocus();
+void _handleLogin() async {
+  // Unfocus keyboard
+  FocusScope.of(context).unfocus();
+  setState(() {
+    _isKeyboardVisible = false;
+  });
+  
+  // Validasi form
+  if (_formKey.currentState != null && _formKey.currentState!.validate()) {
     setState(() {
-      _isKeyboardVisible = false;
+      _isLoading = true;
     });
-    
-    if (_formKey.currentState != null && _formKey.currentState!.validate()) {
+
+    try {
+      // Panggil API login
+      final response = await ApiService.login(
+        _emailController.text,
+        _passwordController.text,
+      );
+
+      // Simpan user ID ke SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('user_id', response.user.id);
+      await prefs.setString('user_name', response.user.fullName);
+      await prefs.setString('user_role', response.user.role);
+      await prefs.setString('user_department', response.user.department);
+
+      setState(() {
+        _isLoading = false;
+      });
+
       _showLoginSuccess();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Login gagal: $e'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
+}
 
   void _showLoginSuccess() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -513,13 +584,11 @@ void _handleLogin() {
         ),
         backgroundColor: AppTheme.primaryColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         duration: const Duration(seconds: 1),
       ),
     );
-    
+
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted) {
         // Navigasi ke MainNavigation dengan replace
@@ -531,10 +600,7 @@ void _handleLogin() {
             transitionsBuilder: (_, animation, __, child) {
               return FadeTransition(
                 opacity: animation,
-                child: ScaleTransition(
-                  scale: animation,
-                  child: child,
-                ),
+                child: ScaleTransition(scale: animation, child: child),
               );
             },
           ),
@@ -548,7 +614,7 @@ void _handleLogin() {
     setState(() {
       _isKeyboardVisible = false;
     });
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -601,7 +667,10 @@ void _handleLogin() {
                 TextFormField(
                   decoration: InputDecoration(
                     hintText: "email@company.com",
-                    prefixIcon: const Icon(Icons.email_outlined, color: AppTheme.primaryColor),
+                    prefixIcon: const Icon(
+                      Icons.email_outlined,
+                      color: AppTheme.primaryColor,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(15),
                       borderSide: BorderSide.none,
@@ -643,7 +712,9 @@ void _handleLogin() {
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text("Reset link sent to your email"),
+                              content: const Text(
+                                "Reset link sent to your email",
+                              ),
                               backgroundColor: AppTheme.primaryColor,
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(

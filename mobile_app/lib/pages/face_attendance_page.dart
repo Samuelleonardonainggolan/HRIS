@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mobile_app/theme/app_theme.dart';
+import 'package:mobile_app/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FaceAttendancePage extends StatefulWidget {
   final String type; // 'clock_in' or 'clock_out'
@@ -26,16 +28,18 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
   bool _isLoading = false;
   bool _isLocationValid = false;
   bool _isFaceDetected = false;
+  bool _isCameraPermissionGranted = false;
+  bool _isLocationPermissionGranted = false;
   
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
 
   final ImagePicker _imagePicker = ImagePicker();
 
-  // Koordinat kantor (contoh: Jakarta)
-  final double _officeLat = -6.2088;
-  final double _officeLng = 106.8456;
-  final double _radiusMeters = 100; // Radius 100 meter
+  // Koordinat IT Del Sitoluama
+  final double _officeLat = 2.3561;
+  final double _officeLng = 99.1431;
+  final double _radiusMeters = 10000; // Radius 200 meter
 
   @override
   void initState() {
@@ -52,7 +56,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
       ),
     );
     
-    _checkLocationPermission();
+    _checkPermissions();
+  }
+
+  Future<void> _checkPermissions() async {
+    await _checkLocationPermission();
+    await _checkCameraPermission();
   }
 
   Future<void> _checkLocationPermission() async {
@@ -60,26 +69,64 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
       _locationStatus = 'Memeriksa izin lokasi...';
     });
 
-    PermissionStatus status = await Permission.location.request();
+    // Cek status lokasi menggunakan Geolocator
+    LocationPermission permission = await Geolocator.checkPermission();
     
-    if (status.isGranted) {
-      _getCurrentLocation();
-    } else if (status.isDenied) {
-      setState(() {
-        _locationStatus = 'Izin lokasi ditolak';
-        _isLocationValid = false;
-      });
-      _showPermissionDialog('Lokasi');
-    } else if (status.isPermanentlyDenied) {
+    if (permission == LocationPermission.denied) {
+      // Minta izin
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          _locationStatus = 'Izin lokasi ditolak';
+          _isLocationPermissionGranted = false;
+        });
+        _showPermissionDialog('Lokasi');
+        return;
+      }
+    }
+    
+    if (permission == LocationPermission.deniedForever) {
       setState(() {
         _locationStatus = 'Izin lokasi ditolak permanen';
-        _isLocationValid = false;
+        _isLocationPermissionGranted = false;
       });
       _showSettingsDialog('Lokasi');
+      return;
+    }
+
+    // Izin diberikan
+    setState(() {
+      _isLocationPermissionGranted = true;
+    });
+    
+    _getCurrentLocation();
+  }
+
+  Future<void> _checkCameraPermission() async {
+    var status = await Permission.camera.status;
+    
+    if (status.isDenied) {
+      // Minta izin
+      status = await Permission.camera.request();
+    }
+    
+    setState(() {
+      _isCameraPermissionGranted = status.isGranted;
+    });
+
+    if (status.isPermanentlyDenied) {
+      _showSettingsDialog('Kamera');
     }
   }
 
   Future<void> _getCurrentLocation() async {
+    if (!_isLocationPermissionGranted) {
+      setState(() {
+        _locationStatus = 'Izin lokasi tidak diberikan';
+      });
+      return;
+    }
+
     setState(() {
       _locationStatus = 'Mendapatkan lokasi...';
     });
@@ -109,6 +156,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
         _locationStatus = 'Gagal mendapatkan lokasi';
         _isLocationValid = false;
       });
+      _showErrorSnackBar('Gagal mendapatkan lokasi: $e');
     }
   }
 
@@ -123,27 +171,29 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     setState(() {
       _isLocationValid = distance <= _radiusMeters;
       if (_isLocationValid) {
-        _locationStatus = 'Dalam area kantor ✓';
+        _locationStatus = 'Dalam area kampus IT Del ✓';
       } else {
-        _locationStatus = 'Di luar area kantor (${distance.toStringAsFixed(0)}m) ✗';
+        _locationStatus = 'Di luar area kampus (${distance.toStringAsFixed(0)}m) ✗';
       }
     });
   }
 
   Future<void> _captureImage() async {
-    try {
-      // Cek izin kamera
-      PermissionStatus cameraStatus = await Permission.camera.request();
-      if (!cameraStatus.isGranted) {
+    if (!_isCameraPermissionGranted) {
+      await _checkCameraPermission();
+      if (!_isCameraPermissionGranted) {
         _showPermissionDialog('Kamera');
         return;
       }
+    }
 
+    try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
+        preferredCameraDevice: CameraDevice.front, // Gunakan kamera depan
       );
 
       if (image != null) {
@@ -153,7 +203,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
           _isLoading = true;
         });
 
-        // Simulasi verifikasi wajah (nanti diganti dengan AI face recognition)
+        // Simulasi verifikasi wajah
         await Future.delayed(const Duration(seconds: 2));
         
         // Simulasi deteksi wajah (80% berhasil)
@@ -180,9 +230,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     }
   }
 
-  void _submitAttendance() {
+  void _submitAttendance() async {
     if (!_isLocationValid) {
-      _showErrorSnackBar('Anda harus berada dalam area kantor untuk melakukan absensi');
+      _showErrorSnackBar('Anda harus berada dalam area kampus IT Del untuk melakukan absensi');
       return;
     }
 
@@ -196,8 +246,55 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
       return;
     }
 
-    // Simulasi submit berhasil
-    _showSuccessDialog();
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Dapatkan user ID dari SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('user_id') ?? '';
+
+      if (userId.isEmpty) {
+        throw Exception('User ID tidak ditemukan. Silakan login ulang.');
+      }
+
+      Map<String, dynamic> result;
+      
+      if (widget.type == 'clock_in') {
+        // Kirim clock in ke API
+        result = await ApiService.clockIn(
+          employeeId: userId,
+          latitude: _currentPosition?.latitude ?? 0,
+          longitude: _currentPosition?.longitude ?? 0,
+          photoPath: _capturedImage!.path,
+        );
+        
+        debugPrint('Clock in result: $result');
+      } else {
+        // Kirim clock out ke API
+        result = await ApiService.clockOut(
+          employeeId: userId,
+          latitude: _currentPosition?.latitude ?? 0,
+          longitude: _currentPosition?.longitude ?? 0,
+          photoPath: _capturedImage!.path,
+        );
+        
+        debugPrint('Clock out result: $result');
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Tampilkan dialog sukses
+      _showSuccessDialog();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      _showErrorSnackBar('Gagal melakukan absensi: $e');
+    }
   }
 
   void _showSuccessDialog() {
@@ -225,7 +322,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
             ),
             const SizedBox(height: 16),
             Text(
-              widget.type == 'clock_in' ? 'Clock In Berhasil!' : 'Clock Out Berhasil!',
+              widget.type == 'clock_in' ? 'Absen Masuk Berhasil!' : 'Absen Pulang Berhasil!',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -291,6 +388,17 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Batal'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              if (permission == 'Kamera') {
+                _checkCameraPermission();
+              } else {
+                _checkLocationPermission();
+              }
+            },
+            child: const Text('Minta Izin'),
           ),
           TextButton(
             onPressed: () {
@@ -562,13 +670,24 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                             ],
                           ),
                         ),
-                        if (!_isLocationValid)
+                        if (!_isLocationValid && _isLocationPermissionGranted)
                           IconButton(
                             icon: const Icon(Icons.refresh, color: Color(0xFF135BEC)),
                             onPressed: _getCurrentLocation,
                           ),
                       ],
                     ),
+                    if (!_isLocationPermissionGranted)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Izin lokasi belum diberikan. Ketuk ikon kamera untuk meminta izin.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.errorColor,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -641,27 +760,39 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                                       width: 70,
                                       height: 70,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFF135BEC).withOpacity(0.1),
+                                        color: _isCameraPermissionGranted
+                                            ? const Color(0xFF135BEC).withOpacity(0.1)
+                                            : Colors.grey.withOpacity(0.1),
                                         shape: BoxShape.circle,
                                       ),
-                                      child: const Icon(
-                                        Icons.camera_alt,
-                                        color: Color(0xFF135BEC),
+                                      child: Icon(
+                                        _isCameraPermissionGranted
+                                            ? Icons.camera_alt
+                                            : Icons.camera_alt_outlined,
+                                        color: _isCameraPermissionGranted
+                                            ? const Color(0xFF135BEC)
+                                            : Colors.grey,
                                         size: 35,
                                       ),
                                     ),
                                   ),
                                   const SizedBox(height: 12),
-                                  const Text(
-                                    'Tap untuk mengambil foto',
+                                  Text(
+                                    _isCameraPermissionGranted
+                                        ? 'Tap untuk mengambil foto'
+                                        : 'Izin kamera diperlukan',
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: Color(0xFF64748B),
+                                      color: _isCameraPermissionGranted
+                                          ? const Color(0xFF64748B)
+                                          : Colors.grey,
                                     ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Pastikan wajah Anda terlihat jelas',
+                                    _isCameraPermissionGranted
+                                        ? 'Pastikan wajah Anda terlihat jelas'
+                                        : 'Ketuk untuk meminta izin kamera',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade500,
@@ -762,7 +893,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Petunjuk Absensi',
+                            'Petunjuk Absensi IT Del',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
@@ -771,11 +902,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '1. Pastikan Anda dalam area kantor\n'
-                            '2. Ambil foto dengan wajah jelas\n'
+                            '1. Pastikan Anda dalam area kampus IT Del Sitoluama\n'
+                            '2. Ambil foto dengan wajah jelas (gunakan kamera depan)\n'
                             '3. Pastikan pencahayaan cukup\n'
-                            '4. Jangan gunakan aksesori yang menutupi wajah\n'
-                            '5. Posisikan wajah di tengah frame',
+                            '4. Jangan gunakan aksesori yang menutupi wajah',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade700,
@@ -826,7 +956,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
               // Informasi tambahan
               Center(
                 child: Text(
-                  'Dengan melakukan absensi, Anda menyetujui kebijakan perusahaan',
+                  'Dengan melakukan absensi, Anda menyetujui kebijakan kampus IT Del',
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.grey.shade500,
