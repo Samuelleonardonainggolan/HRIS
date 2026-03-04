@@ -5,7 +5,6 @@ import (
     "github.com/andikatampubolon10/hris-backend/internal/config"
     "github.com/andikatampubolon10/hris-backend/pkg/api/handler"
     "github.com/andikatampubolon10/hris-backend/pkg/middleware"
-    "github.com/andikatampubolon10/hris-backend/pkg/models"
     "github.com/gin-gonic/gin"
 )
 
@@ -13,12 +12,22 @@ func SetupRoutes(
     router *gin.Engine,
     cfg *config.Config,
     authHandler *handler.AuthHandler,
-    userHandler *handler.UserHandler,
     healthHandler *handler.HealthHandler,
 ) {
-    // Middleware global
-    router.Use(middleware.CORS())
-    router.Use(middleware.Logger())
+    // CORS Middleware
+    router.Use(func(c *gin.Context) {
+        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+        c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(204)
+            return
+        }
+
+        c.Next()
+    })
 
     // Health check (public)
     router.GET("/health", healthHandler.HealthCheck)
@@ -30,83 +39,95 @@ func SetupRoutes(
         auth := v1.Group("/auth")
         {
             auth.POST("/login", authHandler.Login)
-            // Register hanya bisa dilakukan oleh Manager HR (akan dibuat endpoint terpisah)
+            auth.POST("/register", authHandler.Register)
+            auth.POST("/refresh", authHandler.RefreshToken)
         }
 
         // ==================== PROTECTED ROUTES ====================
         protected := v1.Group("")
         protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
         {
-            // Profile (All authenticated users)
-            protected.GET("/profile", userHandler.GetProfile)
-            protected.PUT("/profile", userHandler.UpdateProfile)
+            // Logout (All authenticated users)
             protected.POST("/logout", authHandler.Logout)
 
+            // Profile endpoints (will be implemented later)
+            // protected.GET("/profile", userHandler.GetProfile)
+            // protected.PUT("/profile", userHandler.UpdateProfile)
+
             // ==================== MANAGER HR ONLY ====================
-            managerHR := protected.Group("/manager-hr")
-            managerHR.Use(middleware.ManagerHROnly())
-            {
-                // User Management (Full Access)
-                managerHR.POST("/users", userHandler.CreateUser)
-                managerHR.GET("/users", userHandler.GetAllUsers)
-                managerHR.GET("/users/:id", userHandler.GetUserByID)
-                managerHR.PUT("/users/:id", userHandler.UpdateUser)
-                managerHR.DELETE("/users/:id", userHandler.DeleteUser)
-
-                // Department Management
-                managerHR.GET("/departments", userHandler.GetAllDepartments)
-                managerHR.POST("/departments", userHandler.CreateDepartment)
-                managerHR.PUT("/departments/:id", userHandler.UpdateDepartment)
-                managerHR.DELETE("/departments/:id", userHandler.DeleteDepartment)
-
-                // Reports (All Departments)
-                managerHR.GET("/reports/attendance", userHandler.GetAttendanceReportAll)
-                managerHR.GET("/reports/employees", userHandler.GetEmployeeReportAll)
-            }
+            // managerHR := protected.Group("/manager-hr")
+            // managerHR.Use(middleware.ManagerHROnly())
+            // {
+            //     // User Management (Full Access) - To be implemented
+            //     managerHR.POST("/users", userHandler.CreateUser)
+            //     managerHR.GET("/users", userHandler.GetAllUsers)
+            //     managerHR.GET("/users/:id", userHandler.GetUserByID)
+            //     managerHR.PUT("/users/:id", userHandler.UpdateUser)
+            //     managerHR.DELETE("/users/:id", userHandler.DeleteUser)
+            //
+            //     // Department Management - To be implemented
+            //     managerHR.GET("/departments", departmentHandler.GetAll)
+            //     managerHR.POST("/departments", departmentHandler.Create)
+            //
+            //     // Position Management - To be implemented
+            //     managerHR.GET("/positions", positionHandler.GetAll)
+            //     managerHR.GET("/departments/:id/positions", positionHandler.GetByDepartment)
+            //
+            //     // Reports (All Departments) - To be implemented
+            //     managerHR.GET("/reports/attendance", reportHandler.GetAttendanceAll)
+            //     managerHR.GET("/reports/employees", reportHandler.GetEmployeeAll)
+            // }
 
             // ==================== MANAGER DEPARTEMEN ====================
-            managerDept := protected.Group("/manager-departemen")
-            managerDept.Use(middleware.ManagerOnly())
-            managerDept.Use(middleware.DepartmentAccessMiddleware())
-            {
-                // User Management (Department Only)
-                managerDept.GET("/users", userHandler.GetUsersByDepartment)
-                managerDept.PUT("/users/:id", userHandler.UpdateUserDepartment)
-
-                // Attendance Management
-                managerDept.GET("/attendance", userHandler.GetDepartmentAttendance)
-                managerDept.PUT("/attendance/:id/approve", userHandler.ApproveAttendance)
-                managerDept.PUT("/attendance/:id/reject", userHandler.RejectAttendance)
-
-                // Reports (Department Only)
-                managerDept.GET("/reports/attendance", userHandler.GetAttendanceReportDept)
-                managerDept.GET("/reports/employees", userHandler.GetEmployeeReportDept)
-            }
+            // managerDept := protected.Group("/manager-dept")
+            // managerDept.Use(middleware.ManagerOnly())
+            // managerDept.Use(middleware.DepartmentAccessMiddleware())
+            // {
+            //     // Team Management - To be implemented
+            //     managerDept.GET("/team", userHandler.GetTeamMembers)
+            //     managerDept.GET("/team/:id", userHandler.GetTeamMemberDetail)
+            //
+            //     // Attendance Management - To be implemented
+            //     managerDept.GET("/attendance", attendanceHandler.GetDepartmentAttendance)
+            //     managerDept.PUT("/attendance/:id/approve", attendanceHandler.Approve)
+            //
+            //     // Reports (Department Only) - To be implemented
+            //     managerDept.GET("/reports/attendance", reportHandler.GetAttendanceDept)
+            //     managerDept.GET("/reports/team", reportHandler.GetTeamReport)
+            // }
 
             // ==================== ADMIN DEPARTEMEN ====================
-            adminDept := protected.Group("/admin-departemen")
-            adminDept.Use(middleware.AdminAndManagerOnly())
-            adminDept.Use(middleware.DepartmentAccessMiddleware())
-            {
-                // Create & Edit Staff
-                adminDept.POST("/users/staf", userHandler.CreateStaf)
-                adminDept.PUT("/users/staf/:id", userHandler.UpdateStaf)
-                adminDept.GET("/users/staf", userHandler.GetStafByDepartment)
-
-                // Attendance Input/View
-                adminDept.GET("/attendance", userHandler.GetDepartmentAttendance)
-                adminDept.POST("/attendance", userHandler.InputAttendance)
-            }
+            // adminDept := protected.Group("/admin-dept")
+            // adminDept.Use(middleware.AdminAndManagerOnly())
+            // adminDept.Use(middleware.DepartmentAccessMiddleware())
+            // {
+            //     // Create & Manage Staff - To be implemented
+            //     adminDept.POST("/staff", userHandler.CreateStaff)
+            //     adminDept.GET("/staff", userHandler.GetDepartmentStaff)
+            //     adminDept.PUT("/staff/:id", userHandler.UpdateStaff)
+            //
+            //     // Attendance Management - To be implemented
+            //     adminDept.GET("/attendance", attendanceHandler.GetDepartmentAttendance)
+            //     adminDept.POST("/attendance", attendanceHandler.InputAttendance)
+            // }
 
             // ==================== STAF ====================
-            staf := protected.Group("/staf")
-            {
-                // Attendance
-                staf.POST("/attendance/checkin", userHandler.CheckIn)
-                staf.POST("/attendance/checkout", userHandler.CheckOut)
-                staf.GET("/attendance/history", userHandler.GetMyAttendance)
-                staf.GET("/attendance/today", userHandler.GetTodayAttendance)
-            }
+            // staf := protected.Group("/staf")
+            // {
+            //     // Attendance - To be implemented
+            //     staf.POST("/attendance/checkin", attendanceHandler.CheckIn)
+            //     staf.POST("/attendance/checkout", attendanceHandler.CheckOut)
+            //     staf.GET("/attendance/history", attendanceHandler.GetMyHistory)
+            //     staf.GET("/attendance/today", attendanceHandler.GetMyToday)
+            //
+            //     // Leave Requests - To be implemented
+            //     staf.POST("/leave-requests", leaveHandler.Create)
+            //     staf.GET("/leave-requests", leaveHandler.GetMyRequests)
+            //
+            //     // Profile - To be implemented
+            //     staf.GET("/profile", userHandler.GetMyProfile)
+            //     staf.PUT("/profile", userHandler.UpdateMyProfile)
+            // }
         }
     }
 }
