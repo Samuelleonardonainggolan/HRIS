@@ -7,9 +7,9 @@ import (
     "github.com/andikatampubolon10/hris-backend/internal/config"
     "github.com/andikatampubolon10/hris-backend/internal/service"
     "github.com/andikatampubolon10/hris-backend/pkg/api/handler"
+    "github.com/andikatampubolon10/hris-backend/pkg/api/routes"
     "github.com/andikatampubolon10/hris-backend/pkg/database"
     "github.com/andikatampubolon10/hris-backend/pkg/database/repository"
-    "github.com/andikatampubolon10/hris-backend/pkg/middleware"
     "github.com/gin-gonic/gin"
 )
 
@@ -17,7 +17,7 @@ func main() {
     // Load configuration
     cfg := config.LoadConfig()
 
-    // Setup MongoDB
+    // Connect to MongoDB
     mongodb, err := database.NewMongoDB(cfg.MongoURI, cfg.DatabaseName)
     if err != nil {
         log.Fatal("Failed to connect to MongoDB:", err)
@@ -30,52 +30,45 @@ func main() {
     userRepo := repository.NewUserRepository(mongodb.Database)
 
     // Initialize services
-    authService := service.NewAuthService(userRepo, cfg)
+    authService := service.NewAuthService(
+        userRepo,
+        cfg.JWTSecret,
+        cfg.JWTExpiry,
+    )
 
     // Initialize handlers
-    authHandler := handler.NewAuthHandler(authService)
     healthHandler := handler.NewHealthHandler()
+    authHandler := handler.NewAuthHandler(authService)
 
-    // Setup Gin
-    if cfg.Environment == "production" {
-        gin.SetMode(gin.ReleaseMode)
-    }
+    // Setup Gin router
+    r := gin.Default()
 
-    router := gin.Default()
-
-    // Global middleware
-    router.Use(middleware.CORS())
-    router.Use(middleware.Logger())
-
-    // Health check
-    router.GET("/health", healthHandler.HealthCheck)
-
-    // API v1
-    v1 := router.Group("/api/v1")
-    {
-        // Public routes
-        auth := v1.Group("/auth")
-        {
-            auth.POST("/login", authHandler.Login)
-            auth.POST("/refresh", authHandler.RefreshToken)
-        }
-
-        // Protected routes
-        protected := v1.Group("")
-        protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
-        {
-            protected.POST("/logout", authHandler.Logout)
-        }
-    }
+    // Setup routes
+    routes.SetupRoutes(r, cfg, authHandler, healthHandler)
 
     // Start server
-    port := cfg.ServerPort
-    log.Printf("🚀 Server running on port %s", port)
+    log.Printf("🚀 Server running on port %s", cfg.ServerPort)
     log.Printf("📍 Environment: %s", cfg.Environment)
-    log.Printf("🔗 Health check: http://localhost:%s/health", port)
-    log.Printf("🔗 API Base URL: http://localhost:%s/api/v1", port)
+    log.Printf("🔗 Health check: http://localhost:%s/health", cfg.ServerPort)
+    log.Printf("🔗 API Base URL: http://localhost:%s/api/v1", cfg.ServerPort)
+    log.Println("\n📋 Available Endpoints:")
+    log.Println("   Public:")
+    log.Println("     POST /api/v1/auth/login")
+    log.Println("     POST /api/v1/auth/register")
+    log.Println("     POST /api/v1/auth/refresh")
+    log.Println("   Protected:")
+    log.Println("     POST /api/v1/logout")
+    log.Println("   Manager HR:")
+    log.Println("     /api/v1/manager-hr/* (Coming soon)")
+    log.Println("   Manager Dept:")
+    log.Println("     /api/v1/manager-dept/* (Coming soon)")
+    log.Println("   Admin Dept:")
+    log.Println("     /api/v1/admin-dept/* (Coming soon)")
+    log.Println("   Staff:")
+    log.Println("     /api/v1/staf/* (Coming soon)")
+    log.Println()
 
-    if err := router.Run(":" + port); err != nil {
+    if err := r.Run(":" + cfg.ServerPort); err != nil {
         log.Fatal("Failed to start server:", err)
     }
 }
