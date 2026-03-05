@@ -15,8 +15,9 @@ type Claims struct {
     jwt.RegisteredClaims
 }
 
+// GenerateToken - Generate JWT token
 func GenerateToken(userID, role, department, secret, expiry string) (string, error) {
-    duration, err := time.ParseDuration(expiry)
+    expiryDuration, err := time.ParseDuration(expiry)
     if err != nil {
         return "", err
     }
@@ -26,7 +27,7 @@ func GenerateToken(userID, role, department, secret, expiry string) (string, err
         Role:       role,
         Department: department,
         RegisteredClaims: jwt.RegisteredClaims{
-            ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
+            ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiryDuration)),
             IssuedAt:  jwt.NewNumericDate(time.Now()),
         },
     }
@@ -35,6 +36,7 @@ func GenerateToken(userID, role, department, secret, expiry string) (string, err
     return token.SignedString([]byte(secret))
 }
 
+// ValidateToken - Validate JWT token
 func ValidateToken(tokenString, secret string) (*Claims, error) {
     token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
         return []byte(secret), nil
@@ -44,10 +46,9 @@ func ValidateToken(tokenString, secret string) (*Claims, error) {
         return nil, err
     }
 
-    claims, ok := token.Claims.(*Claims)
-    if !ok || !token.Valid {
-        return nil, errors.New("invalid token")
+    if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+        return claims, nil
     }
 
-    return claims, nil
+    return nil, errors.New("invalid token")
 }
