@@ -39,7 +39,7 @@ func main() {
     faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
 
     // Initialize services
-    authService := service.NewAuthService(userRepo, cfg)
+    authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiry)
     faceService := service.NewFaceService(userRepo, faceClient)
 
     // Initialize handlers

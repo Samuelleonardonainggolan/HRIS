@@ -33,17 +33,6 @@ type User struct {
     UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
-// Department Model
-type Department struct {
-    ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    Name        string             `json:"name" bson:"name"`                   // IT, HR, Finance, etc
-    Code        string             `json:"code" bson:"code"`                   // IT001, HR001, etc
-    Description string             `json:"description" bson:"description"`
-    ManagerID   primitive.ObjectID `json:"manager_id" bson:"manager_id"`       // Manager Departemen
-    CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
-}
-
 // Request Models
 type LoginRequest struct {
     Email    string `json:"email" binding:"required,email"`
@@ -134,4 +123,17 @@ func (u *User) CanAccessDepartment(department string) bool {
         return true // Manager HR can access all departments
     }
     return u.Department == department
+}
+
+func (u *User) ToResponse() UserResponse {
+    return UserResponse{
+        ID:         u.ID.Hex(),
+        NIK:        u.NIK,
+        Email:      u.Email,
+        FullName:   u.FullName,
+        Role:       u.Role,
+        Department: u.Department,
+        Position:   u.Position,
+        Avatar:     u.Avatar,
+    }
 }
