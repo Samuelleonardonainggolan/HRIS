@@ -3,8 +3,10 @@ package main
 
 import (
     "log"
+    "time"
 
     "github.com/andikatampubolon10/hris-backend/internal/config"
+    "github.com/andikatampubolon10/hris-backend/internal/faceclient"
     "github.com/andikatampubolon10/hris-backend/internal/service"
     "github.com/andikatampubolon10/hris-backend/pkg/api/handler"
     "github.com/andikatampubolon10/hris-backend/pkg/database"
@@ -29,12 +31,21 @@ func main() {
     // Initialize repositories
     userRepo := repository.NewUserRepository(mongodb.Database)
 
+    // Initialize external clients
+    timeout, err := time.ParseDuration(cfg.FaceHTTPTimeout)
+    if err != nil {
+        timeout = 30 * time.Second
+    }
+    faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
+
     // Initialize services
     authService := service.NewAuthService(userRepo, cfg)
+    faceService := service.NewFaceService(userRepo, faceClient)
 
     // Initialize handlers
     authHandler := handler.NewAuthHandler(authService)
     healthHandler := handler.NewHealthHandler()
+    faceHandler := handler.NewFaceHandler(faceService)
 
     // Setup Gin
     if cfg.Environment == "production" {
@@ -65,6 +76,9 @@ func main() {
         protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
         {
             protected.POST("/logout", authHandler.Logout)
+            protected.GET("/internal/face/health", faceHandler.Health)
+            protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
+            protected.POST("/attendance/process", faceHandler.ProcessAttendance)
         }
     }
 

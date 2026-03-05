@@ -276,9 +276,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title      = "Face Recognition Microservice — Hotel Labersa Toba",
+    title      = "Face Recognition  — Hotel Labersa Toba",
     description= """
-**Internal microservice** untuk face recognition & geofencing.
+**Internal  untuk face recognition & geofencing.
 Dipanggil oleh Golang Backend, bukan langsung oleh client.
 
 ### Alur:

@@ -15,6 +15,9 @@ type Config struct {
     RefreshExpiry string
     ServerPort    string
     Environment   string
+    FaceServiceURL string
+    FaceAPIKey      string
+    FaceHTTPTimeout string
 }
 
 func LoadConfig() *Config {
@@ -30,6 +33,9 @@ func LoadConfig() *Config {
         RefreshExpiry: getEnv("REFRESH_EXPIRY", "168h"),
         ServerPort:    getEnv("SERVER_PORT", "8080"),
         Environment:   getEnv("ENVIRONMENT", "development"),
+        FaceServiceURL: getEnv("FACE_SERVICE_URL", "http://localhost:8001"),
+        FaceAPIKey:      getEnv("FACE_API_KEY", "labersa-internal-api-key-2026"),
+        FaceHTTPTimeout: getEnv("FACE_HTTP_TIMEOUT", "30s"),
     }
 }
 

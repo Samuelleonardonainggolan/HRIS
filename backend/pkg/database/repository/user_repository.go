@@ -19,6 +19,7 @@ type UserRepository interface {
     FindByNIK(ctx context.Context, nik string) (*models.User, error)
     FindByID(ctx context.Context, id string) (*models.User, error)
     Update(ctx context.Context, id string, update *models.UpdateProfileRequest) error
+    UpdateFaceEmbedding(ctx context.Context, id string, embedding []float32) error
     Delete(ctx context.Context, id string) error
     GetAll(ctx context.Context) ([]*models.User, error)
     GetByDepartment(ctx context.Context, department string) ([]*models.User, error)
@@ -48,6 +49,30 @@ func (r *userRepository) Create(ctx context.Context, user *models.User) error {
         return err
     }
 
+    return nil
+}
+
+func (r *userRepository) UpdateFaceEmbedding(ctx context.Context, id string, embedding []float32) error {
+    objectID, err := primitive.ObjectIDFromHex(id)
+    if err != nil {
+        return errors.New("invalid user ID")
+    }
+
+    update := bson.M{
+        "$set": bson.M{
+            "face_embedding": embedding,
+            "updated_at":     time.Now(),
+        },
+    }
+    filter := bson.M{"_id": objectID}
+
+    result, err := r.collection.UpdateOne(ctx, filter, update)
+    if err != nil {
+        return err
+    }
+    if result.MatchedCount == 0 {
+        return errors.New("user not found")
+    }
     return nil
 }
 

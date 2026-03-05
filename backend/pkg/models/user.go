@@ -24,6 +24,7 @@ type User struct {
     Department   string             `json:"department" bson:"department"`      // IT, HR, Finance, Marketing, etc
     Position     string             `json:"position" bson:"position"`          // Jabatan
     Avatar       string             `json:"avatar,omitempty" bson:"avatar,omitempty"`
+    FaceEmbedding []float32         `json:"face_embedding,omitempty" bson:"face_embedding,omitempty"`
     Phone        string             `json:"phone,omitempty" bson:"phone,omitempty"`
     Address      string             `json:"address,omitempty" bson:"address,omitempty"`
     JoinDate     time.Time          `json:"join_date" bson:"join_date"`
