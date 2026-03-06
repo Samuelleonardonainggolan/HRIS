@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Search, MoreVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,11 +20,16 @@ export function EmployeeTable({
   onSelectEmployee,
   selectedEmployeeId,
 }: EmployeeTableProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredEmployees = employees.filter((employee) =>
     employee.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleAddEmployee = () => {
+    router.push("/dashboard/manager-hr/karyawan/tambah-pegawai-baru");
+  };
 
   return (
     <Card>
@@ -33,7 +39,10 @@ export function EmployeeTable({
           <h2 className="text-lg font-semibold text-gray-900">
             Manajemen Pegawai
           </h2>
-          <Button variant="primary" className="flex items-center gap-2">
+          <Button 
+            onClick={handleAddEmployee}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+          >
             <span className="text-lg">+</span>
             Tambah Pegawai
           </Button>

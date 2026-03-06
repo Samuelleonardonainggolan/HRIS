@@ -71,7 +71,7 @@ export function Sidebar() {
       case "manager_hr":
         return [
           { name: "Dashboard", href: basePath, icon: "LayoutDashboard" },
-          { name: "Pegawai", href: `${basePath}/pegawai`, icon: "Users" },
+          { name: "Pegawai", href: `${basePath}/karyawan`, icon: "Users" },
           { name: "Departemen", href: `${basePath}/departemen`, icon: "Building2" },
           { name: "Biometrik", href: `${basePath}/biometrik`, icon: "Fingerprint" },
           { name: "Geofencing", href: `${basePath}/geofencing`, icon: "MapPin" },

@@ -1,9 +1,8 @@
-// contexts/AuthContext.tsx
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import { authService, User, LoginRequest } from '@/lib/api/auth';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
   user: User | null;
@@ -19,49 +18,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     // Check if user is logged in on mount
-    const currentUser = authService.getUser();
-    const token = authService.getAccessToken();
-    
-    if (currentUser && token) {
-      setUser(currentUser);
-    }
-    setLoading(false);
-  }, []);
+    const initAuth = () => {
+      const currentUser = authService.getUser();
+      const token = authService.getAccessToken();
+
+      if (currentUser && token) {
+        setUser(currentUser);
+      } else {
+        setUser(null);
+        // Only redirect to login if not already on login page
+        if (pathname && !pathname.startsWith('/login')) {
+          router.push('/login');
+        }
+      }
+      setLoading(false);
+    };
+
+    initAuth();
+  }, [pathname, router]);
 
   const login = async (credentials: LoginRequest) => {
     try {
-      const response = await authService.login(credentials);
-      setUser(response.data.user);
+      console.log('AuthContext: Attempting login...');
       
+      const response = await authService.login(credentials);
+      
+      console.log('AuthContext: Login successful', {
+        user: response.user.full_name,
+        role: response.user.role,
+      });
+
+      setUser(response.user);
+
       // Redirect based on role
-      switch (response.data.user.role) {
+      const role = response.user.role;
+      let redirectPath = '/dashboard';
+
+      switch (role) {
         case 'manager_hr':
-          router.push('/dashboard/manager-hr');
+          redirectPath = '/dashboard/manager-hr';
           break;
         case 'manager_departemen':
-          router.push('/dashboard/manager-dept');
+          redirectPath = '/dashboard/manager-dept';
           break;
         case 'admin_departemen':
-          router.push('/dashboard/admin-dept');
+          redirectPath = '/dashboard/admin-dept';
           break;
         case 'staf':
-          router.push('/dashboard/staf');
+          redirectPath = '/dashboard/staff';
           break;
         default:
-          router.push('/dashboard');
+          redirectPath = '/dashboard';
       }
+
+      console.log('AuthContext: Redirecting to', redirectPath);
+      router.push(redirectPath);
     } catch (error) {
+      console.error('AuthContext: Login failed', error);
+      setUser(null);
       throw error;
     }
   };
 
   const logout = async () => {
-    await authService.logout();
-    setUser(null);
-    router.push('/login');
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      setUser(null);
+      router.push('/login');
+    }
   };
 
   return (
@@ -79,10 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

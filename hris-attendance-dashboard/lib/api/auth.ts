@@ -1,5 +1,5 @@
 // lib/api/auth.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 export interface LoginRequest {
   email: string;
@@ -16,20 +16,18 @@ export interface User {
   position: string;
   phone?: string;
   avatar?: string;
+  join_date: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
+// ✅ Backend actual response structure (without wrapper)
 export interface LoginResponse {
-  success: boolean;
-  message: string;
-  data: {
-    user: User;
-    access_token: string;
-    refresh_token: string;
-    expires_in: number;
-  };
+  user: User;
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
 }
 
 export interface ErrorResponse {
@@ -40,28 +38,39 @@ export interface ErrorResponse {
 
 class AuthService {
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(credentials),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || data.message || 'Login failed');
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Login failed');
+      }
+
+      // ✅ Validate response structure
+      if (!data.access_token || !data.user) {
+        console.error('Invalid response structure:', data);
+        throw new Error('Invalid response from server');
+      }
+
+      // Save tokens to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
-
-    // Save tokens to localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', data.data.access_token);
-      localStorage.setItem('refresh_token', data.data.refresh_token);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
-    }
-
-    return data;
   }
 
   async logout(): Promise<void> {
@@ -77,6 +86,7 @@ class AuthService {
         });
       } catch (error) {
         console.error('Logout error:', error);
+        // Continue with local logout even if API call fails
       }
     }
 
@@ -95,28 +105,42 @@ class AuthService {
       throw new Error('No refresh token available');
     }
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.error || 'Token refresh failed');
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Token refresh failed');
+      }
+
+      // ✅ Validate response
+      if (!data.access_token) {
+        throw new Error('Invalid refresh response');
+      }
+
+      // Update tokens
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        if (data.user) {
+          localStorage.setItem('user', JSON.stringify(data.user));
+        }
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Refresh token error:', error);
+      // Clear tokens on refresh failure
+      this.clearTokens();
+      throw error;
     }
-
-    // Update tokens
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('access_token', data.data.access_token);
-      localStorage.setItem('refresh_token', data.data.refresh_token);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
-    }
-
-    return data;
   }
 
   getAccessToken(): string | null {
@@ -132,11 +156,32 @@ class AuthService {
   getUser(): User | null {
     if (typeof window === 'undefined') return null;
     const userStr = localStorage.getItem('user');
-    return userStr ? JSON.parse(userStr) : null;
+    try {
+      return userStr ? JSON.parse(userStr) : null;
+    } catch {
+      return null;
+    }
   }
 
   isAuthenticated(): boolean {
     return !!this.getAccessToken();
+  }
+
+  clearTokens(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+    }
+  }
+
+  // Helper to get auth headers
+  getAuthHeaders(): Record<string, string> {
+    const token = this.getAccessToken();
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
   }
 }
 
