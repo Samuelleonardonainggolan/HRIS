@@ -1,3 +1,5 @@
+//go:build seed_users
+
 // scripts/seed_users.go
 package main
 

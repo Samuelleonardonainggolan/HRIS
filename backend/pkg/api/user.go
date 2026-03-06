@@ -2,17 +2,12 @@ package api
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"github.com/andikatampubolon10/hris-backend/pkg/auth"
-	"github.com/andikatampubolon10/hris-backend/pkg/database"
-	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"net/http"
 
-	"gorm.io/gorm"
+	"github.com/andikatampubolon10/hris-backend/pkg/database"
+	"github.com/andikatampubolon10/hris-backend/pkg/models"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type UserRepository interface {
@@ -43,46 +38,19 @@ func NewUserRepository(db database.Database, ctx *context.Context) *userReposito
 // @Security ApiKeyAuth
 // @Accept  json
 // @Produce  json
-// @Param   user     body    models.LoginUser     true        "User login object"
-// @Success 200 {string} string "JWT Token"
+// @Param   user     body    models.LoginRequest  true        "User login object"
+// @Success 200 {object} models.Response "Use /api/v1/auth/login endpoint"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 401 {string} string "Unauthorized"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /login [post]
 func (r *userRepository) LoginHandler(c *gin.Context) {
-	var incomingUser models.User
-	var dbUser models.User
-
-	// Get JSON body
-	if err := c.ShouldBindJSON(&incomingUser); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad Request"})
+	var req models.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
 		return
 	}
-
-	// Fetch the user from the database
-	if err := r.DB.Where("username = ?", incomingUser.Username).First(&dbUser).Error(); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal Server Error"})
-		}
-		return
-	}
-
-	// Verify password
-	if err := bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(incomingUser.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-		return
-	}
-
-	// Generate JWT token
-	token, err := auth.GenerateToken(dbUser.Username)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	c.JSON(http.StatusNotImplemented, models.ErrorResponse("Deprecated endpoint", "Gunakan /api/v1/auth/login"))
 }
 
 // RegisterHandler godoc
@@ -93,34 +61,16 @@ func (r *userRepository) LoginHandler(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Accept  json
 // @Produce  json
-// @Param   user     body    models.LoginUser     true        "User registration object"
-// @Success 201 {string} string	"Successfully registered"
+// @Param   user     body    models.RegisterRequest true "User registration object"
+// @Success 201 {object} models.Response "Use /api/v1/auth/register endpoint"
 // @Failure 400 {string} string "Bad Request"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /register [post]
 func (r *userRepository) RegisterHandler(c *gin.Context) {
-	var user models.LoginUser
-
-	if err := c.ShouldBindJSON(&user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	var req models.RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
 		return
 	}
-
-	// Hash the password
-	hashedPassword, err := auth.HashPassword(user.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not hash password"})
-		return
-	}
-
-	// Create new user
-	newUser := models.User{Username: user.Username, Password: hashedPassword}
-
-	// Save the user to the database
-	if err := r.DB.Create(&newUser).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Could not save user: %v", err)})
-		return
-	}
-
-	c.JSON(http.StatusCreated, gin.H{"message": "Registration successful"})
+	c.JSON(http.StatusNotImplemented, models.ErrorResponse("Deprecated endpoint", "Gunakan /api/v1/auth/register"))
 }

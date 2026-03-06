@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"os"
 	"github.com/andikatampubolon10/hris-backend/pkg/cache"
 	"github.com/andikatampubolon10/hris-backend/pkg/database"
 	"github.com/andikatampubolon10/hris-backend/pkg/middleware"
@@ -12,8 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.uber.org/zap"
 
 	"golang.org/x/time/rate"
 )
@@ -25,7 +24,7 @@ func ContextMiddleware(bookRepository BookRepository) gin.HandlerFunc {
 	}
 }
 
-func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db database.Database, redisClient cache.Cache, ctx *context.Context) *gin.Engine {
+func NewRouter(_logger interface{}, _mongoCollection interface{}, db database.Database, redisClient cache.Cache, ctx *context.Context) *gin.Engine {
 	bookRepository := NewBookRepository(db, redisClient, ctx)
 	userRepository := NewUserRepository(db, ctx)
 
@@ -33,12 +32,12 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db databas
 	r.Use(ContextMiddleware(bookRepository))
 
 	//r.Use(gin.Logger())
-	r.Use(middleware.Logger(logger, mongoCollection))
+	r.Use(middleware.Logger())
 	if gin.Mode() == gin.ReleaseMode {
 		r.Use(middleware.Security())
 		r.Use(middleware.Xss())
 	}
-	r.Use(middleware.Cors())
+	r.Use(middleware.CORS())
 	r.Use(middleware.RateLimiter(rate.Every(1*time.Minute), 60)) // 60 requests per minute
 
 	docs.SwaggerInfo.BasePath = "/api/v1"
@@ -46,7 +45,7 @@ func NewRouter(logger *zap.Logger, mongoCollection *mongo.Collection, db databas
 	{
 		v1.GET("/", bookRepository.Healthcheck)
 		v1.GET("/books", middleware.APIKeyAuth(), bookRepository.FindBooks)
-		v1.POST("/books", middleware.APIKeyAuth(), middleware.JWTAuth(), bookRepository.CreateBook)
+		v1.POST("/books", middleware.APIKeyAuth(), middleware.AuthMiddleware(os.Getenv("JWT_SECRET")), bookRepository.CreateBook)
 		v1.GET("/books/:id", middleware.APIKeyAuth(), bookRepository.FindBook)
 		v1.PUT("/books/:id", middleware.APIKeyAuth(), bookRepository.UpdateBook)
 		v1.DELETE("/books/:id", middleware.APIKeyAuth(), bookRepository.DeleteBook)
