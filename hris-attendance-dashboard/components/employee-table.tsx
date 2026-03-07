@@ -28,7 +28,7 @@ export function EmployeeTable({
   );
 
   const handleAddEmployee = () => {
-    router.push("/dashboard/manager-hr/karyawan/tambah-pegawai-baru");
+    router.push("/dashboard/manager-hr/karyawan/tambah-pegawai");
   };
 
   return (
