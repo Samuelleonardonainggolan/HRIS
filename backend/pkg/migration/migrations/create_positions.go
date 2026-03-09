@@ -2,139 +2,190 @@
 package migrations
 
 import (
-    "context"
-    "time"
+	"context"
+	"fmt"
+	"time"
 
-    "github.com/andikatampubolon10/hris-backend/pkg/models"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/bson/primitive"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func CreatePositions() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
-    version := 2
-    name := "create_positions"
-    description := "Create positions collection and seed initial data"
+	version := 2
+	name := "create_positions"
+	description := "Create positions collection and seed initial positions"
 
-    up := func(db *mongo.Database) error {
-        ctx := context.Background()
-        collection := db.Collection("positions")
+	up := func(db *mongo.Database) error {
+		ctx := context.Background()
+		collection := db.Collection("positions")
 
-        // Create indexes
-        indexModels := []mongo.IndexModel{
-            {
-                Keys:    bson.D{{Key: "code", Value: 1}},
-                Options: options.Index().SetUnique(true),
-            },
-            {
-                Keys: bson.D{{Key: "department_id", Value: 1}},
-            },
-        }
-        _, err := collection.Indexes().CreateMany(ctx, indexModels)
-        if err != nil {
-            return err
-        }
+		// Create indexes
+		indexModels := []mongo.IndexModel{
+			{
+				Keys:    bson.D{{Key: "code", Value: 1}},
+				Options: options.Index().SetUnique(true),
+			},
+			{
+				Keys: bson.D{{Key: "department_id", Value: 1}},
+			},
+			{
+				Keys: bson.D{{Key: "level", Value: 1}},
+			},
+			{
+				Keys: bson.D{{Key: "is_active", Value: 1}},
+			},
+		}
 
-        // Get departments for reference
-        deptCollection := db.Collection("departments")
-        deptCursor, err := deptCollection.Find(ctx, bson.M{})
-        if err != nil {
-            return err
-        }
-        defer deptCursor.Close(ctx)
+		_, err := collection.Indexes().CreateMany(ctx, indexModels)
+		if err != nil {
+			return fmt.Errorf("failed to create indexes: %w", err)
+		}
 
-        var departments []models.Department
-        if err = deptCursor.All(ctx, &departments); err != nil {
-            return err
-        }
+		// Get HR department
+		var hrDepartment models.Department
+		err = db.Collection("departments").FindOne(ctx, bson.M{"code": "HR"}).Decode(&hrDepartment)
+		if err != nil {
+			return fmt.Errorf("HR department not found (code: HR). Make sure migration 1 ran successfully: %w", err)
+		}
 
-        deptMap := make(map[string]primitive.ObjectID)
-        for _, dept := range departments {
-            deptMap[dept.Code] = dept.ID
-        }
+		// Get IT department
+		var itDepartment models.Department
+		err = db.Collection("departments").FindOne(ctx, bson.M{"code": "IT"}).Decode(&itDepartment)
+		if err != nil {
+			return fmt.Errorf("IT department not found (code: IT). Make sure migration 1 ran successfully: %w", err)
+		}
 
-        // Positions data
-        positionsData := map[string][]struct {
-            Code  string
-            Name  string
-            Level int
-            Grade string
-            Min   int
-            Max   int
-        }{
-            "FO": {
-                {"FO-01", "Front Office Manager", 5, "M1", 8000000, 12000000},
-                {"FO-02", "Assistant Front Office Manager", 4, "A1", 6000000, 9000000},
-                {"FO-03", "Front Desk Supervisor", 3, "S1", 5000000, 7000000},
-                {"FO-04", "Receptionist", 2, "R1", 4000000, 6000000},
-                {"FO-05", "Concierge", 2, "R1", 4000000, 6000000},
-                {"FO-06", "Bell Boy", 1, "J1", 3500000, 4500000},
-                {"FO-07", "Door Man", 1, "J1", 3500000, 4500000},
-            },
-            "HK": {
-                {"HK-01", "Housekeeping Manager", 5, "M1", 7000000, 11000000},
-                {"HK-02", "Assistant Housekeeping Manager", 4, "A1", 5500000, 8000000},
-                {"HK-03", "Housekeeping Supervisor", 3, "S1", 4500000, 6500000},
-                {"HK-04", "Room Attendant", 2, "R1", 3500000, 5000000},
-            },
-            "FB": {
-                {"FB-01", "F&B Manager", 5, "M1", 9000000, 13000000},
-                {"FB-02", "Restaurant Manager", 4, "A1", 6500000, 9500000},
-                {"FB-03", "Chef de Cuisine", 4, "A1", 7000000, 10000000},
-                {"FB-04", "Waiter/Waitress", 2, "R1", 3500000, 5000000},
-            },
-            "ENG": {
-                {"ENG-01", "Chief Engineer", 5, "M1", 8000000, 12000000},
-                {"ENG-02", "Technician", 2, "R1", 4000000, 6000000},
-            },
-            "HR": {
-                {"HR-01", "HR Manager", 5, "M1", 8000000, 12000000},
-                {"HR-02", "HR Staff", 2, "R1", 4000000, 6000000},
-            },
-        }
+		// Get Finance department
+		var finDepartment models.Department
+		err = db.Collection("departments").FindOne(ctx, bson.M{"code": "FIN"}).Decode(&finDepartment)
+		if err != nil {
+			return fmt.Errorf("Finance department not found (code: FIN). Make sure migration 1 ran successfully: %w", err)
+		}
 
-        // Build positions
-        var positions []interface{}
-        for deptCode, posList := range positionsData {
-            deptID, exists := deptMap[deptCode]
-            if !exists {
-                continue
-            }
+		// Seed positions
+		positions := []interface{}{
+			// HR Positions
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "HR-01",
+				Name:         "HR Manager",
+				DepartmentID: hrDepartment.ID,
+				Level:        models.LevelManager,
+				Description:  "Manages human resources department",
+				Requirements: "Bachelor degree, 5+ years experience in HR",
+				SalaryRange: models.SalaryRange{
+					Min:      10000000,
+					Max:      15000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "HR-02",
+				Name:         "HR Staff",
+				DepartmentID: hrDepartment.ID,
+				Level:        models.LevelStaff,
+				Description:  "Handles recruitment and employee administration",
+				Requirements: "Bachelor degree, 1+ years experience",
+				SalaryRange: models.SalaryRange{
+					Min:      5000000,
+					Max:      7000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			// IT Positions
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "IT-01",
+				Name:         "IT Manager",
+				DepartmentID: itDepartment.ID,
+				Level:        models.LevelManager,
+				Description:  "Manages IT infrastructure and team",
+				Requirements: "Bachelor degree in IT, 5+ years experience",
+				SalaryRange: models.SalaryRange{
+					Min:      12000000,
+					Max:      18000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "IT-02",
+				Name:         "Software Developer",
+				DepartmentID: itDepartment.ID,
+				Level:        models.LevelStaff,
+				Description:  "Develops and maintains software applications",
+				Requirements: "Bachelor degree in IT, 2+ years experience",
+				SalaryRange: models.SalaryRange{
+					Min:      7000000,
+					Max:      10000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "IT-03",
+				Name:         "System Administrator",
+				DepartmentID: itDepartment.ID,
+				Level:        models.LevelStaff,
+				Description:  "Maintains servers and network infrastructure",
+				Requirements: "Bachelor degree in IT, 1+ years experience",
+				SalaryRange: models.SalaryRange{
+					Min:      6000000,
+					Max:      9000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+			// Finance Positions
+			models.Position{
+				ID:           primitive.NewObjectID(),
+				Code:         "FIN-01",
+				Name:         "Accountant",
+				DepartmentID: finDepartment.ID,
+				Level:        models.LevelStaff,
+				Description:  "Handles accounting and financial reporting",
+				Requirements: "Bachelor degree in Accounting, 2+ years experience",
+				SalaryRange: models.SalaryRange{
+					Min:      6000000,
+					Max:      9000000,
+					Currency: "IDR",
+				},
+				IsActive:  true,
+				CreatedAt: time.Now(),
+				UpdatedAt: time.Now(),
+			},
+		}
 
-            for _, p := range posList {
-                positions = append(positions, models.Position{
-                    ID:           primitive.NewObjectID(),
-                    DepartmentID: deptID,
-                    Code:         p.Code,
-                    Name:         p.Name,
-                    Level:        p.Level,
-                    Grade:        p.Grade,
-                    Description:  "Position: " + p.Name,
-                    SalaryRange: models.SalaryRange{
-                        Min:      p.Min,
-                        Max:      p.Max,
-                        Currency: "IDR",
-                    },
-                    IsActive:  true,
-                    CreatedAt: time.Now(),
-                    UpdatedAt: time.Now(),
-                })
-            }
-        }
+		_, err = collection.InsertMany(ctx, positions)
+		if err != nil {
+			return fmt.Errorf("failed to insert positions: %w", err)
+		}
 
-        if len(positions) > 0 {
-            _, err = collection.InsertMany(ctx, positions)
-            return err
-        }
+		return nil
+	}
 
-        return nil
-    }
+	down := func(db *mongo.Database) error {
+		ctx := context.Background()
+		return db.Collection("positions").Drop(ctx)
+	}
 
-    down := func(db *mongo.Database) error {
-        ctx := context.Background()
-        return db.Collection("positions").Drop(ctx)
-    }
-
-    return version, name, description, up, down
+	return version, name, description, up, down
 }

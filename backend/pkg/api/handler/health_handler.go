@@ -2,23 +2,36 @@
 package handler
 
 import (
-    "net/http"
-    "time"
+	"net/http"
 
-    "github.com/gin-gonic/gin"
+	"github.com/andikatampubolon10/hris-backend/pkg/database"
+	"github.com/gin-gonic/gin"
 )
 
-type HealthHandler struct{}
+type HealthHandler struct {
+	mongodb *database.MongoDB
+}
 
-func NewHealthHandler() *HealthHandler {
-    return &HealthHandler{}
+func NewHealthHandler(mongodb *database.MongoDB) *HealthHandler {
+	return &HealthHandler{
+		mongodb: mongodb,
+	}
 }
 
 func (h *HealthHandler) HealthCheck(c *gin.Context) {
-    c.JSON(http.StatusOK, gin.H{
-        "status":    "ok",
-        "message":   "HRIS Backend is running",
-        "timestamp": time.Now().Format(time.RFC3339),
-        "version":   "1.0.0",
-    })
+	// Check MongoDB connection
+	if err := h.mongodb.Database.Client().Ping(c.Request.Context(), nil); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status":  "unhealthy",
+			"message": "Database connection failed",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "healthy",
+		"message": "Service is running",
+		"database": "connected",
+	})
 }

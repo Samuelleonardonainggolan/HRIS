@@ -2,138 +2,122 @@
 package models
 
 import (
-    "time"
-    "go.mongodb.org/mongo-driver/bson/primitive"
+	"time"
+
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // Role constants
 const (
-    RoleManagerHR    = "manager_hr"
-    RoleManagerDept  = "manager_departemen"
-    RoleAdminDept    = "admin_departemen"
-    RoleStaf         = "staf"
+	RoleManagerHR         = "manager_hr"
+	RoleManagerDepartemen = "manager_departemen"
+	RoleAdminDepartemen   = "admin_departemen"
+	RoleStaf              = "staf"
+	RoleAccountant        = "accountant"
 )
 
+// User represents main user authentication and profile table
 type User struct {
-    ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-    NIK          string             `json:"nik" bson:"nik"`                    // Nomor Induk Karyawan
-    Email        string             `json:"email" bson:"email" binding:"required,email"`
-    Password     string             `json:"-" bson:"password"`
-    FullName     string             `json:"full_name" bson:"full_name" binding:"required"`
-    Role         string             `json:"role" bson:"role"`                  // manager_hr, manager_departemen, admin_departemen, staf
-    Department   string             `json:"department" bson:"department"`      // IT, HR, Finance, Marketing, etc
-    Position     string             `json:"position" bson:"position"`          // Jabatan
-    Avatar       string             `json:"avatar,omitempty" bson:"avatar,omitempty"`
-    FaceEmbedding []float32         `json:"face_embedding,omitempty" bson:"face_embedding,omitempty"`
-    Phone        string             `json:"phone,omitempty" bson:"phone,omitempty"`
-    Address      string             `json:"address,omitempty" bson:"address,omitempty"`
-    JoinDate     time.Time          `json:"join_date" bson:"join_date"`
-    IsActive     bool               `json:"is_active" bson:"is_active"`
-    CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
-    UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
+	ID                primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	PayrollNumber     string             `json:"payroll_number" bson:"payroll_number"`
+	Email             string             `json:"email" bson:"email"`
+	Password          string             `json:"-" bson:"password"`
+	FullName          string             `json:"full_name" bson:"full_name"`
+	BirthDate         time.Time          `json:"birth_date" bson:"birth_date"`
+	Religion          string             `json:"religion" bson:"religion"`
+	LastEducation     string             `json:"last_education" bson:"last_education"`
+	YearEnrolled      string             `json:"year_enrolled" bson:"year_enrolled"`
+	EmploymentStatus  string             `json:"employment_status" bson:"employment_status"`
+	DepartmentID      primitive.ObjectID `json:"department_id" bson:"department_id"`
+	DepartmentName    string             `json:"department_name" bson:"department_name"`
+	PositionID        primitive.ObjectID `json:"position_id" bson:"position_id"`
+	PositionName      string             `json:"position_name" bson:"position_name"`
+	Phone             string             `json:"phone" bson:"phone"`
+	Address           string             `json:"address" bson:"address"`
+	Role              string             `json:"role" bson:"role"`
+	IsActive          bool               `json:"is_active" bson:"is_active"`
+	CreatedAt         time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
-// Request Models
-type LoginRequest struct {
-    Email    string `json:"email" binding:"required,email"`
-    Password string `json:"password" binding:"required,min=6"`
+// UserResponse represents user response without password
+type UserResponse struct {
+	ID               string    `json:"id"`
+	PayrollNumber    string    `json:"payroll_number"`
+	Email            string    `json:"email"`
+	FullName         string    `json:"full_name"`
+	BirthDate        time.Time `json:"birth_date"`
+	Religion         string    `json:"religion"`
+	LastEducation    string    `json:"last_education"`
+	YearEnrolled     string    `json:"year_enrolled"`
+	EmploymentStatus string    `json:"employment_status"`
+	DepartmentID     string    `json:"department_id"`
+	DepartmentName   string    `json:"department_name"`
+	PositionID       string    `json:"position_id"`
+	PositionName     string    `json:"position_name"`
+	Phone            string    `json:"phone"`
+	Address          string    `json:"address"`
+	Role             string    `json:"role"`
+	IsActive         bool      `json:"is_active"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
-type RegisterRequest struct {
-    NIK        string `json:"nik" binding:"required"`
-    Email      string `json:"email" binding:"required,email"`
-    Password   string `json:"password" binding:"required,min=6"`
-    FullName   string `json:"full_name" binding:"required"`
-    Role       string `json:"role" binding:"required,oneof=manager_hr manager_departemen admin_departemen staf"`
-    Department string `json:"department" binding:"required"`
-    Position   string `json:"position" binding:"required"`
-    Phone      string `json:"phone"`
-    Address    string `json:"address"`
+// CreateUserRequest represents request to create user/employee
+type CreateUserRequest struct {
+	PayrollNumber    string `json:"payroll_number" binding:"required"`
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=8"`
+	FullName         string `json:"full_name" binding:"required"`
+	BirthDate        string `json:"birth_date" binding:"required"`
+	Religion         string `json:"religion" binding:"required"`
+	LastEducation    string `json:"last_education" binding:"required"`
+	YearEnrolled     string `json:"year_enrolled" binding:"required"`
+	EmploymentStatus string `json:"employment_status" binding:"required"`
+	DepartmentID     string `json:"department_id" binding:"required"`
+	PositionID       string `json:"position_id" binding:"required"`
+	Phone            string `json:"phone" binding:"required"`
+	Address          string `json:"address" binding:"required"`
+	Role             string `json:"role" binding:"required"`
 }
 
-type UpdateProfileRequest struct {
-    FullName   string `json:"full_name"`
-    Phone      string `json:"phone"`
-    Address    string `json:"address"`
-    Avatar     string `json:"avatar"`
-    Department string `json:"department"`
-    Position   string `json:"position"`
-}
-
+// UpdateUserRequest represents request to update user
 type UpdateUserRequest struct {
-    FullName   string `json:"full_name"`
-    Role       string `json:"role" binding:"oneof=manager_hr manager_departemen admin_departemen staf"`
-    Department string `json:"department"`
-    Position   string `json:"position"`
-    Phone      string `json:"phone"`
-    Address    string `json:"address"`
-    IsActive   bool   `json:"is_active"`
+	PayrollNumber    string `json:"payroll_number,omitempty"`
+	FullName         string `json:"full_name,omitempty"`
+	BirthDate        string `json:"birth_date,omitempty"`
+	Religion         string `json:"religion,omitempty"`
+	LastEducation    string `json:"last_education,omitempty"`
+	YearEnrolled     string `json:"year_enrolled,omitempty"`
+	EmploymentStatus string `json:"employment_status,omitempty"`
+	DepartmentID     string `json:"department_id,omitempty"`
+	PositionID       string `json:"position_id,omitempty"`
+	Phone            string `json:"phone,omitempty"`
+	Address          string `json:"address,omitempty"`
+	IsActive         *bool  `json:"is_active,omitempty"`
 }
 
-type RefreshTokenRequest struct {
-    RefreshToken string `json:"refresh_token" binding:"required"`
-}
-
-// Response Models
-type LoginResponse struct {
-    User         *User  `json:"user"`
-    AccessToken  string `json:"access_token"`
-    RefreshToken string `json:"refresh_token"`
-    ExpiresIn    int64  `json:"expires_in"`
-}
-
-// Permission helper
-func (u *User) HasPermission(permission string) bool {
-    permissions := map[string][]string{
-        RoleManagerHR: {
-            "user:create", "user:read", "user:update", "user:delete",
-            "attendance:approve", "attendance:view_all",
-            "department:manage", "report:view_all",
-        },
-        RoleManagerDept: {
-            "user:read", "user:update_dept",
-            "attendance:approve_dept", "attendance:view_dept",
-            "report:view_dept",
-        },
-        RoleAdminDept: {
-            "user:read", "user:create_staf", "user:update_staf",
-            "attendance:view_dept", "attendance:input",
-        },
-        RoleStaf: {
-            "attendance:submit", "profile:view", "profile:update",
-        },
-    }
-
-    rolePermissions, exists := permissions[u.Role]
-    if !exists {
-        return false
-    }
-
-    for _, p := range rolePermissions {
-        if p == permission {
-            return true
-        }
-    }
-    return false
-}
-
-// Check if user can access department data
-func (u *User) CanAccessDepartment(department string) bool {
-    if u.Role == RoleManagerHR {
-        return true // Manager HR can access all departments
-    }
-    return u.Department == department
-}
-
+// ToResponse converts User to UserResponse
 func (u *User) ToResponse() UserResponse {
-    return UserResponse{
-        ID:         u.ID.Hex(),
-        NIK:        u.NIK,
-        Email:      u.Email,
-        FullName:   u.FullName,
-        Role:       u.Role,
-        Department: u.Department,
-        Position:   u.Position,
-        Avatar:     u.Avatar,
-    }
+	return UserResponse{
+		ID:               u.ID.Hex(),
+		PayrollNumber:    u.PayrollNumber,
+		Email:            u.Email,
+		FullName:         u.FullName,
+		BirthDate:        u.BirthDate,
+		Religion:         u.Religion,
+		LastEducation:    u.LastEducation,
+		YearEnrolled:     u.YearEnrolled,
+		EmploymentStatus: u.EmploymentStatus,
+		DepartmentID:     u.DepartmentID.Hex(),
+		DepartmentName:   u.DepartmentName,
+		PositionID:       u.PositionID.Hex(),
+		PositionName:     u.PositionName,
+		Phone:            u.Phone,
+		Address:          u.Address,
+		Role:             u.Role,
+		IsActive:         u.IsActive,
+		CreatedAt:        u.CreatedAt,
+		UpdatedAt:        u.UpdatedAt,
+	}
 }

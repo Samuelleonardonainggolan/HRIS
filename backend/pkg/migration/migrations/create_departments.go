@@ -52,6 +52,17 @@ func CreateDepartments() (int, string, string, func(*mongo.Database) error, func
                 UpdatedAt:   time.Now(),
             },
             models.Department{
+				ID:          primitive.NewObjectID(),
+				Code:        "IT",
+				Name:        "Information Technology",
+				Description: "Sistem informasi, jaringan, dan support IT",
+				Icon:        "💻",
+				TotalStaff:  0,
+				IsActive:    true,
+				CreatedAt:   time.Now(),
+				UpdatedAt:   time.Now(),
+			},
+            models.Department{
                 ID:          primitive.NewObjectID(),
                 Code:        "FB",
                 Name:        "Food & Beverage",

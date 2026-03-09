@@ -2,94 +2,127 @@
 package database
 
 import (
-    "context"
-    "fmt"
-    "log"
-    "time"
+	"context"
+	"log"
+	"time"
 
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type MongoDB struct {
-    Client   *mongo.Client
-    Database *mongo.Database
+	Client   *mongo.Client
+	Database *mongo.Database
 }
 
 func NewMongoDB(uri, dbName string) (*MongoDB, error) {
-    // Buat context dengan timeout lebih lama
-    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-    defer cancel()
+	log.Println("⏳ Connecting to MongoDB Atlas (this may take up to 60 seconds)...")
 
-    // Set client options dengan timeout lebih besar
-    clientOptions := options.Client().
-        ApplyURI(uri).
-        SetServerSelectionTimeout(60 * time.Second).
-        SetConnectTimeout(60 * time.Second).
-        SetSocketTimeout(60 * time.Second).
-        SetMaxConnIdleTime(60 * time.Second).
-        SetMaxPoolSize(50).
-        SetMinPoolSize(10)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
 
-    log.Println("⏳ Connecting to MongoDB Atlas (this may take up to 60 seconds)...")
+	clientOptions := options.Client().ApplyURI(uri).
+		SetServerSelectionTimeout(30 * time.Second).
+		SetConnectTimeout(30 * time.Second)
 
-    // Connect to MongoDB
-    client, err := mongo.Connect(ctx, clientOptions)
-    if err != nil {
-        return nil, fmt.Errorf("failed to connect to MongoDB: %v", err)
-    }
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return nil, err
+	}
 
-    // Ping the database dengan context yang lebih lama
-    pingCtx, pingCancel := context.WithTimeout(context.Background(), 60*time.Second)
-    defer pingCancel()
+	log.Println("🏓 Pinging MongoDB...")
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, err
+	}
 
-    log.Println("🏓 Pinging MongoDB...")
-    if err := client.Ping(pingCtx, nil); err != nil {
-        return nil, fmt.Errorf("failed to ping MongoDB: %v", err)
-    }
+	log.Println("✅ Connected to MongoDB successfully")
 
-    log.Println("✅ Connected to MongoDB successfully")
+	database := client.Database(dbName)
 
-    db := client.Database(dbName)
+	// Clean up old indexes
+	if err := cleanupOldIndexes(database); err != nil {
+		log.Printf("⚠️  Warning: Could not clean up old indexes: %v", err)
+	}
 
-    // Create indexes
-    if err := createIndexes(ctx, db); err != nil {
-        return nil, fmt.Errorf("failed to create indexes: %v", err)
-    }
+	// Create required indexes
+	if err := createIndexes(database); err != nil {
+		return nil, err
+	}
 
-    return &MongoDB{
-        Client:   client,
-        Database: db,
-    }, nil
+	log.Println("✅ Indexes created successfully")
+
+	return &MongoDB{
+		Client:   client,
+		Database: database,
+	}, nil
 }
 
-func createIndexes(ctx context.Context, db *mongo.Database) error {
-    userCollection := db.Collection("users")
+// cleanupOldIndexes removes deprecated indexes
+func cleanupOldIndexes(db *mongo.Database) error {
+	ctx := context.Background()
 
-    // Unique index on email
-    emailIndexModel := mongo.IndexModel{
-        Keys:    bson.D{{Key: "email", Value: 1}},
-        Options: options.Index().SetUnique(true),
-    }
+	// List of old indexes to drop
+	oldIndexes := map[string][]string{
+		"users": {"nik_1"}, // Old NIK index
+	}
 
-    // Unique index on nik
-    nikIndexModel := mongo.IndexModel{
-        Keys:    bson.D{{Key: "nik", Value: 1}},
-        Options: options.Index().SetUnique(true),
-    }
+	for collectionName, indexes := range oldIndexes {
+		collection := db.Collection(collectionName)
 
-    _, err := userCollection.Indexes().CreateMany(ctx, []mongo.IndexModel{emailIndexModel, nikIndexModel})
-    if err != nil {
-        return err
-    }
+		for _, indexName := range indexes {
+			// ✅ Fix: Handle both return values
+			_, err := collection.Indexes().DropOne(ctx, indexName)
+			if err != nil {
+				// Ignore "index not found" errors
+				if mongo.IsNetworkError(err) || mongo.IsTimeout(err) {
+					return err
+				}
+				log.Printf("Note: Could not drop index %s from %s (might not exist): %v", indexName, collectionName, err)
+			} else {
+				log.Printf("✅ Dropped old index: %s from %s", indexName, collectionName)
+			}
+		}
+	}
 
-    log.Println("✅ Indexes created successfully")
-    return nil
+	return nil
+}
+
+func createIndexes(db *mongo.Database) error {
+	ctx := context.Background()
+
+	// Users collection indexes
+	userCollection := db.Collection("users")
+	userIndexes := []mongo.IndexModel{
+		{
+			Keys:    bson.D{{Key: "email", Value: 1}},
+			Options: options.Index().SetUnique(true),
+		},
+		{
+			Keys:    bson.D{{Key: "payroll_number", Value: 1}},
+			Options: options.Index().SetUnique(true).SetSparse(true),
+		},
+		{
+			Keys: bson.D{{Key: "role", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "department_id", Value: 1}},
+		},
+		{
+			Keys: bson.D{{Key: "is_active", Value: 1}},
+		},
+	}
+
+	_, err := userCollection.Indexes().CreateMany(ctx, userIndexes)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (m *MongoDB) Disconnect() error {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    return m.Client.Disconnect(ctx)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return m.Client.Disconnect(ctx)
 }

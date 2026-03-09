@@ -2,109 +2,123 @@
 package middleware
 
 import (
-    "net/http"
-    "strings"
+	"net/http"
+	"strings"
 
-    "github.com/andikatampubolon10/hris-backend/pkg/auth"
-    "github.com/andikatampubolon10/hris-backend/pkg/models"
-    "github.com/gin-gonic/gin"
+	"github.com/andikatampubolon10/hris-backend/pkg/auth"
+	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"github.com/gin-gonic/gin"
 )
 
-// AuthMiddleware - JWT validation
+// AuthMiddleware validates JWT token
 func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        authHeader := c.GetHeader("Authorization")
-        if authHeader == "" {
-            c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "No token provided"))
-            c.Abort()
-            return
-        }
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Missing authorization header"))
+			c.Abort()
+			return
+		}
 
-        tokenString := strings.Replace(authHeader, "Bearer ", "", 1)
+		// Extract token from "Bearer <token>"
+		tokenParts := strings.Split(authHeader, " ")
+		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Invalid authorization format"))
+			c.Abort()
+			return
+		}
 
-        claims, err := auth.ValidateToken(tokenString, jwtSecret)
-        if err != nil {
-            c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Invalid token"))
-            c.Abort()
-            return
-        }
+		token := tokenParts[1]
 
-        c.Set("user_id", claims.UserID)
-        c.Set("role", claims.Role)
-        c.Set("department", claims.Department)
-        c.Next()
-    }
+		// Validate token
+		claims, err := auth.ValidateToken(token, jwtSecret)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Invalid or expired token"))
+			c.Abort()
+			return
+		}
+
+		// Set user info in context
+		c.Set("userID", claims.UserID)
+		c.Set("userRole", claims.Role)
+		c.Set("userDepartment", claims.Department)
+
+		c.Next()
+	}
 }
 
-// RoleMiddleware - Check if user has required role
-func RoleMiddleware(allowedRoles ...string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        userRole, exists := c.Get("role")
-        if !exists {
-            c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Role not found"))
-            c.Abort()
-            return
-        }
-
-        role := userRole.(string)
-        for _, allowedRole := range allowedRoles {
-            if role == allowedRole {
-                c.Next()
-                return
-            }
-        }
-
-        c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Insufficient permissions"))
-        c.Abort()
-    }
-}
-
-// ManagerHROnly - Only Manager HR can access
+// ManagerHROnly restricts access to Manager HR only
 func ManagerHROnly() gin.HandlerFunc {
-    return RoleMiddleware(models.RoleManagerHR)
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
+
+		if role != models.RoleManagerHR {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Manager HR only"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }
 
-// ManagerOnly - Manager HR or Manager Departemen
+// ManagerOnly restricts access to Manager HR and Manager Departemen
 func ManagerOnly() gin.HandlerFunc {
-    return RoleMiddleware(models.RoleManagerHR, models.RoleManagerDept)
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
+
+		// ✅ Fixed: Use correct role constants
+		if role != models.RoleManagerHR && role != models.RoleManagerDepartemen {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Manager only"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }
 
-// AdminAndManagerOnly - Admin Departemen, Manager Departemen, or Manager HR
-func AdminAndManagerOnly() gin.HandlerFunc {
-    return RoleMiddleware(models.RoleManagerHR, models.RoleManagerDept, models.RoleAdminDept)
-}
+// AdminOnly restricts access to Admins (Manager + Admin Departemen)
+func AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
 
-// DepartmentAccessMiddleware - Check if user can access department data
-func DepartmentAccessMiddleware() gin.HandlerFunc {
-    return func(c *gin.Context) {
-        userRole, _ := c.Get("role")
-        userDept, _ := c.Get("department")
+		// ✅ Fixed: Use correct role constants
+		allowedRoles := []string{
+			models.RoleManagerHR,
+			models.RoleManagerDepartemen,
+			models.RoleAdminDepartemen,
+		}
 
-        // Manager HR can access all departments
-        if userRole == models.RoleManagerHR {
-            c.Next()
-            return
-        }
+		isAllowed := false
+		for _, allowedRole := range allowedRoles {
+			if role == allowedRole {
+				isAllowed = true
+				break
+			}
+		}
 
-        // Get requested department from params or query
-        requestedDept := c.Param("department")
-        if requestedDept == "" {
-            requestedDept = c.Query("department")
-        }
+		if !isAllowed {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Admin only"))
+			c.Abort()
+			return
+		}
 
-        // If no department specified, allow (will be filtered in handler)
-        if requestedDept == "" {
-            c.Next()
-            return
-        }
-
-        // Check if user's department matches requested department
-        if userDept != requestedDept {
-            c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Cannot access other department data"))
-            c.Abort()
-            return
-        }
-
-        c.Next()
-    }
+		c.Next()
+	}
 }
