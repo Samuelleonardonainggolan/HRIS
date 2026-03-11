@@ -3,9 +3,7 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
-	"math/big"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -152,12 +150,9 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 	rawPassword := strings.TrimSpace(req.Password)
 	var tempPassword *string
 	if rawPassword == "" {
-		generated, genErr := generatePassword(12)
-		if genErr != nil {
-			return nil, nil, errors.New("failed to generate password")
-		}
-		rawPassword = generated
-		tempPassword = &generated
+		defaultPassword := "Password123"
+		rawPassword = defaultPassword
+		tempPassword = &defaultPassword
 	} else if len(rawPassword) < 8 {
 		return nil, nil, errors.New("password must be at least 8 characters")
 	}
@@ -291,17 +286,4 @@ func (s *userService) ImportEmployees(ctx context.Context, employees []models.Cr
 	}
 
 	return created, failures, nil
-}
-
-func generatePassword(length int) (string, error) {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	result := make([]byte, length)
-	for i := 0; i < length; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-		if err != nil {
-			return "", err
-		}
-		result[i] = charset[n.Int64()]
-	}
-	return string(result), nil
 }
