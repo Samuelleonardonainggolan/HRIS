@@ -1,403 +1,3 @@
-// "use client";
-
-// import { useState } from "react";
-// import { useRouter } from "next/navigation";
-// import { ArrowLeft, Download, Upload } from "lucide-react";
-// import { Card, CardContent } from "@/components/ui/card";
-// import { Button } from "@/components/ui/button";
-// import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
-// import {
-//   Select,
-//   SelectContent,
-//   SelectItem,
-//   SelectTrigger,
-//   SelectValue,
-// } from "@/components/ui/select";
-// import { ImportExcelModal } from "@/components/import-excel-modal";
-
-// export default function AddEmployeePage() {
-//   const router = useRouter();
-//   const [formData, setFormData] = useState({
-//     nik: "",
-//     fullName: "",
-//     birthDate: "",
-//     religion: "",
-//     lastEducation: "",
-//     yearEnrolled: "",
-//     employmentStatus: "",
-//     department: "",
-//     position: "",
-//     officeEmail: "",
-//     phoneNumber: "",
-//     address: "",
-//   });
-
-//   const handleBack = () => {
-//     router.back();
-//   };
-
-//   const handleCancel = () => {
-//     router.back();
-//   };
-
-//   const handleSubmit = (e: React.FormEvent) => {
-//     e.preventDefault();
-//     // TODO: Implement save employee logic
-//     console.log("Form data:", formData);
-//   };
-
-//   const handleDownloadTemplate = () => {
-//     // TODO: Implement download template
-//     console.log("Download template");
-//   };
-
-//   const handleImportExcel = () => {
-//     setIsImportModalOpen(true);
-//   };
-
-//   return (
-//     <>
-//     <div className="min-h-screen bg-gray-50 p-6">
-//       <div className="max-w-5xl mx-auto">
-//         {/* Breadcrumb - Outside Card */}
-//         <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
-//           <button
-//             onClick={() => router.push("/dashboard/manager-hr")}
-//             className="hover:text-blue-600 transition-colors"
-//           >
-//             Dashboard
-//           </button>
-//           <span>/</span>
-//           <button
-//             onClick={() => router.push("/dashboard/manager-hr/employees")}
-//             className="hover:text-blue-600 transition-colors"
-//           >
-//             Manajemen Pegawai
-//           </button>
-//           <span>/</span>
-//           <span className="text-gray-900 font-medium">Tambah Pegawai Baru</span>
-//         </div>
-
-//         {/* Main Card */}
-//         <Card>
-//           <CardContent className="p-0">
-//             {/* Header Inside Card */}
-//             <div className="px-6 py-4 border-b border-gray-200">
-//               <div className="flex items-center justify-between">
-//                 {/* Title with Back Button */}
-//                 <div className="flex items-center gap-3">
-//                   <button
-//                     onClick={handleBack}
-//                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-//                   >
-//                     <ArrowLeft className="h-5 w-5 text-gray-600" />
-//                   </button>
-//                   <h1 className="text-xl font-semibold text-gray-900">
-//                     Tambah Pegawai Baru
-//                   </h1>
-//                 </div>
-
-//                 {/* Action Buttons */}
-//                 <div className="flex items-center gap-3">
-//                   <Button
-//                     variant="outline"
-//                     onClick={handleDownloadTemplate}
-//                     className="flex items-center gap-2"
-//                   >
-//                     <Download className="h-4 w-4" />
-//                     Unduh Template
-//                   </Button>
-//                   <Button
-//                     onClick={handleImportExcel}
-//                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-//                   >
-//                     <Upload className="h-4 w-4" />
-//                     Import Excel
-//                   </Button>
-//                 </div>
-//               </div>
-//             </div>
-
-//             {/* Form Content */}
-//             <div className="p-6">
-//               <form onSubmit={handleSubmit} className="space-y-6">
-//                 {/* Row 1: NIK & Nama Lengkap */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="nik" className="text-sm font-medium text-gray-700">
-//                       NIK (NOMOR INDUK KARYAWAN)
-//                     </Label>
-//                     <Input
-//                       id="nik"
-//                       placeholder="Contoh: 3210001234"
-//                       value={formData.nik}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, nik: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-
-//                   <div className="space-y-2">
-//                     <Label htmlFor="fullName" className="text-sm font-medium text-gray-700">
-//                       NAMA LENGKAP
-//                     </Label>
-//                     <Input
-//                       id="fullName"
-//                       placeholder="Masukkan nama sesuai KTP"
-//                       value={formData.fullName}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, fullName: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-//                 </div>
-
-//                 {/* Row 2: Tanggal Lahir & Agama */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="birthDate" className="text-sm font-medium text-gray-700">
-//                       TANGGAL LAHIR
-//                     </Label>
-//                     <Input
-//                       id="birthDate"
-//                       type="date"
-//                       placeholder="mm/dd/yyyy"
-//                       value={formData.birthDate}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, birthDate: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-
-//                   <div className="space-y-2">
-//                     <Label htmlFor="religion" className="text-sm font-medium text-gray-700">
-//                       AGAMA
-//                     </Label>
-//                     <Select
-//                       value={formData.religion}
-//                       onValueChange={(value) =>
-//                         setFormData({ ...formData, religion: value })
-//                       }
-//                     >
-//                       <SelectTrigger>
-//                         <SelectValue placeholder="Pilih Agama" />
-//                       </SelectTrigger>
-//                       <SelectContent>
-//                         <SelectItem value="islam">Islam</SelectItem>
-//                         <SelectItem value="kristen">Kristen</SelectItem>
-//                         <SelectItem value="katolik">Katolik</SelectItem>
-//                         <SelectItem value="hindu">Hindu</SelectItem>
-//                         <SelectItem value="buddha">Buddha</SelectItem>
-//                         <SelectItem value="konghucu">Konghucu</SelectItem>
-//                       </SelectContent>
-//                     </Select>
-//                   </div>
-//                 </div>
-
-//                 {/* Row 3: Pendidikan & Tahun Masuk */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="lastEducation" className="text-sm font-medium text-gray-700">
-//                       PENDIDIKAN TERAKHIR
-//                     </Label>
-//                     <Select
-//                       value={formData.lastEducation}
-//                       onValueChange={(value) =>
-//                         setFormData({ ...formData, lastEducation: value })
-//                       }
-//                     >
-//                       <SelectTrigger>
-//                         <SelectValue placeholder="Pilih Pendidikan" />
-//                       </SelectTrigger>
-//                       <SelectContent>
-//                         <SelectItem value="sd">SD</SelectItem>
-//                         <SelectItem value="smp">SMP</SelectItem>
-//                         <SelectItem value="sma">SMA/SMK</SelectItem>
-//                         <SelectItem value="d3">D3</SelectItem>
-//                         <SelectItem value="s1">S1</SelectItem>
-//                         <SelectItem value="s2">S2</SelectItem>
-//                         <SelectItem value="s3">S3</SelectItem>
-//                       </SelectContent>
-//                     </Select>
-//                   </div>
-
-//                   <div className="space-y-2">
-//                     <Label htmlFor="yearEnrolled" className="text-sm font-medium text-gray-700">
-//                       TAHUN MASUK
-//                     </Label>
-//                     <Input
-//                       id="yearEnrolled"
-//                       placeholder="Contoh: 2023"
-//                       value={formData.yearEnrolled}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, yearEnrolled: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-//                 </div>
-
-//                 {/* Row 4: Status Kepegawaian & Departemen */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="employmentStatus" className="text-sm font-medium text-gray-700">
-//                       STATUS KEPEGAWAIAN
-//                     </Label>
-//                     <Select
-//                       value={formData.employmentStatus}
-//                       onValueChange={(value) =>
-//                         setFormData({ ...formData, employmentStatus: value })
-//                       }
-//                     >
-//                       <SelectTrigger>
-//                         <SelectValue placeholder="Pilih Status" />
-//                       </SelectTrigger>
-//                       <SelectContent>
-//                         <SelectItem value="tetap">Tetap</SelectItem>
-//                         <SelectItem value="kontrak">Kontrak</SelectItem>
-//                         <SelectItem value="magang">Magang</SelectItem>
-//                         <SelectItem value="outsourcing">Outsourcing</SelectItem>
-//                       </SelectContent>
-//                     </Select>
-//                   </div>
-
-//                   <div className="space-y-2">
-//                     <Label htmlFor="department" className="text-sm font-medium text-gray-700">
-//                       DEPARTEMEN
-//                     </Label>
-//                     <Select
-//                       value={formData.department}
-//                       onValueChange={(value) =>
-//                         setFormData({ ...formData, department: value })
-//                       }
-//                     >
-//                       <SelectTrigger>
-//                         <SelectValue placeholder="Pilih Departemen" />
-//                       </SelectTrigger>
-//                       <SelectContent>
-//                         <SelectItem value="hr">Human Resources</SelectItem>
-//                         <SelectItem value="it">Information Technology</SelectItem>
-//                         <SelectItem value="finance">Finance & Accounting</SelectItem>
-//                         <SelectItem value="marketing">Sales & Marketing</SelectItem>
-//                         <SelectItem value="operations">Operations</SelectItem>
-//                       </SelectContent>
-//                     </Select>
-//                   </div>
-//                 </div>
-
-//                 {/* Row 5: Jabatan & Email Kantor */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="position" className="text-sm font-medium text-gray-700">
-//                       JABATAN
-//                     </Label>
-//                     <Select
-//                       value={formData.position}
-//                       onValueChange={(value) =>
-//                         setFormData({ ...formData, position: value })
-//                       }
-//                     >
-//                       <SelectTrigger>
-//                         <SelectValue placeholder="Pilih Jabatan" />
-//                       </SelectTrigger>
-//                       <SelectContent>
-//                         <SelectItem value="staff">Staff</SelectItem>
-//                         <SelectItem value="supervisor">Supervisor</SelectItem>
-//                         <SelectItem value="manager">Manager</SelectItem>
-//                         <SelectItem value="director">Director</SelectItem>
-//                       </SelectContent>
-//                     </Select>
-//                   </div>
-
-//                   <div className="space-y-2">
-//                     <Label htmlFor="officeEmail" className="text-sm font-medium text-gray-700">
-//                       EMAIL KANTOR
-//                     </Label>
-//                     <Input
-//                       id="officeEmail"
-//                       type="email"
-//                       placeholder="nama@perusahaan.com"
-//                       value={formData.officeEmail}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, officeEmail: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-//                 </div>
-
-//                 {/* Row 6: Nomor Telepon */}
-//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//                   <div className="space-y-2">
-//                     <Label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">
-//                       NOMOR TELEPON
-//                     </Label>
-//                     <Input
-//                       id="phoneNumber"
-//                       placeholder="+62 812 3456 7890"
-//                       value={formData.phoneNumber}
-//                       onChange={(e) =>
-//                         setFormData({ ...formData, phoneNumber: e.target.value })
-//                       }
-//                       className="w-full"
-//                     />
-//                   </div>
-//                 </div>
-
-//                 {/* Row 7: Alamat Lengkap */}
-//                 <div className="space-y-2">
-//                   <Label htmlFor="address" className="text-sm font-medium text-gray-700">
-//                     ALAMAT LENGKAP
-//                   </Label>
-//                   <textarea
-//                     id="address"
-//                     rows={3}
-//                     placeholder="Masukkan alamat lengkap sesuai KTP"
-//                     value={formData.address}
-//                     onChange={(e) =>
-//                       setFormData({ ...formData, address: e.target.value })
-//                     }
-//                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900 placeholder:text-gray-400"
-//                   />
-//                 </div>
-
-//                 {/* Action Buttons */}
-//                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-//                   <Button
-//                     type="button"
-//                     variant="outline"
-//                     onClick={handleCancel}
-//                     className="px-6"
-//                   >
-//                     Batal
-//                   </Button>
-//                   <Button
-//                     type="submit"
-//                     className="px-6 bg-blue-600 hover:bg-blue-700 text-white"
-//                   >
-//                     Simpan Pegawai
-//                   </Button>
-//                 </div>
-//               </form>
-//             </div>
-//           </CardContent>
-//         </Card>
-//       </div>
-//     </div>
-//           {/* Import Excel Modal */}
-//       <ImportExcelModal
-//         open={isImportModalOpen}
-//         onOpenChange={setIsImportModalOpen}
-//       />
-//     </>
-//   );
-// }
-
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -427,19 +27,19 @@ export default function AddEmployeePage() {
   const [error, setError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<CreateEmployeeRequest>({
-    nik: "",
-    fullName: "",
-    birthDate: "",
+    payroll_number: "",
+    full_name: "",
+    birth_date: "",
     religion: "",
-    lastEducation: "",
-    yearEnrolled: "",
-    employmentStatus: "",
-    department: "",
-    position: "",
-    officeEmail: "",
-    phoneNumber: "",
+    education: "",
+    join_date: "",
+    employment_status: "",
+    department_id: "",
+    position_id: "",
+    email: "",
+    phone: "",
     address: "",
-    role: "staf",
+    role: "employee",
   });
 
   useEffect(() => {
@@ -447,12 +47,12 @@ export default function AddEmployeePage() {
   }, []);
 
   useEffect(() => {
-    if (formData.department) {
-      fetchPositions(formData.department);
+    if (formData.department_id) {
+      fetchPositions(formData.department_id);
     } else {
       setPositions([]);
     }
-  }, [formData.department]);
+  }, [formData.department_id]);
 
   const fetchDepartments = async () => {
     try {
@@ -486,19 +86,21 @@ export default function AddEmployeePage() {
     setError(null);
 
     try {
+      // Validate required fields
       const missing: string[] = [];
-      if (!formData.nik) missing.push("NIK");
-      if (!formData.fullName) missing.push("Nama Lengkap");
-      if (!formData.birthDate) missing.push("Tanggal Lahir");
+      if (!formData.payroll_number) missing.push("Nomor Payroll");
+      if (!formData.full_name) missing.push("Nama Lengkap");
+      if (!formData.birth_date) missing.push("Tanggal Lahir");
       if (!formData.religion) missing.push("Agama");
-      if (!formData.lastEducation) missing.push("Pendidikan Terakhir");
-      if (!formData.yearEnrolled) missing.push("Tahun Masuk");
-      if (!formData.employmentStatus) missing.push("Status Kepegawaian");
-      if (!formData.department) missing.push("Departemen");
-      if (!formData.position) missing.push("Jabatan");
-      if (!formData.officeEmail) missing.push("Email Kantor");
-      if (!formData.phoneNumber) missing.push("Nomor Telepon");
+      if (!formData.education) missing.push("Pendidikan Terakhir");
+      if (!formData.join_date) missing.push("Tahun Masuk");
+      if (!formData.employment_status) missing.push("Status Kepegawaian");
+      if (!formData.department_id) missing.push("Departemen");
+      if (!formData.position_id) missing.push("Jabatan");
+      if (!formData.email) missing.push("Email Kantor");
+      if (!formData.phone) missing.push("Nomor Telepon");
       if (!formData.address) missing.push("Alamat");
+      
       if (missing.length > 0) {
         setError(`Field wajib belum diisi: ${missing.join(", ")}`);
         return;
@@ -507,15 +109,19 @@ export default function AddEmployeePage() {
       const response = await employeeService.createEmployee(formData);
       
       if (response.temporary_password) {
-        alert(`Pegawai berhasil dibuat!\nPassword Sementara: ${response.temporary_password}`);
+        alert(
+          `Pegawai berhasil dibuat!\n\n` +
+          `Email: ${formData.email}\n` +
+          `Password Sementara: ${response.temporary_password}\n\n` +
+          `Mohon catat password ini dan berikan kepada karyawan.`
+        );
       } else {
         alert("Pegawai berhasil dibuat!");
       }
       
       router.push("/dashboard/manager-hr/karyawan");
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Gagal membuat pegawai. Silakan coba lagi.";
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.message || "Gagal membuat pegawai. Silakan coba lagi.";
       console.error("Failed to create employee:", err);
       setError(message);
     } finally {
@@ -614,35 +220,35 @@ export default function AddEmployeePage() {
                 )}
                 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Row 1: NIK & Nama Lengkap */}
+                  {/* Row 1: Payroll Number & Nama Lengkap */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="nik" className="text-sm font-medium text-gray-700">
-                        NIK (NOMOR INDUK KARYAWAN) <span className="text-red-500">*</span>
+                      <Label htmlFor="payroll_number" className="text-sm font-medium text-gray-700">
+                        NOMOR PAYROLL <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="nik"
+                        id="payroll_number"
                         required
-                        placeholder="Contoh: 3210001234"
-                        value={formData.nik}
+                        placeholder="Contoh: PAY001"
+                        value={formData.payroll_number}
                         onChange={(e) =>
-                          setFormData({ ...formData, nik: e.target.value })
+                          setFormData({ ...formData, payroll_number: e.target.value })
                         }
                         className="w-full"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="fullName" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="full_name" className="text-sm font-medium text-gray-700">
                         NAMA LENGKAP <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="fullName"
+                        id="full_name"
                         required
                         placeholder="Masukkan nama sesuai KTP"
-                        value={formData.fullName}
+                        value={formData.full_name}
                         onChange={(e) =>
-                          setFormData({ ...formData, fullName: e.target.value })
+                          setFormData({ ...formData, full_name: e.target.value })
                         }
                         className="w-full"
                       />
@@ -652,17 +258,16 @@ export default function AddEmployeePage() {
                   {/* Row 2: Tanggal Lahir & Agama */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="birthDate" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="birth_date" className="text-sm font-medium text-gray-700">
                         TANGGAL LAHIR <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="birthDate"
+                        id="birth_date"
                         type="date"
                         required
-                        placeholder="mm/dd/yyyy"
-                        value={formData.birthDate}
+                        value={formData.birth_date}
                         onChange={(e) =>
-                          setFormData({ ...formData, birthDate: e.target.value })
+                          setFormData({ ...formData, birth_date: e.target.value })
                         }
                         className="w-full"
                       />
@@ -696,13 +301,13 @@ export default function AddEmployeePage() {
                   {/* Row 3: Pendidikan & Tahun Masuk */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="lastEducation" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="education" className="text-sm font-medium text-gray-700">
                         PENDIDIKAN TERAKHIR <span className="text-red-500">*</span>
                       </Label>
                       <Select
-                        value={formData.lastEducation}
+                        value={formData.education}
                         onValueChange={(value) =>
-                          setFormData({ ...formData, lastEducation: value })
+                          setFormData({ ...formData, education: value })
                         }
                       >
                         <SelectTrigger>
@@ -721,16 +326,16 @@ export default function AddEmployeePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="yearEnrolled" className="text-sm font-medium text-gray-700">
-                        TAHUN MASUK <span className="text-red-500">*</span>
+                      <Label htmlFor="join_date" className="text-sm font-medium text-gray-700">
+                        TANGGAL MASUK <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="yearEnrolled"
+                        id="join_date"
+                        type="date"
                         required
-                        placeholder="Contoh: 2023"
-                        value={formData.yearEnrolled}
+                        value={formData.join_date}
                         onChange={(e) =>
-                          setFormData({ ...formData, yearEnrolled: e.target.value })
+                          setFormData({ ...formData, join_date: e.target.value })
                         }
                         className="w-full"
                       />
@@ -740,35 +345,35 @@ export default function AddEmployeePage() {
                   {/* Row 4: Status Kepegawaian & Departemen */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="employmentStatus" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="employment_status" className="text-sm font-medium text-gray-700">
                         STATUS KEPEGAWAIAN <span className="text-red-500">*</span>
                       </Label>
                       <Select
-                        value={formData.employmentStatus}
+                        value={formData.employment_status}
                         onValueChange={(value) =>
-                          setFormData({ ...formData, employmentStatus: value })
+                          setFormData({ ...formData, employment_status: value })
                         }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Pilih Status" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Tetap">Tetap</SelectItem>
-                          <SelectItem value="Kontrak">Kontrak</SelectItem>
-                          <SelectItem value="Magang">Magang</SelectItem>
+                          <SelectItem value="Permanent">Tetap</SelectItem>
+                          <SelectItem value="Contract">Kontrak</SelectItem>
+                          <SelectItem value="Internship">Magang</SelectItem>
                           <SelectItem value="Outsourcing">Outsourcing</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="department" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="department_id" className="text-sm font-medium text-gray-700">
                         DEPARTEMEN <span className="text-red-500">*</span>
                       </Label>
                       <Select
-                        value={formData.department}
+                        value={formData.department_id}
                         onValueChange={(value) =>
-                          setFormData({ ...formData, department: value, position: "" })
+                          setFormData({ ...formData, department_id: value, position_id: "" })
                         }
                       >
                         <SelectTrigger>
@@ -788,18 +393,18 @@ export default function AddEmployeePage() {
                   {/* Row 5: Jabatan & Email Kantor */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="position" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="position_id" className="text-sm font-medium text-gray-700">
                         JABATAN <span className="text-red-500">*</span>
                       </Label>
                       <Select
-                        value={formData.position}
+                        value={formData.position_id}
                         onValueChange={(value) =>
-                          setFormData({ ...formData, position: value })
+                          setFormData({ ...formData, position_id: value })
                         }
-                        disabled={!formData.department}
+                        disabled={!formData.department_id}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder={formData.department ? "Pilih Jabatan" : "Pilih Departemen Terlebih Dahulu"} />
+                          <SelectValue placeholder={formData.department_id ? "Pilih Jabatan" : "Pilih Departemen Terlebih Dahulu"} />
                         </SelectTrigger>
                         <SelectContent>
                           {positions.map((pos) => (
@@ -812,17 +417,17 @@ export default function AddEmployeePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="officeEmail" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="email" className="text-sm font-medium text-gray-700">
                         EMAIL KANTOR <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="officeEmail"
+                        id="email"
                         type="email"
                         required
                         placeholder="nama@perusahaan.com"
-                        value={formData.officeEmail}
+                        value={formData.email}
                         onChange={(e) =>
-                          setFormData({ ...formData, officeEmail: e.target.value })
+                          setFormData({ ...formData, email: e.target.value })
                         }
                         className="w-full"
                       />
@@ -832,16 +437,16 @@ export default function AddEmployeePage() {
                   {/* Row 6: Nomor Telepon & Role */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="phoneNumber" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
                         NOMOR TELEPON <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="phoneNumber"
+                        id="phone"
                         required
                         placeholder="+62 812 3456 7890"
-                        value={formData.phoneNumber}
+                        value={formData.phone}
                         onChange={(e) =>
-                          setFormData({ ...formData, phoneNumber: e.target.value })
+                          setFormData({ ...formData, phone: e.target.value })
                         }
                         className="w-full"
                       />
@@ -861,9 +466,9 @@ export default function AddEmployeePage() {
                           <SelectValue placeholder="Pilih Role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="staf">Staf</SelectItem>
-                          <SelectItem value="manager_departemen">Manager Departemen</SelectItem>
-                          <SelectItem value="admin_departemen">Admin Departemen</SelectItem>
+                          <SelectItem value="employee">Employee</SelectItem>
+                          <SelectItem value="department_manager">Manager Departemen</SelectItem>
+                          <SelectItem value="department_admin">Admin Departemen</SelectItem>
                           <SelectItem value="manager_hr">Manager HR</SelectItem>
                         </SelectContent>
                       </Select>
