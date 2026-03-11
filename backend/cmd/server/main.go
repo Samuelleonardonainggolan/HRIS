@@ -3,6 +3,7 @@ package main
 
 import (
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/internal/config"
@@ -32,6 +33,7 @@ func main() {
 	userRepo := repository.NewUserRepository(mongodb.Database)
 	departmentRepo := repository.NewDepartmentRepository(mongodb.Database)
 	faceEmbeddingRepo := repository.NewFaceEmbeddingRepository(mongodb.Database)
+	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
 
 	// Initialize external clients
 	timeout, err := time.ParseDuration(cfg.FaceHTTPTimeout)
@@ -40,16 +42,23 @@ func main() {
 	}
 	faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
 
-	// Initialize services
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiry)
+	// --- PERBAIKAN DI SINI ---
+	// Konversi cfg.JWTExpiry dari int ke string karena fungsi NewAuthService mengharapkan string
+	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
+	log.Printf("🔑 JWT Expiry (original int): %d, (converted to string): %s", cfg.JWTExpiry, jwtExpiryStr)
+
+	// Initialize services dengan parameter yang sudah benar
+	authService := service.NewAuthService(userRepo, cfg.JWTSecret, jwtExpiryStr)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
+	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, faceClient)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	healthHandler := handler.NewHealthHandler(mongodb)
 	departmentHandler := handler.NewDepartmentHandler(departmentService)
 	faceHandler := handler.NewFaceHandler(faceService)
+	attendanceHandler := handler.NewAttendanceHandler(attendanceService, faceService)
 
 	// Setup Gin
 	if cfg.Environment == "production" {
@@ -59,7 +68,7 @@ func main() {
 	router := gin.Default()
 
 	// Setup all routes
-	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, faceHandler)
+	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, faceHandler, attendanceHandler)
 
 	// Start server
 	port := cfg.ServerPort

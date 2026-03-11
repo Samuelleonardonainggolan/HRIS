@@ -20,6 +20,9 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			return
 		}
 
+		// Log untuk debugging
+		println("[AuthMiddleware] Authorization header:", authHeader)
+
 		// Extract token from "Bearer <token>"
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
@@ -29,6 +32,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		}
 
 		token := tokenParts[1]
+		println("[AuthMiddleware] Token extracted, length:", len(token))
 
 		// Validate token
 		claims, err := auth.ValidateToken(token, jwtSecret)
@@ -37,6 +41,8 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		println("[AuthMiddleware] Token valid for user:", claims.UserID)
 
 		// Set user info in context
 		c.Set("userID", claims.UserID)
