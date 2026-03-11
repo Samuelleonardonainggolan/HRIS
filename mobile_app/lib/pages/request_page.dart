@@ -5,7 +5,8 @@ import 'package:mobile_app/models/attendance_model.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:file_picker/file_picker.dart';
-import 'new_request_page.dart'; // Import halaman baru
+import 'new_request_page.dart'; 
+import 'package:mobile_app/models/leave_request.dart';
 
 class RequestPage extends StatefulWidget {
   const RequestPage({super.key});

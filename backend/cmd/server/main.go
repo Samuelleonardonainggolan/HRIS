@@ -3,6 +3,7 @@ package main
 
 import (
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/internal/config"
@@ -33,6 +34,7 @@ func main() {
 	departmentRepo := repository.NewDepartmentRepository(mongodb.Database)
 	positionRepo := repository.NewPositionRepository(mongodb.Database)
 	faceEmbeddingRepo := repository.NewFaceEmbeddingRepository(mongodb.Database)
+	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
 
 	// Initialize external clients
 	timeout, err := time.ParseDuration(cfg.FaceHTTPTimeout)
@@ -42,11 +44,13 @@ func main() {
 	faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiry)
+	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
+	authService := service.NewAuthService(userRepo, cfg.JWTSecret, jwtExpiryStr)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	positionService := service.NewPositionService(positionRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
+	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, faceClient)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -55,6 +59,7 @@ func main() {
 	departmentHandler := handler.NewDepartmentHandler(departmentService)
 	positionHandler := handler.NewPositionHandler(positionService)
 	faceHandler := handler.NewFaceHandler(faceService)
+	attendanceHandler := handler.NewAttendanceHandler(attendanceService, faceService)
 
 	// Setup Gin
 	if cfg.Environment == "production" {
@@ -64,7 +69,7 @@ func main() {
 	router := gin.Default()
 
 	// Setup all routes
-	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, positionHandler, faceHandler, userHandler)
+	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, positionHandler, faceHandler, userHandler, attendanceHandler)
 
 	// Start server
 	port := cfg.ServerPort

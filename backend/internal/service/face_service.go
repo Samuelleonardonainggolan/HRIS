@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/internal/faceclient"
@@ -16,6 +17,7 @@ type FaceService interface {
 	Health(ctx context.Context) (bool, error)
 	ExtractAndSaveEmbedding(ctx context.Context, userID string, photo []byte, filename string) error
 	ProcessAttendance(ctx context.Context, userID string, latitude, longitude float64, recordType string, photo []byte, filename string) (*faceclient.AttendanceProcessResponse, error)
+	VerifyFaceForAttendance(ctx context.Context, userID string, photo []byte, filename string) (bool, float64, error)
 }
 
 type faceService struct {
@@ -47,7 +49,7 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 		return errors.New("user not found")
 	}
 
-	// Extract embedding from face recognition service (returns []float32)
+	// Extract embedding from face recognition service
 	embedding32, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
 	if err != nil {
 		return err
@@ -57,41 +59,68 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 		return errors.New("embedding kosong")
 	}
 
-	// ✅ Convert []float32 to []float64 for database storage
-	embedding64 := make([]float64, len(embedding32))
-	for i, v := range embedding32 {
-		embedding64[i] = float64(v)
-	}
-
 	// Check if face embedding already exists
 	existingEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return err
 	}
 
+	now := time.Now()
+	userOID, _ := primitive.ObjectIDFromHex(userID)
+
 	if existingEmbedding != nil {
 		// Update existing embedding
-		if err := s.faceEmbeddingRepo.Update(ctx, userID, embedding64); err != nil {
-			return err
-		}
+		existingEmbedding.FaceEmbedding = embedding32
+		existingEmbedding.FaceImageURL = filename
+		existingEmbedding.UpdatedAt = now
+		existingEmbedding.IsFirstLogin = false
+		return s.faceEmbeddingRepo.Update(ctx, existingEmbedding)
 	} else {
 		// Create new embedding
-		userOID, _ := primitive.ObjectIDFromHex(userID)
 		newEmbedding := &models.FaceEmbedding{
-			UserID:        userOID,
-			FaceEmbedding: embedding64, // ✅ Use []float64
-			FaceImageURL:  "",
-			IsActive:      true,
-			RegisteredAt:  time.Now(),
-			LastUpdatedAt: time.Now(),
+			ID:                primitive.NewObjectID(),
+			UserID:            userOID,
+			FaceEmbedding:     embedding32,
+			FaceImageURL:      filename,
+			IsActive:          true,
+			IsFirstLogin:      true,
+			RegisteredAt:      now,
+			VerificationCount: 0,
+			CreatedAt:         now,
+			UpdatedAt:         now,
 		}
 
-		if err := s.faceEmbeddingRepo.Create(ctx, newEmbedding); err != nil {
-			return err
-		}
+		return s.faceEmbeddingRepo.Create(ctx, newEmbedding)
+	}
+}
+
+func (s *faceService) VerifyFaceForAttendance(ctx context.Context, userID string, photo []byte, filename string) (bool, float64, error) {
+	// Get stored face embedding
+	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
+	if err != nil || faceEmbedding == nil {
+		return false, 0, errors.New("face not registered")
 	}
 
-	return nil
+	// Extract embedding from current photo
+	currentEmbedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
+	if err != nil {
+		return false, 0, err
+	}
+
+	// Calculate similarity
+	similarity := s.cosineSimilarity(currentEmbedding, faceEmbedding.FaceEmbedding)
+	matched := similarity >= 0.6
+
+	if matched {
+		// Update verification stats
+		now := time.Now()
+		faceEmbedding.LastVerifiedAt = &now
+		faceEmbedding.VerificationCount++
+		faceEmbedding.UpdatedAt = now
+		s.faceEmbeddingRepo.Update(ctx, faceEmbedding)
+	}
+
+	return matched, similarity, nil
 }
 
 func (s *faceService) ProcessAttendance(
@@ -102,49 +131,65 @@ func (s *faceService) ProcessAttendance(
 	photo []byte,
 	filename string,
 ) (*faceclient.AttendanceProcessResponse, error) {
-	// Verify user exists
-	user, err := s.userRepo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, errors.New("user not found")
-	}
 
-	// Get face embedding from database ([]float64)
-	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
+	// First verify face
+	matched, similarity, err := s.VerifyFaceForAttendance(ctx, userID, photo, filename)
 	if err != nil {
 		return nil, err
 	}
 
-	if faceEmbedding == nil || len(faceEmbedding.FaceEmbedding) == 0 {
-		return nil, errors.New("embedding wajah belum terdaftar")
+	if !matched {
+		return &faceclient.AttendanceProcessResponse{
+			Approved: false,
+			Message:  "Face does not match registered face",
+			Face: &faceclient.FaceResult{
+				Matched:    false,
+				Similarity: similarity,
+				Threshold:  0.6,
+				Message:    "Face verification failed",
+			},
+		}, nil
 	}
 
-	if !faceEmbedding.IsActive {
-		return nil, errors.New("face embedding is inactive")
-	}
+	// Get stored embedding
+	faceEmbedding, _ := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
 
-	// ✅ Convert []float64 to []float32 for face recognition API
-	embedding32 := make([]float32, len(faceEmbedding.FaceEmbedding))
-	for i, v := range faceEmbedding.FaceEmbedding {
-		embedding32[i] = float32(v)
-	}
-
-	// Process attendance with face recognition
 	req := faceclient.ProcessAttendanceRequest{
 		EmployeeID:      userID,
-		StoredEmbedding: embedding32, // ✅ Use []float32
+		StoredEmbedding: faceEmbedding.FaceEmbedding,
 		Latitude:        latitude,
 		Longitude:       longitude,
 		RecordType:      recordType,
+		Threshold:       0.6,
+		RadiusM:         10000,
 	}
 
-	res, err := s.faceClient.ProcessAttendance(req, photo, filename)
+	result, err := s.faceClient.ProcessAttendance(req, photo, filename)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Save attendance record to database
-	_ = user // Will be used when creating attendance record
-	_ = time.Now()
+	return result, nil
+}
 
-	return res, nil
+func (s *faceService) cosineSimilarity(a, b []float32) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+
+	var dotProduct float64
+	var normA float64
+	var normB float64
+
+	for i := 0; i < len(a); i++ {
+		dotProduct += float64(a[i] * b[i])
+		normA += float64(a[i] * a[i])
+		normB += float64(b[i] * b[i])
+	}
+
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }

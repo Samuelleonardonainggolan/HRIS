@@ -3,8 +3,6 @@ package repository
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -13,11 +11,10 @@ import (
 )
 
 type FaceEmbeddingRepository interface {
-	Create(ctx context.Context, embedding *models.FaceEmbedding) error
+	Create(ctx context.Context, faceEmbedding *models.FaceEmbedding) error
 	FindByUserID(ctx context.Context, userID string) (*models.FaceEmbedding, error)
-	Update(ctx context.Context, userID string, faceEmbedding []float64) error
+	Update(ctx context.Context, faceEmbedding *models.FaceEmbedding) error
 	Delete(ctx context.Context, userID string) error
-	DeactivateByUserID(ctx context.Context, userID string) error
 }
 
 type faceEmbeddingRepository struct {
@@ -30,98 +27,40 @@ func NewFaceEmbeddingRepository(db *mongo.Database) FaceEmbeddingRepository {
 	}
 }
 
-func (r *faceEmbeddingRepository) Create(ctx context.Context, embedding *models.FaceEmbedding) error {
-	embedding.ID = primitive.NewObjectID()
-	embedding.CreatedAt = time.Now()
-	embedding.UpdatedAt = time.Now()
-
-	_, err := r.collection.InsertOne(ctx, embedding)
+func (r *faceEmbeddingRepository) Create(ctx context.Context, faceEmbedding *models.FaceEmbedding) error {
+	_, err := r.collection.InsertOne(ctx, faceEmbedding)
 	return err
 }
 
 func (r *faceEmbeddingRepository) FindByUserID(ctx context.Context, userID string) (*models.FaceEmbedding, error) {
-	objectID, err := primitive.ObjectIDFromHex(userID)
+	objID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
-		return nil, errors.New("invalid user ID")
-	}
-
-	var embedding models.FaceEmbedding
-	err = r.collection.FindOne(ctx, bson.M{"user_id": objectID, "is_active": true}).Decode(&embedding)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, nil // Not found, not an error
-		}
 		return nil, err
 	}
 
-	return &embedding, nil
+	var faceEmbedding models.FaceEmbedding
+	err = r.collection.FindOne(ctx, bson.M{"user_id": objID, "is_active": true}).Decode(&faceEmbedding)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &faceEmbedding, nil
 }
 
-func (r *faceEmbeddingRepository) Update(ctx context.Context, userID string, faceEmbedding []float64) error {
-	objectID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return errors.New("invalid user ID")
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"face_embedding":  faceEmbedding,
-			"last_updated_at": time.Now(),
-			"updated_at":      time.Now(),
-		},
-	}
-
-	result, err := r.collection.UpdateOne(ctx, bson.M{"user_id": objectID, "is_active": true}, update)
-	if err != nil {
-		return err
-	}
-
-	if result.MatchedCount == 0 {
-		return errors.New("face embedding not found")
-	}
-
-	return nil
+func (r *faceEmbeddingRepository) Update(ctx context.Context, faceEmbedding *models.FaceEmbedding) error {
+	filter := bson.M{"_id": faceEmbedding.ID}
+	update := bson.M{"$set": faceEmbedding}
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
 }
 
 func (r *faceEmbeddingRepository) Delete(ctx context.Context, userID string) error {
-	objectID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return errors.New("invalid user ID")
-	}
-
-	result, err := r.collection.DeleteOne(ctx, bson.M{"user_id": objectID})
+	objID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return err
 	}
-
-	if result.DeletedCount == 0 {
-		return errors.New("face embedding not found")
-	}
-
-	return nil
-}
-
-func (r *faceEmbeddingRepository) DeactivateByUserID(ctx context.Context, userID string) error {
-	objectID, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return errors.New("invalid user ID")
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"is_active":  false,
-			"updated_at": time.Now(),
-		},
-	}
-
-	result, err := r.collection.UpdateOne(ctx, bson.M{"user_id": objectID}, update)
-	if err != nil {
-		return err
-	}
-
-	if result.MatchedCount == 0 {
-		return errors.New("face embedding not found")
-	}
-
-	return nil
+	_, err = r.collection.UpdateOne(ctx, bson.M{"user_id": objID}, bson.M{"$set": bson.M{"is_active": false}})
+	return err
 }

@@ -17,6 +17,7 @@ func SetupRoutes(
 	positionHandler *handler.PositionHandler,
 	faceHandler *handler.FaceHandler,
 	userHandler *handler.UserHandler,
+	attendanceHandler *handler.AttendanceHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -57,7 +58,15 @@ func SetupRoutes(
 			// Face Recognition
 			protected.GET("/internal/face/health", faceHandler.Health)
 			protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
-			protected.POST("/attendance/process", faceHandler.ProcessAttendance)
+
+			// PERBAIKAN: Hanya satu route untuk attendance/process
+			// Gunakan attendanceHandler, hapus faceHandler.ProcessAttendance
+			attendance := protected.Group("/attendance")
+			{
+				attendance.POST("/process", attendanceHandler.ProcessAttendance) // Hanya satu
+				attendance.GET("/today", attendanceHandler.GetTodayAttendance)
+				attendance.GET("/monthly", attendanceHandler.GetMonthlyAttendance)
+			}
 
 			// Departments (Manager HR Only)
 			departments := protected.Group("/departments")

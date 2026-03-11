@@ -57,7 +57,7 @@ func CreateFaceEmbeddings() (int, string, string, func(*mongo.Database) error, f
         }
 
         // Create sample face embedding (random vector - in production this comes from face recognition model)
-        sampleEmbedding := make([]float64, 128) // 128-dimensional vector (common for face recognition)
+        sampleEmbedding := make([]float32, 128) // 128-dimensional vector (common for face recognition)
         for i := range sampleEmbedding {
             sampleEmbedding[i] = 0.0 // Initialize with zeros (in production, use actual embedding)
         }
@@ -69,7 +69,6 @@ func CreateFaceEmbeddings() (int, string, string, func(*mongo.Database) error, f
             FaceImageURL:    "", // Will be set when user uploads photo
             IsActive:        true,
             RegisteredAt:    time.Now(),
-            LastUpdatedAt:   time.Now(),
             CreatedAt:       time.Now(),
             UpdatedAt:       time.Now(),
         }

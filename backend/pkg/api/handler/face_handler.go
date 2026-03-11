@@ -57,52 +57,58 @@ func (h *FaceHandler) RegisterFace(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Face embedding registered", gin.H{"user_id": userID}))
 }
 
-func (h *FaceHandler) ProcessAttendance(c *gin.Context) {
-	userIDRaw, _ := c.Get("user_id")
-	userID, _ := userIDRaw.(string)
+// pkg/api/handler/face_handler.go
 
+func (h *FaceHandler) ProcessAttendance(c *gin.Context) {
+
+	userIDRaw, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "user id tidak di temukan. silahkan login ulang"))
+		return
+	}
+
+	userID, ok := userIDRaw.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Error", "Format user ID tidak valid"))
+		return
+	}
+
+	// Ambil file foto
 	file, err := c.FormFile("photo")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid request", "photo is required"))
 		return
 	}
-	f, err := file.Open()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid photo", err.Error()))
-		return
-	}
-	defer f.Close()
-	bytes, err := io.ReadAll(f)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid photo", err.Error()))
-		return
-	}
 
+	f, _ := file.Open()
+	defer f.Close()
+	photoBytes, _ := io.ReadAll(f)
+
+	// Ambil data form lainnya
 	latStr := c.PostForm("latitude")
 	lngStr := c.PostForm("longitude")
-	recordType := c.PostForm("record_type")
-	if recordType == "" {
-		recordType = "checkin"
-	}
-	lat, err := strconv.ParseFloat(latStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid latitude", err.Error()))
-		return
-	}
-	lng, err := strconv.ParseFloat(lngStr, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Invalid longitude", err.Error()))
-		return
-	}
-	filename := filepath.Base(file.Filename)
-	if filename == "" {
-		filename = "selfie.jpg"
-	}
-	res, err := h.faceService.ProcessAttendance(c.Request.Context(), userID, lat, lng, recordType, bytes, filename)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, models.ErrorResponse("Attendance processing failed", err.Error()))
-		return
-	}
-	c.JSON(http.StatusOK, models.SuccessResponse("Attendance processed", res))
-}
+	recordType := c.PostForm("record_type") // 'checkin' atau 'checkout'
 
+	lat, _ := strconv.ParseFloat(latStr, 64)
+	lng, _ := strconv.ParseFloat(lngStr, 64)
+
+	// Panggil Service
+	// Di dalam service ini, pastikan memanggil faceEmbeddingRepo.FindByUserID(userID)
+	// Agar verifikasi wajah hanya membandingkan dengan wajah milik user tersebut
+	result, err := h.faceService.ProcessAttendance(
+		c.Request.Context(),
+		userID,
+		lat,
+		lng,
+		recordType,
+		photoBytes,
+		file.Filename,
+	)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("gagal melakukan absensi", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Absensi berhasil", result))
+}

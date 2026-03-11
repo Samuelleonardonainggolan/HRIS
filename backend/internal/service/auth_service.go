@@ -4,8 +4,8 @@ package service
 import (
 	"context"
 	"errors"
-	"time"
 	"log"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/auth"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
@@ -43,7 +43,7 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 		log.Printf("❌ Error finding user: %v", err)
 		return nil, errors.New("invalid email or password")
 	}
-	
+
 	if user == nil {
 		log.Printf("❌ User not found in database: %s", req.Email)
 		return nil, errors.New("invalid email or password")
@@ -55,7 +55,7 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 	// Check password
 	passwordMatch := auth.CheckPasswordHash(req.Password, user.Password)
 	log.Printf("🔑 Password check - Input: %s, Match: %v", req.Password, passwordMatch)
-	
+
 	if !passwordMatch {
 		log.Printf("❌ Password mismatch for: %s", req.Email)
 		return nil, errors.New("invalid email or password")
@@ -110,21 +110,21 @@ func (s *authService) Register(ctx context.Context, req models.RegisterRequest) 
 	// Create user with minimal info (for simple registration)
 	user := &models.User{
 		ID:               primitive.NewObjectID(),
-		PayrollNumber:    "",                     // Will be set by HR later
+		PayrollNumber:    "", // Will be set by HR later
 		Email:            req.Email,
 		Password:         hashedPassword,
 		FullName:         req.FullName,
-		BirthDate:        time.Time{},            // Will be set later
-		Religion:         "",                     // Will be set later
-		LastEducation:    "",                     // Will be set later
-		YearEnrolled:     "",                     // Will be set later
-		EmploymentStatus: "",                     // Will be set later
-		DepartmentID:     primitive.ObjectID{},   // Will be set later
-		DepartmentName:   "",                     // Will be set later
-		PositionID:       primitive.ObjectID{},   // Will be set later
-		PositionName:     "",                     // Will be set later
-		Phone:            "",                     // Will be set later
-		Address:          "",                     // Will be set later
+		BirthDate:        time.Time{},          // Will be set later
+		Religion:         "",                   // Will be set later
+		LastEducation:    "",                   // Will be set later
+		YearEnrolled:     "",                   // Will be set later
+		EmploymentStatus: "",                   // Will be set later
+		DepartmentID:     primitive.ObjectID{}, // Will be set later
+		DepartmentName:   "",                   // Will be set later
+		PositionID:       primitive.ObjectID{}, // Will be set later
+		PositionName:     "",                   // Will be set later
+		Phone:            "",                   // Will be set later
+		Address:          "",                   // Will be set later
 		Role:             req.Role,
 		IsActive:         true,
 		CreatedAt:        time.Now(),
