@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import Image from 'next/image';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -24,8 +23,11 @@ export default function LoginPage() {
 
     try {
       await login({ email, password });
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : 'Login failed. Please check your credentials.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -40,8 +42,9 @@ export default function LoginPage() {
 
     try {
       await login({ email: userEmail, password: userPassword });
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
+      router.push('/dashboard');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { X, Mail, Phone, MapPin } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Employee } from "@/types";

@@ -31,6 +31,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(mongodb.Database)
 	departmentRepo := repository.NewDepartmentRepository(mongodb.Database)
+	positionRepo := repository.NewPositionRepository(mongodb.Database)
 	faceEmbeddingRepo := repository.NewFaceEmbeddingRepository(mongodb.Database)
 
 	// Initialize external clients
@@ -42,13 +43,17 @@ func main() {
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, cfg.JWTExpiry)
+	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
+	positionService := service.NewPositionService(positionRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
+	userHandler := handler.NewUserHandler(userService)
 	healthHandler := handler.NewHealthHandler(mongodb)
 	departmentHandler := handler.NewDepartmentHandler(departmentService)
+	positionHandler := handler.NewPositionHandler(positionService)
 	faceHandler := handler.NewFaceHandler(faceService)
 
 	// Setup Gin
@@ -59,7 +64,7 @@ func main() {
 	router := gin.Default()
 
 	// Setup all routes
-	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, faceHandler)
+	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, positionHandler, faceHandler, userHandler)
 
 	// Start server
 	port := cfg.ServerPort

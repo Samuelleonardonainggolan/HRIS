@@ -8,15 +8,26 @@ export interface LoginRequest {
 
 export interface User {
   id: string;
-  nik: string;
+  nik: string; // This maps to payroll_number in backend
+  payroll_number?: string;
   email: string;
   full_name: string;
   role: string;
-  department: string;
-  position: string;
+  department: string; // department_name
+  department_name?: string;
+  department_id?: string;
+  position: string; // position_name
+  position_name?: string;
+  position_id?: string;
   phone?: string;
+  address?: string;
   avatar?: string;
   join_date: string;
+  birth_date?: string;
+  religion?: string;
+  last_education?: string;
+  year_enrolled?: string;
+  employment_status?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

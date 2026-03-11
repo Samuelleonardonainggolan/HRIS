@@ -14,7 +14,9 @@ func SetupRoutes(
 	authHandler *handler.AuthHandler,
 	healthHandler *handler.HealthHandler,
 	departmentHandler *handler.DepartmentHandler,
+	positionHandler *handler.PositionHandler,
 	faceHandler *handler.FaceHandler,
+	userHandler *handler.UserHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -66,6 +68,26 @@ func SetupRoutes(
 				departments.GET("/:id", departmentHandler.GetDepartmentByID)
 				departments.PUT("/:id", departmentHandler.UpdateDepartment)
 				departments.DELETE("/:id", departmentHandler.DeleteDepartment)
+			}
+
+			// Employees (Manager HR & Admin Departemen)
+			employees := protected.Group("/employees")
+			employees.Use(middleware.AdminOnly())
+			{
+				employees.POST("", userHandler.CreateEmployee)
+				employees.GET("", userHandler.GetAllEmployees)
+				employees.GET("/template", userHandler.DownloadEmployeeTemplate)
+				employees.POST("/import", userHandler.ImportEmployees)
+				employees.GET("/:id", userHandler.GetEmployeeByID)
+				employees.PUT("/:id", userHandler.UpdateEmployee)
+				employees.DELETE("/:id", userHandler.DeleteEmployee)
+			}
+
+			positions := protected.Group("/positions")
+			positions.Use(middleware.AdminOnly())
+			{
+				positions.GET("", positionHandler.GetAllPositions)
+				positions.GET("/:id", positionHandler.GetPositionByID)
 			}
 		}
 	}

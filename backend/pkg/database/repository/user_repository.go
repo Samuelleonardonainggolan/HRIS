@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -33,6 +34,14 @@ func NewUserRepository(db *mongo.Database) UserRepository {
 }
 
 func (r *userRepository) Create(ctx context.Context, user *models.User) error {
+	if user.ID.IsZero() {
+		user.ID = primitive.NewObjectID()
+	}
+	now := time.Now()
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = now
+	}
+	user.UpdatedAt = now
 	_, err := r.collection.InsertOne(ctx, user)
 	return err
 }
@@ -118,7 +127,7 @@ func (r *userRepository) Update(ctx context.Context, id string, req *models.Upda
 		return errors.New("invalid user ID")
 	}
 
-	update := bson.M{"$set": bson.M{}}
+	update := bson.M{"$set": bson.M{"updated_at": time.Now()}}
 
 	// Only update provided fields
 	if req.PayrollNumber != "" { // Changed from NIK
@@ -128,7 +137,14 @@ func (r *userRepository) Update(ctx context.Context, id string, req *models.Upda
 		update["$set"].(bson.M)["full_name"] = req.FullName
 	}
 	if req.BirthDate != "" {
-		update["$set"].(bson.M)["birth_date"] = req.BirthDate
+		parsed, parseErr := time.Parse("2006-01-02", req.BirthDate)
+		if parseErr != nil {
+			parsed, parseErr = time.Parse(time.RFC3339, req.BirthDate)
+		}
+		if parseErr != nil {
+			return errors.New("invalid birth_date format")
+		}
+		update["$set"].(bson.M)["birth_date"] = parsed
 	}
 	if req.Religion != "" {
 		update["$set"].(bson.M)["religion"] = req.Religion
@@ -143,12 +159,24 @@ func (r *userRepository) Update(ctx context.Context, id string, req *models.Upda
 		update["$set"].(bson.M)["employment_status"] = req.EmploymentStatus
 	}
 	if req.DepartmentID != "" {
-		deptOID, _ := primitive.ObjectIDFromHex(req.DepartmentID)
+		deptOID, deptErr := primitive.ObjectIDFromHex(req.DepartmentID)
+		if deptErr != nil {
+			return errors.New("invalid department_id")
+		}
 		update["$set"].(bson.M)["department_id"] = deptOID
+		if req.DepartmentName != "" {
+			update["$set"].(bson.M)["department_name"] = req.DepartmentName
+		}
 	}
 	if req.PositionID != "" {
-		posOID, _ := primitive.ObjectIDFromHex(req.PositionID)
+		posOID, posErr := primitive.ObjectIDFromHex(req.PositionID)
+		if posErr != nil {
+			return errors.New("invalid position_id")
+		}
 		update["$set"].(bson.M)["position_id"] = posOID
+		if req.PositionName != "" {
+			update["$set"].(bson.M)["position_name"] = req.PositionName
+		}
 	}
 	if req.Phone != "" {
 		update["$set"].(bson.M)["phone"] = req.Phone

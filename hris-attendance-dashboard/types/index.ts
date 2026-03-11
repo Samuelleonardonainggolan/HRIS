@@ -34,6 +34,7 @@ export interface Employee {
 
 export interface CreateEmployeeRequest {
   nik: string;
+  payrollNumber?: string;
   fullName: string;
   birthDate: string;
   religion: string;
@@ -41,10 +42,15 @@ export interface CreateEmployeeRequest {
   yearEnrolled: string;
   employmentStatus: string;
   department: string;
+  departmentID?: string;
   position: string;
+  positionID?: string;
   officeEmail: string;
+  email?: string;
   phoneNumber: string;
+  phone?: string;
   address: string;
+  role?: string;
 }
 
 export interface UpdateEmployeeRequest {
@@ -330,14 +336,14 @@ export interface AuthState {
 
 // ==================== API RESPONSE TYPES ====================
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
   error?: string;
 }
 
-export interface PaginatedResponse<T = any> {
+export interface PaginatedResponse<T = unknown> {
   success: boolean;
   message: string;
   data: T[];
@@ -369,7 +375,7 @@ export interface FormError {
   message: string;
 }
 
-export interface FormState<T = any> {
+export interface FormState<T = unknown> {
   data: T;
   errors: FormError[];
   isSubmitting: boolean;
@@ -378,7 +384,7 @@ export interface FormState<T = any> {
 
 // ==================== TABLE TYPES ====================
 
-export interface TableColumn<T = any> {
+export interface TableColumn<T = unknown> {
   key: keyof T | string;
   label: string;
   sortable?: boolean;

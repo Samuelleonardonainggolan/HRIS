@@ -1,3 +1,5 @@
+//go:build test_password
+
 // test_password.go
 package main
 
