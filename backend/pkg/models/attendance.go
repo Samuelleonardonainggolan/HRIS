@@ -64,4 +64,7 @@ type MonthlyAttendanceResponse struct {
 	TotalHours    float64              `json:"total_hours"`
 	OvertimeHours float64              `json:"overtime_hours"`
 	Records       []AttendanceResponse `json:"records"`
+
 }
+
+

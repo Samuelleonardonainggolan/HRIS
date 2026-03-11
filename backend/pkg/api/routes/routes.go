@@ -18,6 +18,7 @@ func SetupRoutes(
 	faceHandler *handler.FaceHandler,
 	userHandler *handler.UserHandler,
 	attendanceHandler *handler.AttendanceHandler,
+	geofenceHandler *handler.GeofenceHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -55,20 +56,19 @@ func SetupRoutes(
 			// Logout
 			protected.POST("/logout", authHandler.Logout)
 
-			// Face Recognition
+			// ==================== FACE RECOGNITION ====================
 			protected.GET("/internal/face/health", faceHandler.Health)
 			protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
 
-			// PERBAIKAN: Hanya satu route untuk attendance/process
-			// Gunakan attendanceHandler, hapus faceHandler.ProcessAttendance
+			// ==================== ATTENDANCE ====================
 			attendance := protected.Group("/attendance")
 			{
-				attendance.POST("/process", attendanceHandler.ProcessAttendance) // Hanya satu
+				attendance.POST("/process", attendanceHandler.ProcessAttendance)
 				attendance.GET("/today", attendanceHandler.GetTodayAttendance)
 				attendance.GET("/monthly", attendanceHandler.GetMonthlyAttendance)
 			}
 
-			// Departments (Manager HR Only)
+			// ==================== DEPARTMENTS (Manager HR Only) ====================
 			departments := protected.Group("/departments")
 			departments.Use(middleware.ManagerHROnly())
 			{
@@ -79,7 +79,15 @@ func SetupRoutes(
 				departments.DELETE("/:id", departmentHandler.DeleteDepartment)
 			}
 
-			// Employees (Manager HR & Admin Departemen)
+			// ==================== POSITIONS (Admin Only) ====================
+			positions := protected.Group("/positions")
+			positions.Use(middleware.AdminOnly())
+			{
+				positions.GET("", positionHandler.GetAllPositions)
+				positions.GET("/:id", positionHandler.GetPositionByID)
+			}
+
+			// ==================== EMPLOYEES (Admin Only) ====================
 			employees := protected.Group("/employees")
 			employees.Use(middleware.AdminOnly())
 			{
@@ -92,12 +100,22 @@ func SetupRoutes(
 				employees.DELETE("/:id", userHandler.DeleteEmployee)
 			}
 
-			positions := protected.Group("/positions")
-			positions.Use(middleware.AdminOnly())
+			// ==================== GEOFENCING ====================
+			geofences := protected.Group("/geofences")
 			{
-				positions.GET("", positionHandler.GetAllPositions)
-				positions.GET("/:id", positionHandler.GetPositionByID)
+				// Manager HR only routes
+				geofences.POST("", middleware.ManagerHROnly(), geofenceHandler.CreateGeofence)
+				geofences.PUT("/:id", middleware.ManagerHROnly(), geofenceHandler.UpdateGeofence)
+				geofences.DELETE("/:id", middleware.ManagerHROnly(), geofenceHandler.DeleteGeofence)
+
+				// All authenticated users can read
+				geofences.GET("", geofenceHandler.GetAllGeofences)
+				geofences.GET("/active", geofenceHandler.GetActiveGeofences)
+				geofences.GET("/:id", geofenceHandler.GetGeofenceByID)
 			}
+
+			// Check location (All authenticated users)
+			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
 		}
 	}
 }

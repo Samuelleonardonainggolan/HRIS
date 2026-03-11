@@ -29,21 +29,26 @@ func main() {
 
 	log.Println("✅ Database connected successfully")
 
-	// Initialize repositories
+	// ==================== Initialize Repositories ====================
 	userRepo := repository.NewUserRepository(mongodb.Database)
 	departmentRepo := repository.NewDepartmentRepository(mongodb.Database)
 	positionRepo := repository.NewPositionRepository(mongodb.Database)
 	faceEmbeddingRepo := repository.NewFaceEmbeddingRepository(mongodb.Database)
 	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
+	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 
-	// Initialize external clients
+	log.Println("📦 Repositories initialized")
+
+	// ==================== Initialize External Clients ====================
 	timeout, err := time.ParseDuration(cfg.FaceHTTPTimeout)
 	if err != nil {
 		timeout = 30 * time.Second
 	}
 	faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
 
-	// Initialize services
+	log.Println("🔌 External clients initialized")
+
+	// ==================== Initialize Services ====================
 	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret, jwtExpiryStr)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
@@ -51,8 +56,11 @@ func main() {
 	positionService := service.NewPositionService(positionRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
 	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, faceClient)
+	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 
-	// Initialize handlers
+	log.Println("⚙️  Services initialized")
+
+	// ==================== Initialize Handlers ====================
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	healthHandler := handler.NewHealthHandler(mongodb)
@@ -60,25 +68,61 @@ func main() {
 	positionHandler := handler.NewPositionHandler(positionService)
 	faceHandler := handler.NewFaceHandler(faceService)
 	attendanceHandler := handler.NewAttendanceHandler(attendanceService, faceService)
+	geofenceHandler := handler.NewGeofenceHandler(geofenceService)
 
-	// Setup Gin
+	log.Println("🎯 Handlers initialized")
+
+	// ==================== Setup Gin ====================
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.Default()
 
-	// Setup all routes
-	routes.SetupRoutes(router, cfg, authHandler, healthHandler, departmentHandler, positionHandler, faceHandler, userHandler, attendanceHandler)
+	// ==================== Setup Routes ====================
+	routes.SetupRoutes(
+		router,
+		cfg,
+		authHandler,
+		healthHandler,
+		departmentHandler,
+		positionHandler,
+		faceHandler,
+		userHandler,
+		attendanceHandler,
+		geofenceHandler,
+	)
 
-	// Start server
+	log.Println("🛣️  Routes configured")
+
+	// ==================== Start Server ====================
 	port := cfg.ServerPort
+	log.Println("================================================")
 	log.Printf("🚀 Server running on port %s", port)
 	log.Printf("📍 Environment: %s", cfg.Environment)
 	log.Printf("🔗 Health check: http://localhost:%s/health", port)
 	log.Printf("🔗 API Base URL: http://localhost:%s/api/v1", port)
+	log.Println("================================================")
+	log.Println("📋 Available endpoints:")
+	log.Println("   Auth:")
+	log.Println("     POST   /api/v1/auth/login")
+	log.Println("     POST   /api/v1/auth/register")
+	log.Println("   Departments:")
+	log.Println("     GET    /api/v1/departments")
+	log.Println("     POST   /api/v1/departments")
+	log.Println("   Employees:")
+	log.Println("     GET    /api/v1/employees")
+	log.Println("     POST   /api/v1/employees")
+	log.Println("   Attendance:")
+	log.Println("     POST   /api/v1/attendance/process")
+	log.Println("     GET    /api/v1/attendance/today")
+	log.Println("   Geofencing:")
+	log.Println("     GET    /api/v1/geofences")
+	log.Println("     POST   /api/v1/geofences")
+	log.Println("     POST   /api/v1/geofences/check")
+	log.Println("================================================")
 
 	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+		log.Fatal("❌ Failed to start server:", err)
 	}
 }
