@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:intl/intl.dart';
@@ -10,17 +12,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class FaceAttendancePage extends StatefulWidget {
   final String type; // 'clock_in' or 'clock_out'
-  
-  const FaceAttendancePage({
-    super.key, 
-    required this.type,
-  });
+
+  const FaceAttendancePage({super.key, required this.type});
 
   @override
   State<FaceAttendancePage> createState() => _FaceAttendancePageState();
 }
 
-class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTickerProviderStateMixin {
+class _FaceAttendancePageState extends State<FaceAttendancePage>
+    with SingleTickerProviderStateMixin {
   File? _capturedImage;
   Position? _currentPosition;
   String _locationStatus = 'Mendeteksi lokasi...';
@@ -30,7 +30,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
   bool _isFaceDetected = false;
   bool _isCameraPermissionGranted = false;
   bool _isLocationPermissionGranted = false;
-  
+
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
 
@@ -48,14 +48,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeInOut,
-      ),
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    
+
     _checkPermissions();
   }
 
@@ -71,7 +68,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
 
     // Cek status lokasi menggunakan Geolocator
     LocationPermission permission = await Geolocator.checkPermission();
-    
+
     if (permission == LocationPermission.denied) {
       // Minta izin
       permission = await Geolocator.requestPermission();
@@ -84,7 +81,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
         return;
       }
     }
-    
+
     if (permission == LocationPermission.deniedForever) {
       setState(() {
         _locationStatus = 'Izin lokasi ditolak permanen';
@@ -98,18 +95,18 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     setState(() {
       _isLocationPermissionGranted = true;
     });
-    
+
     _getCurrentLocation();
   }
 
   Future<void> _checkCameraPermission() async {
     var status = await Permission.camera.status;
-    
+
     if (status.isDenied) {
       // Minta izin
       status = await Permission.camera.request();
     }
-    
+
     setState(() {
       _isCameraPermissionGranted = status.isGranted;
     });
@@ -146,7 +143,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
       );
-      
+
       setState(() {
         _currentPosition = position;
         _checkOfficeRadius(position);
@@ -173,7 +170,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
       if (_isLocationValid) {
         _locationStatus = 'Dalam area kampus IT Del ✓';
       } else {
-        _locationStatus = 'Di luar area kampus (${distance.toStringAsFixed(0)}m) ✗';
+        _locationStatus =
+            'Di luar area kampus (${distance.toStringAsFixed(0)}m) ✗';
       }
     });
   }
@@ -205,20 +203,22 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
 
         // Simulasi verifikasi wajah
         await Future.delayed(const Duration(seconds: 2));
-        
+
         // Simulasi deteksi wajah (80% berhasil)
         bool faceDetected = DateTime.now().millisecondsSinceEpoch % 10 < 8;
-        
+
         setState(() {
           _isFaceDetected = faceDetected;
-          _faceStatus = faceDetected 
-              ? 'Wajah terdeteksi ✓' 
+          _faceStatus = faceDetected
+              ? 'Wajah terdeteksi ✓'
               : 'Wajah tidak terdeteksi ✗';
           _isLoading = false;
         });
 
         if (!faceDetected) {
-          _showErrorSnackBar('Wajah tidak terdeteksi. Silakan coba lagi dengan pencahayaan cukup.');
+          _showErrorSnackBar(
+            'Wajah tidak terdeteksi. Silakan coba lagi dengan pencahayaan cukup.',
+          );
         }
       }
     } catch (e) {
@@ -230,81 +230,68 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     }
   }
 
-  void _submitAttendance() async {
-    if (!_isLocationValid) {
-      _showErrorSnackBar('Anda harus berada dalam area kampus IT Del untuk melakukan absensi');
-      return;
-    }
+  Future<void> _submitAttendance() async {
+    if (_capturedImage == null || _currentPosition == null) return;
 
-    if (!_isFaceDetected) {
-      _showErrorSnackBar('Wajah tidak terdeteksi. Silakan ambil foto ulang.');
-      return;
-    }
-
-    if (_capturedImage == null) {
-      _showErrorSnackBar('Silakan ambil foto terlebih dahulu');
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      // Dapatkan user ID dari SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getString('user_id') ?? '';
-
-      if (userId.isEmpty) {
-        throw Exception('User ID tidak ditemukan. Silakan login ulang.');
+      final userId = await ApiService.getUserId();
+      if (userId == null || userId.isEmpty) {
+        throw Exception('Sesi login telah berakhir. Silakan login ulang.');
       }
 
-      Map<String, dynamic> result;
-      
-      if (widget.type == 'clock_in') {
-        // Kirim clock in ke API
-        result = await ApiService.clockIn(
-          employeeId: userId,
-          latitude: _currentPosition?.latitude ?? 0,
-          longitude: _currentPosition?.longitude ?? 0,
-          photoPath: _capturedImage!.path,
+      print('📤 Submitting attendance for user: $userId');
+      print(
+        '📍 Location: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}',
+      );
+      print('📷 Photo path: ${_capturedImage!.path}');
+
+      final result = await ApiService.processAttendance(
+        recordType: widget.type == 'clock_in' ? 'clock_in' : 'clock_out',
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        photoPath: _capturedImage!.path,
+      );
+
+      if (result.success) {
+        _showSuccessDialog(
+          message: result.message,
+          similarity: result.faceSimilarity,
         );
-        
-        debugPrint('Clock in result: $result');
       } else {
-        // Kirim clock out ke API
-        result = await ApiService.clockOut(
-          employeeId: userId,
-          latitude: _currentPosition?.latitude ?? 0,
-          longitude: _currentPosition?.longitude ?? 0,
-          photoPath: _capturedImage!.path,
-        );
-        
-        debugPrint('Clock out result: $result');
+        throw Exception(result.message);
       }
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      // Tampilkan dialog sukses
-      _showSuccessDialog();
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      _showErrorSnackBar('Gagal melakukan absensi: $e');
+      print('❌ Error: $e');
+
+      String errorMsg = e.toString();
+      if (errorMsg.contains('401') ||
+          errorMsg.contains('Unauthorized') ||
+          errorMsg.contains('sesi telah berakhir')) {
+        _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
+
+        // Redirect ke login setelah 2 detik
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.pushReplacementNamed(context, '/login');
+        });
+      } else {
+        _showErrorSnackBar('Gagal melakukan absensi: $errorMsg');
+      }
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog({
+    required String message,
+    required double similarity,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -322,7 +309,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
             ),
             const SizedBox(height: 16),
             Text(
-              widget.type == 'clock_in' ? 'Absen Masuk Berhasil!' : 'Absen Pulang Berhasil!',
+              widget.type == 'clock_in'
+                  ? 'Absen Masuk Berhasil!'
+                  : 'Absen Pulang Berhasil!',
               style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -331,11 +320,17 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
             ),
             const SizedBox(height: 8),
             Text(
-              DateFormat('EEEE, dd MMMM yyyy').format(DateTime.now()),
-              style: TextStyle(
+              'Similarity Wajah: ${(similarity * 100).toStringAsFixed(1)}%',
+              style: const TextStyle(
                 fontSize: 14,
-                color: Colors.grey.shade600,
+                color: AppTheme.primaryColor,
+                fontWeight: FontWeight.w600,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              DateFormat('EEEE, dd MMMM yyyy').format(DateTime.now()),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
             ),
             const SizedBox(height: 4),
             Text(
@@ -346,17 +341,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                 color: AppTheme.primaryColor,
               ),
             ),
-            const SizedBox(height: 16),
-            if (_currentPosition != null) ...[
-              Text(
-                'Lokasi: ${_currentPosition!.latitude.toStringAsFixed(6)}, ${_currentPosition!.longitude.toStringAsFixed(6)}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
           ],
         ),
         actions: [
@@ -365,9 +349,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
               Navigator.pop(context);
               Navigator.pop(context, true);
             },
-            style: TextButton.styleFrom(
-              foregroundColor: AppTheme.primaryColor,
-            ),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
             child: const Text('OK'),
           ),
         ],
@@ -379,11 +361,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Izin $permission Diperlukan'),
-        content: Text('Aplikasi membutuhkan izin $permission untuk melanjutkan absensi.'),
+        content: Text(
+          'Aplikasi membutuhkan izin $permission untuk melanjutkan absensi.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -416,11 +398,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Izin $permission'),
-        content: Text('Izin $permission telah ditolak permanen. Silakan aktifkan di pengaturan.'),
+        content: Text(
+          'Izin $permission telah ditolak permanen. Silakan aktifkan di pengaturan.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -442,11 +424,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Layanan Lokasi'),
-        content: const Text('Harap aktifkan layanan lokasi untuk melanjutkan absensi.'),
+        content: const Text(
+          'Harap aktifkan layanan lokasi untuk melanjutkan absensi.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -470,9 +452,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
         content: Text(message),
         backgroundColor: AppTheme.errorColor,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -505,10 +485,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
         centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(
-            height: 1,
-            color: Colors.grey.shade200,
-          ),
+          child: Container(height: 1, color: Colors.grey.shade200),
         ),
       ),
       body: SafeArea(
@@ -533,9 +510,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      color: (widget.type == 'clock_in' 
-                          ? AppTheme.successColor 
-                          : AppTheme.errorColor).withOpacity(0.3),
+                      color:
+                          (widget.type == 'clock_in'
+                                  ? AppTheme.successColor
+                                  : AppTheme.errorColor)
+                              .withOpacity(0.3),
                       blurRadius: 20,
                       offset: const Offset(0, 5),
                     ),
@@ -544,16 +523,14 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                 child: Column(
                   children: [
                     Icon(
-                      widget.type == 'clock_in' 
-                          ? Icons.login 
-                          : Icons.logout,
+                      widget.type == 'clock_in' ? Icons.login : Icons.logout,
                       color: Colors.white,
                       size: 40,
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      widget.type == 'clock_in' 
-                          ? 'Absen Masuk' 
+                      widget.type == 'clock_in'
+                          ? 'Absen Masuk'
                           : 'Absen Pulang',
                       style: const TextStyle(
                         color: Colors.white,
@@ -603,7 +580,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.location_on, color: Color(0xFF135BEC), size: 20),
+                        Icon(
+                          Icons.location_on,
+                          color: Color(0xFF135BEC),
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
                         Text(
                           'Verifikasi Lokasi',
@@ -672,7 +653,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                         ),
                         if (!_isLocationValid && _isLocationPermissionGranted)
                           IconButton(
-                            icon: const Icon(Icons.refresh, color: Color(0xFF135BEC)),
+                            icon: const Icon(
+                              Icons.refresh,
+                              color: Color(0xFF135BEC),
+                            ),
                             onPressed: _getCurrentLocation,
                           ),
                       ],
@@ -761,7 +745,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                                       height: 70,
                                       decoration: BoxDecoration(
                                         color: _isCameraPermissionGranted
-                                            ? const Color(0xFF135BEC).withOpacity(0.1)
+                                            ? const Color(
+                                                0xFF135BEC,
+                                              ).withOpacity(0.1)
                                             : Colors.grey.withOpacity(0.1),
                                         shape: BoxShape.circle,
                                       ),
@@ -862,7 +848,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                       const SizedBox(height: 16),
                       const Center(
                         child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF135BEC)),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF135BEC),
+                          ),
                         ),
                       ),
                     ],
@@ -942,7 +930,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
                     size: 20,
                   ),
                   label: Text(
-                    widget.type == 'clock_in' ? 'Konfirmasi Absen Masuk' : 'Konfirmasi Absen Pulang',
+                    widget.type == 'clock_in'
+                        ? 'Konfirmasi Absen Masuk'
+                        : 'Konfirmasi Absen Pulang',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -952,15 +942,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage> with SingleTick
               ),
 
               const SizedBox(height: 16),
-              
+
               // Informasi tambahan
               Center(
                 child: Text(
                   'Dengan melakukan absensi, Anda menyetujui kebijakan kampus IT Del',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey.shade500,
-                  ),
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   textAlign: TextAlign.center,
                 ),
               ),

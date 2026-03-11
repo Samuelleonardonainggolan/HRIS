@@ -1,12 +1,16 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/auth_model.dart';
 import '../models/attendance_model.dart';
+import '../models/leave_request.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.198.142.218:8080/api/v1'; // Untuk emulator Android
+  static const String baseUrl =
+      'http://10.233.32.215:8080/api/v1'; // Untuk emulator Android
   // static const String baseUrl = 'http://localhost:8080/api/v1'; // Untuk web
   //static const String baseUrl = 'http://192.168.1.100:8080/api/v1'; // Untuk device fisik (ganti dengan IP komputer)
 
@@ -16,7 +20,11 @@ class ApiService {
   };
 
   // Token management
-  static Future<void> saveTokens(String accessToken, String refreshToken, int expiresIn) async {
+  static Future<void> saveTokens(
+    String accessToken,
+    String refreshToken,
+    int expiresIn,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
@@ -38,12 +46,13 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     final loginTime = prefs.getInt('login_time');
     final expiresIn = prefs.getInt('expires_in');
-    
+
     if (loginTime == null || expiresIn == null) return true;
-    
+
     final now = DateTime.now().millisecondsSinceEpoch;
-    final expiryTime = loginTime + (expiresIn * 1000); // Convert to milliseconds
-    
+    final expiryTime =
+        loginTime + (expiresIn * 1000); // Convert to milliseconds
+
     return now >= expiryTime;
   }
 
@@ -58,10 +67,7 @@ class ApiService {
   static Future<Map<String, String>> getHeaders() async {
     final token = await getAccessToken();
     if (token != null) {
-      return {
-        ..._headers,
-        'Authorization': 'Bearer $token',
-      };
+      return {..._headers, 'Authorization': 'Bearer $token'};
     }
     return _headers;
   }
@@ -70,14 +76,11 @@ class ApiService {
   static Future<LoginResponse> login(String email, String password) async {
     try {
       print('[API] Attempting login for: $email');
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
         headers: _headers,
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode({'email': email, 'password': password}),
       );
 
       print('[API] Login response status: ${response.statusCode}');
@@ -85,27 +88,26 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
-        // FIX #1: Handle Golang response wrapper dengan "data" field
-        // Golang mengirim: { "status": "success", "message": "...", "data": { "user": {...}, "access_token": "..." } }
         final Map<String, dynamic> responseData = data['data'] ?? data;
-        
         final loginResponse = LoginResponse.fromJson(responseData);
-        
+
         // Save tokens
         await saveTokens(
           loginResponse.accessToken,
           loginResponse.refreshToken,
           loginResponse.expiresIn,
         );
-        
+
+        // SAVE USER ID - TAMBAHKAN
+        await saveUserId(loginResponse.user.id);
+
         print('[API] Login successful for user: ${loginResponse.user.id}');
         return loginResponse;
       } else {
-        // FIX #4: Improved error handling
         try {
           final error = jsonDecode(response.body);
-          final errorMessage = error['message'] ?? error['error'] ?? 'Login failed';
+          final errorMessage =
+              error['message'] ?? error['error'] ?? 'Login failed';
           throw Exception('Login error: $errorMessage');
         } catch (e) {
           throw Exception('Login failed with status ${response.statusCode}');
@@ -131,7 +133,7 @@ class ApiService {
   }) async {
     try {
       print('[API] Attempting registration for: $email');
-      
+
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
         headers: _headers,
@@ -154,17 +156,20 @@ class ApiService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final Map<String, dynamic> responseData = data['data'] ?? data;
-        
+
         final user = User.fromJson(responseData);
         print('[API] Registration successful for: ${user.email}');
         return user;
       } else {
         try {
           final error = jsonDecode(response.body);
-          final errorMessage = error['message'] ?? error['error'] ?? 'Registration failed';
+          final errorMessage =
+              error['message'] ?? error['error'] ?? 'Registration failed';
           throw Exception('Registration error: $errorMessage');
         } catch (e) {
-          throw Exception('Registration failed with status ${response.statusCode}');
+          throw Exception(
+            'Registration failed with status ${response.statusCode}',
+          );
         }
       }
     } catch (e) {
@@ -181,9 +186,7 @@ class ApiService {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/refresh'),
         headers: _headers,
-        body: jsonEncode({
-          'refresh_token': refreshToken,
-        }),
+        body: jsonEncode({'refresh_token': refreshToken}),
       );
 
       if (response.statusCode == 200) {
@@ -191,13 +194,13 @@ class ApiService {
         // FIX #1: Handle Golang response wrapper
         final Map<String, dynamic> responseData = data['data'] ?? data;
         final loginResponse = LoginResponse.fromJson(responseData);
-        
+
         await saveTokens(
           loginResponse.accessToken,
           loginResponse.refreshToken,
           loginResponse.expiresIn,
         );
-        
+
         return loginResponse;
       } else {
         throw Exception('Failed to refresh token');
@@ -210,54 +213,9 @@ class ApiService {
   static Future<void> logout() async {
     try {
       final headers = await getHeaders();
-      await http.post(
-        Uri.parse('$baseUrl/auth/logout'),
-        headers: headers,
-      );
+      await http.post(Uri.parse('$baseUrl/auth/logout'), headers: headers);
     } finally {
       await clearTokens();
-    }
-  }
-
-  // Attendance APIs
-  static Future<Map<String, dynamic>> clockIn({
-    required String employeeId,
-    required double latitude,
-    required double longitude,
-    required String photoPath,
-  }) async {
-    try {
-      // Check if token expired
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/attendance/clock-in'),
-      );
-
-      final headers = await getHeaders();
-      request.headers.addAll(headers);
-
-      // Add fields
-      request.fields['employee_id'] = employeeId;
-      request.fields['latitude'] = latitude.toString();
-      request.fields['longitude'] = longitude.toString();
-
-      // Add photo
-      request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
-
-      final response = await request.send();
-      final responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(responseData);
-      } else {
-        throw Exception('Clock in failed: ${response.reasonPhrase}');
-      }
-    } catch (e) {
-      throw Exception('Clock in error: $e');
     }
   }
 
@@ -310,20 +268,17 @@ class ApiService {
 
       var url = '$baseUrl/attendance/history';
       var params = <String, String>{};
-      
+
       if (month != null) params['month'] = month.toString();
       if (year != null) params['year'] = year.toString();
       if (status != null) params['status'] = status;
-      
+
       if (params.isNotEmpty) {
         url += '?' + Uri(queryParameters: params).query;
       }
 
       final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse(url),
-        headers: headers,
-      );
+      final response = await http.get(Uri.parse(url), headers: headers);
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -338,28 +293,6 @@ class ApiService {
       }
     } catch (e) {
       throw Exception('History error: $e');
-    }
-  }
-
-  static Future<Map<String, dynamic>> getTodayAttendance() async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl/attendance/today'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to get today attendance');
-      }
-    } catch (e) {
-      throw Exception('Today attendance error: $e');
     }
   }
 
@@ -467,7 +400,9 @@ class ApiService {
       request.fields['reason'] = reason;
 
       if (attachmentPath != null) {
-        request.files.add(await http.MultipartFile.fromPath('attachment', attachmentPath));
+        request.files.add(
+          await http.MultipartFile.fromPath('attachment', attachmentPath),
+        );
       }
 
       final response = await request.send();
@@ -510,4 +445,379 @@ class ApiService {
       throw Exception('Leave requests error: $e');
     }
   }
+
+  // lib/services/api_service.dart - Tambahkan method baru
+
+  // Check face registration status
+  static Future<Map<String, dynamic>> checkFaceStatus() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/face/status'),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data'] ?? {};
+      } else {
+        throw Exception('Failed to check face status');
+      }
+    } catch (e) {
+      throw Exception('Face status error: $e');
+    }
+  }
+
+  // Register face (first login)
+  static Future<void> registerFace({
+    required String userId,
+    required List<double> faceEmbedding,
+    required String faceImage,
+  }) async {
+    try {
+      print('[API] Registering face for user: $userId');
+      print('[API] Embedding length: ${faceEmbedding.length}');
+      print('[API] Embedding sample: ${faceEmbedding.take(5).join(", ")}...');
+
+      if (await isTokenExpired()) {
+        print('[API] Token expired, refreshing...');
+        await refreshToken();
+      }
+
+      // Get token for Authorization header
+      final token = await getAccessToken();
+
+      // Decode base64 image to bytes
+      final imageBytes = base64Decode(faceImage);
+
+      // Create temporary file
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File(
+        '${tempDir.path}/face_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await tempFile.writeAsBytes(imageBytes);
+
+      print('[API] Temporary file created: ${tempFile.path}');
+      print('[API] Image size: ${imageBytes.length} bytes');
+
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/face/register'),
+      );
+
+      // Add headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      // Add embedding as JSON string
+      request.fields['face_embedding'] = jsonEncode(faceEmbedding);
+
+      // Add photo file
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          tempFile.path,
+          filename: 'face_${userId}.jpg',
+        ),
+      );
+
+      print('[API] Sending multipart request...');
+      print('[API] Fields: ${request.fields.keys}');
+      print('[API] Files: ${request.files.length}');
+
+      // Send request
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('[API] Register face response status: ${response.statusCode}');
+      print('[API] Register face response body: ${response.body}');
+
+      // Clean up temp file
+      await tempFile.delete();
+
+      if (response.statusCode == 200) {
+        print('[API] Face registered successfully');
+        return;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Failed to register face');
+      }
+    } catch (e) {
+      print('[API] Register face error: $e');
+      throw Exception('Register face error: $e');
+    }
+  }
+
+  // Verify face for attendance
+  static Future<Map<String, dynamic>> verifyFace({
+    required List<double> faceEmbedding,
+    double threshold = 0.6,
+  }) async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http.post(
+        Uri.parse('$baseUrl/face/verify'),
+        headers: headers,
+        body: jsonEncode({
+          'face_embedding': faceEmbedding,
+          'threshold': threshold,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data'] ?? {};
+      } else {
+        throw Exception('Face verification failed');
+      }
+    } catch (e) {
+      throw Exception('Verify face error: $e');
+    }
+  }
+
+  // Update clockIn method to include face verification
+  static Future<Map<String, dynamic>> clockIn({
+    required String employeeId,
+    required double latitude,
+    required double longitude,
+    required String photoPath,
+  }) async {
+    try {
+      // Check if token expired
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/attendance/clock-in'),
+      );
+
+      final headers = await getHeaders();
+      request.headers.addAll(headers);
+
+      // Add fields
+      request.fields['employee_id'] = employeeId;
+      request.fields['latitude'] = latitude.toString();
+      request.fields['longitude'] = longitude.toString();
+
+      // Add photo
+      request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
+
+      final response = await request.send();
+      final responseData = await response.stream.bytesToString();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(responseData);
+      } else {
+        throw Exception('Clock in failed: ${response.reasonPhrase}');
+      }
+    } catch (e) {
+      throw Exception('Clock in error: $e');
+    }
+  }
+
+  static Future<AttendanceProcessResult> processAttendance({
+    required String recordType,
+    required double latitude,
+    required double longitude,
+    required String photoPath,
+  }) async {
+    try {
+      print('[API] Processing $recordType...');
+
+      if (await isTokenExpired()) {
+        print('[API] Token expired, refreshing...');
+        await refreshToken();
+      }
+
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('Token tidak ditemukan. Silakan login ulang.');
+      }
+
+      print(
+        '[API] Token (first 20 chars): ${token.substring(0, token.length > 20 ? 20 : token.length)}...',
+      );
+      print('[API] Token length: ${token.length}');
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/attendance/process'),
+      );
+
+      // Pastikan header Authorization dikirim
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      print('[API] Request headers: ${request.headers}');
+
+      request.fields['record_type'] = recordType;
+      request.fields['latitude'] = latitude.toString();
+      request.fields['longitude'] = longitude.toString();
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          photoPath,
+          filename: 'attendance_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      print('[API] Sending request with fields: ${request.fields}');
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('[API] Process attendance response status: ${response.statusCode}');
+      print('[API] Process attendance response body: ${response.body}');
+
+      final jsonResponse = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return AttendanceProcessResult.fromJson(
+          jsonResponse['data'] ?? jsonResponse,
+        );
+      } else if (response.statusCode == 401) {
+        // Token mungkin expired atau tidak valid
+        await clearTokens();
+        throw Exception('Sesi telah berakhir. Silakan login ulang.');
+      } else {
+        throw Exception(
+          jsonResponse['message'] ?? 'Failed to process attendance',
+        );
+      }
+    } catch (e) {
+      print('[API] Process attendance error: $e');
+      throw Exception('Process attendance error: $e');
+    }
+  }
+
+  // Get today's attendance
+  static Future<AttendanceRecord?> getTodayAttendance() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http.get(
+        Uri.parse('$baseUrl/attendance/today'),
+        headers: headers,
+      );
+
+      print('[API] Get today attendance response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        if (jsonResponse['data'] != null) {
+          return AttendanceRecord.fromJson(jsonResponse['data']);
+        }
+        return null;
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('[API] Get today attendance error: $e');
+      return null;
+    }
+  }
+
+  // Get monthly attendance
+  static Future<MonthlyAttendanceSummary> getMonthlyAttendance({
+    int? month,
+    int? year,
+  }) async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final now = DateTime.now();
+      final queryMonth = month ?? now.month;
+      final queryYear = year ?? now.year;
+
+      final headers = await getHeaders();
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/attendance/monthly?month=$queryMonth&year=$queryYear',
+        ),
+        headers: headers,
+      );
+
+      print('[API] Get monthly attendance response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+        return MonthlyAttendanceSummary.fromJson(jsonResponse['data'] ?? {});
+      } else {
+        throw Exception('Failed to get monthly attendance');
+      }
+    } catch (e) {
+      print('[API] Get monthly attendance error: $e');
+      throw Exception('Get monthly attendance error: $e');
+    }
+  }
+
+  static Future<void> saveUserId(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_id', userId);
+    print('[API] User ID saved: $userId');
+  }
+
+  static Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id');
+  }
 }
+  // lib/services/api_service.dart - Tambahkan method extractEmbedding
+
+// Extract face embedding from image
+// static Future<List<double>> extractFaceEmbedding(String imagePath) async {
+//   try {
+//     if (await isTokenExpired()) {
+//       await refreshToken();
+//     }
+
+//     final token = await getAccessToken();
+    
+//     var request = http.MultipartRequest(
+//       'POST',
+//       Uri.parse('$baseUrl/face/extract-embedding'), // Sesuaikan dengan endpoint
+//     );
+
+//     request.headers.addAll({
+//       'Authorization': 'Bearer $token',
+//     });
+
+//     request.files.add(
+//       await http.MultipartFile.fromPath('photo', imagePath),
+//     );
+
+//     final streamedResponse = await request.send();
+//     final response = await http.Response.fromStream(streamedResponse);
+
+//     if (response.statusCode == 200) {
+//       final data = jsonDecode(response.body);
+//       // Asumsikan response punya field 'embedding'
+//       return List<double>.from(data['embedding'] ?? []);
+//     } else {
+//       throw Exception('Failed to extract face embedding');
+//     }
+//   } catch (e) {
+//     throw Exception('Extract embedding error: $e');
+//   }
+// }
+// }

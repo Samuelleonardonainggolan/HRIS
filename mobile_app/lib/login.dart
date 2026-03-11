@@ -1,10 +1,10 @@
-// lib/pages/login_page.dart (bagian yang diupdate)
+// lib/login.dart - Update Login Logic
 import 'package:flutter/material.dart';
-import 'package:mobile_app/theme/app_theme.dart';
-import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/pages/face_registration.dart';
 import 'package:mobile_app/main_navigation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/widgets/custom_button.dart';
+import 'package:mobile_app/theme/app_theme.dart';
 
 class EmployeeLoginPage extends StatefulWidget {
   const EmployeeLoginPage({super.key});
@@ -13,729 +13,307 @@ class EmployeeLoginPage extends StatefulWidget {
   State<EmployeeLoginPage> createState() => _EmployeeLoginPageState();
 }
 
-class _EmployeeLoginPageState extends State<EmployeeLoginPage>
-    with SingleTickerProviderStateMixin {
-  bool isPasswordVisible = false;
+class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
-
-  bool _isKeyboardVisible = false;
+  bool _isPasswordVisible = false;
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
-      ),
-    );
-
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
-          ),
-        );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
-      ),
-    );
-
-    _animationController.forward();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final newKeyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
-    if (_isKeyboardVisible != newKeyboardVisible) {
-      setState(() {
-        _isKeyboardVisible = newKeyboardVisible;
-      });
-    }
-  }
+  bool _rememberMe = false;
 
   @override
   void dispose() {
-    _animationController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false, // Mencegah back ke halaman sebelumnya
-      child: Scaffold(
-        resizeToAvoidBottomInset: false,
-        body: Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                AppTheme.primaryColor,
-                AppTheme.secondaryColor,
-                Color(0xFF6A9CF8),
-                Color(0xFFF6F6F8),
-                Color(0xFFF6F6F8),
-              ],
-              stops: [0.0, 0.2, 0.4, 0.8, 1.0],
-            ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: EdgeInsets.only(
-                        left: 24,
-                        right: 24,
-                        top: 20,
-                        bottom: _isKeyboardVisible ? 20 : 40,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildLogoSection(),
-                          const SizedBox(height: 30),
-                          _buildHeaderText(),
-                          const SizedBox(height: 40),
-                          Form(
-                            key: _formKey,
-                            child: Column(
-                              children: [
-                                _buildEmailField(),
-                                const SizedBox(height: 16),
-                                _buildPasswordField(),
-                                const SizedBox(height: 24),
-                                _buildLoginButton(),
-                                const SizedBox(height: 20),
-                                _buildForgotPassword(),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ================= LOGO SECTION =================
-  Widget _buildLogoSection() {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 1000),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.elasticOut,
-      builder: (context, double value, child) {
-        return Transform.scale(
-          scale: value,
-          child: Container(
-            height: 90,
-            width: 90,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  blurRadius: 25,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(25),
-              child: Image.asset(
-                'assets/Del_Institute_of_Technology_Logo.png',
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.white,
-                    child: const Icon(
-                      Icons.apartment,
-                      size: 50,
-                      color: AppTheme.primaryColor,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ================= HEADER TEXT =================
-  Widget _buildHeaderText() {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 800),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.easeOut,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Column(
-              children: [
-                const Text(
-                  "Welcome Back!",
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: -0.5,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  "Sign in to continue",
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ================= EMAIL FIELD =================
-  Widget _buildEmailField() {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 500),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.easeOut,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 20,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                onTap: () {
-                  setState(() {
-                    _isKeyboardVisible = true;
-                  });
-                },
-                onEditingComplete: () {
-                  FocusScope.of(context).unfocus();
-                  setState(() {
-                    _isKeyboardVisible = false;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: "Email Address",
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                  prefixIcon: const Icon(
-                    Icons.email_outlined,
-                    color: AppTheme.primaryColor,
-                  ),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: AppTheme.primaryColor,
-                      width: 2,
-                    ),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: AppTheme.errorColor,
-                      width: 1,
-                    ),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(
-                      color: AppTheme.errorColor,
-                      width: 2,
-                    ),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Email harus diisi';
-                  }
-                  if (!value.contains('@') || !value.contains('.')) {
-                    return 'Format email tidak valid';
-                  }
-                  return null;
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ================= PASSWORD FIELD =================
-  Widget _buildPasswordField() {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 600),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.easeOut,
-      builder: (context, double value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 20 * (1 - value)),
-            child: Column(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 20,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: TextFormField(
-                    controller: _passwordController,
-                    obscureText: !isPasswordVisible,
-                    textInputAction: TextInputAction.done,
-                    onTap: () {
-                      setState(() {
-                        _isKeyboardVisible = true;
-                      });
-                    },
-                    onEditingComplete: () {
-                      FocusScope.of(context).unfocus();
-                      setState(() {
-                        _isKeyboardVisible = false;
-                      });
-                    },
-                    onFieldSubmitted: (_) {
-                      _handleLogin();
-                    },
-                    decoration: InputDecoration(
-                      hintText: "Password",
-                      hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                      prefixIcon: const Icon(
-                        Icons.lock_outline,
-                        color: AppTheme.primaryColor,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          isPasswordVisible
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                          color: AppTheme.primaryColor,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            isPasswordVisible = !isPasswordVisible;
-                          });
-                        },
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(
-                          color: AppTheme.primaryColor,
-                          width: 2,
-                        ),
-                      ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(
-                          color: AppTheme.errorColor,
-                          width: 1,
-                        ),
-                      ),
-                      focusedErrorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: const BorderSide(
-                          color: AppTheme.errorColor,
-                          width: 2,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Password harus diisi';
-                      }
-                      if (value.length < 6) {
-                        return 'Password minimal 6 karakter';
-                      }
-                      return null;
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ================= FORGOT PASSWORD =================
-  Widget _buildForgotPassword() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton(
-          onPressed: _showForgotPasswordDialog,
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(50, 30),
-          ),
-          child: const Text(
-            "Forgot Password?",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ================= LOGIN BUTTON =================
-  Widget _buildLoginButton() {
-    return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 700),
-      tween: Tween<double>(begin: 0, end: 1),
-      curve: Curves.easeOutBack,
-      builder: (context, double value, child) {
-        return Transform.scale(
-          scale: 0.8 + (0.2 * value),
-          child: Opacity(
-            opacity: value,
-            child: SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppTheme.primaryColor,
-                  elevation: 8,
-                  shadowColor: AppTheme.primaryColor.withOpacity(0.3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                ),
-                onPressed: _handleLogin,
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Login",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 20),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ================= FUNCTIONS =================
-void _handleLogin() async {
-  // Unfocus keyboard
-  FocusScope.of(context).unfocus();
-  setState(() {
-    _isKeyboardVisible = false;
-  });
-  
-  // Validasi form
-  if (_formKey.currentState != null && _formKey.currentState!.validate()) {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      // Panggil API login
-      final response = await ApiService.login(
-        _emailController.text,
-        _passwordController.text,
-      );
-
-      // Simpan user ID ke SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('user_id', response.user.id);
-      await prefs.setString('user_name', response.user.fullName);
-      await prefs.setString('user_role', response.user.role);
-      await prefs.setString('user_department', response.user.department);
-
+  Future<void> _handleLogin() async {
+    if (_formKey.currentState?.validate() ?? false) {
       setState(() {
-        _isLoading = false;
+        _isLoading = true;
       });
 
-      _showLoginSuccess();
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Login gagal: $e'),
-          backgroundColor: AppTheme.errorColor,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      try {
+        final response = await ApiService.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+
+        if (!mounted) return;
+
+        // Cek apakah perlu registrasi face (first login)
+        final requiresFaceRegistration = response.requiresFaceRegistration ?? false;
+        
+        if (requiresFaceRegistration) {
+          // First login - arahkan ke halaman registrasi face
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => FaceRegistrationPage(
+                userId: response.user.id,
+              ),
+            ),
+          );
+        } else {
+          // Normal login - langsung ke home
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const MainNavigationPage(),
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Login gagal: ${e.toString()}'),
+            backgroundColor: AppTheme.errorColor,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
-}
 
-  void _showLoginSuccess() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white),
-            SizedBox(width: 10),
-            Expanded(child: Text("Login successful! Redirecting...")),
-          ],
-        ),
-        backgroundColor: AppTheme.primaryColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-
-    Future.delayed(const Duration(seconds: 1), () {
-      if (mounted) {
-        // Navigasi ke MainNavigation dengan replace
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 800),
-            pageBuilder: (_, __, ___) => const MainNavigationPage(),
-            transitionsBuilder: (_, animation, __, child) {
-              return FadeTransition(
-                opacity: animation,
-                child: ScaleTransition(scale: animation, child: child),
-              );
-            },
-          ),
-        );
-      }
-    });
-  }
-
-  void _showForgotPasswordDialog() {
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _isKeyboardVisible = false;
-    });
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.white, Color(0xFFF8FAFF)],
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.email_outlined,
-                    color: AppTheme.primaryColor,
-                    size: 35,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  "Forgot Password?",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Enter your email to reset your password",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textSecondary),
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  decoration: InputDecoration(
-                    hintText: "email@company.com",
-                    prefixIcon: const Icon(
-                      Icons.email_outlined,
-                      color: AppTheme.primaryColor,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 40),
+              // Logo and Title
+              Center(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          "Cancel",
-                          style: TextStyle(color: AppTheme.textSecondary),
-                        ),
+                    Container(
+                      width: 100,
+                      height: 100,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.people_outline,
+                        size: 50,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                "Reset link sent to your email",
-                              ),
-                              backgroundColor: AppTheme.primaryColor,
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          "Send",
-                          style: TextStyle(color: Colors.white),
-                        ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'HRIS IT Del',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Human Resource Information System',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ],
                 ),
-              ],
-            ),
+              ),
+              
+              const SizedBox(height: 48),
+
+              // Form
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Email',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan email Anda',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Email tidak boleh kosong';
+                        }
+                        if (!value.contains('@')) {
+                          return 'Format email tidak valid';
+                        }
+                        return null;
+                      },
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    const Text(
+                      'Password',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: !_isPasswordVisible,
+                      decoration: InputDecoration(
+                        hintText: 'Masukkan password Anda',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Password tidak boleh kosong';
+                        }
+                        if (value.length < 6) {
+                          return 'Password minimal 6 karakter';
+                        }
+                        return null;
+                      },
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Remember me and Forgot password
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Checkbox(
+                              value: _rememberMe,
+                              onChanged: (value) {
+                                setState(() {
+                                  _rememberMe = value ?? false;
+                                });
+                              },
+                              activeColor: AppTheme.primaryColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                            const Text(
+                              'Ingat saya',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            // Handle forgot password
+                          },
+                          child: const Text(
+                            'Lupa Password?',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 32),
+                    
+                    // Login button
+                    CustomButton(
+                      text: 'Login',
+                      onPressed: _handleLogin,
+                      isLoading: _isLoading,
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 24),
+              
+              // Info footer
+              Center(
+                child: Column(
+                  children: [
+                    Text(
+                      '© 2024 IT Del',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Version 1.0.0',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

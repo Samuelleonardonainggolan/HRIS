@@ -3,6 +3,7 @@ import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/login.dart';
 import 'package:mobile_app/splash.dart';
 import 'package:mobile_app/main_navigation.dart';
+import 'package:mobile_app/pages/face_registration.dart';
 
 void main() {
   runApp(const MyApp());
@@ -22,6 +23,9 @@ class MyApp extends StatelessWidget {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const EmployeeLoginPage(),
         '/home': (context) => const MainNavigationPage(),
+        '/face-registration': (context) => FaceRegistrationPage(
+              userId: ModalRoute.of(context)!.settings.arguments as String,
+            ),
       },
     );
   }
