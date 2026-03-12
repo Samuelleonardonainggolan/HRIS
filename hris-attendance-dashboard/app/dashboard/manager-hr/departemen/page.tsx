@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Edit2, Trash2, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { departmentApi } from "@/lib/api/department";
+import { employeeService } from "@/lib/api/employee";
+import toast from "react-hot-toast";
 
 interface Department {
   id: string;
@@ -20,46 +23,54 @@ interface Department {
 export default function DepartmentsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    loadDepartments();
+  }, []);
+  
+  const loadDepartments = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await departmentApi.getAll();
 
-  // Mock data
-  const departments: Department[] = [
-    {
-      id: "1",
-      name: "Front Office",
-      icon: "🏢",
-      managerName: "Budi Santoso",
-      managerTitle: "Kepala",
-      totalStaff: 15,
-      status: "Aktif",
-    },
-    {
-      id: "2",
-      name: "Housekeeping",
-      icon: "🏨",
-      managerName: "Siti Aminah",
-      managerTitle: "Kepala",
-      totalStaff: 25,
-      status: "Aktif",
-    },
-    {
-      id: "3",
-      name: "Food & Beverage",
-      icon: "🍽️",
-      managerName: "Chef Juna",
-      managerTitle: "Kepala",
-      totalStaff: 30,
-      status: "Aktif",
-    },
-    {
-      id: "4",
-      name: "Security",
-      icon: "🛡️",
-      managerName: "Agus Supriyanto",
-      managerTitle: "Kepala",
-      totalStaff: 12,
-      status: "Nonaktif",
-    },
-  ];
+      let staffCountByDepartmentId: Record<string, number> = {};
+      try {
+        const employees = await employeeService.getAllEmployees();
+        staffCountByDepartmentId = employees.reduce<Record<string, number>>(
+          (acc, emp) => {
+            const deptId = emp.department_id;
+            if (!deptId) return acc;
+            acc[deptId] = (acc[deptId] || 0) + 1;
+            return acc;
+          },
+          {}
+        );
+      } catch (err) {
+        console.error("Failed to fetch employees for staff count:", err);
+      }
+
+      const mapped: Department[] = data.map((d) => ({
+        id: d.id,
+        name: d.name,
+        icon: d.icon || "🏢",
+        managerName: d.managerName || "-",
+        managerTitle: "Kepala",
+        totalStaff: staffCountByDepartmentId[d.id] ?? d.totalEmployees ?? 0,
+        status: d.isActive ? "Aktif" : "Nonaktif",
+      }));
+      setDepartments(mapped);
+    } catch (err) {
+      setError("Gagal memuat departemen");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const filteredDepartments = departments.filter((dept) =>
     dept.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -71,14 +82,18 @@ export default function DepartmentsPage() {
   };
 
   const handleEdit = (id: string) => {
-    // Navigate to edit page
-    router.push(`/dashboard/manager-hr/departments/edit/${id}`);
+    router.push(`/dashboard/manager-hr/departemen/tambah-departemen?edit=${id}`);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm("Apakah Anda yakin ingin menghapus departemen ini?")) {
-      console.log("Delete department:", id);
-      // TODO: Implement delete logic
+  const handleDelete = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus departemen ini?")) return;
+    try {
+      await departmentApi.delete(id);
+      toast.success("Departemen berhasil dihapus");
+      await loadDepartments();
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal menghapus departemen");
     }
   };
 
@@ -86,6 +101,12 @@ export default function DepartmentsPage() {
     <div className="p-6">
       <Card>
         <CardContent className="p-6">
+          {loading && (
+            <div className="mb-4 text-sm text-gray-600">Memuat departemen...</div>
+          )}
+          {error && (
+            <div className="mb-4 text-sm text-red-600">{error}</div>
+          )}
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-900">

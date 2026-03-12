@@ -106,6 +106,7 @@ export interface Department {
   code: string;
   name: string;
   description?: string;
+  icon?: string;
   managerId?: string;
   managerName?: string;
   totalEmployees?: number;

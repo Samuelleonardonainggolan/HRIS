@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,9 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { departmentApi } from "@/lib/api/department";
+import toast from "react-hot-toast";
 
 export default function AddDepartmentPage() {
   const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     code: "",
     name: "",
@@ -47,23 +52,68 @@ export default function AddDepartmentPage() {
     router.back();
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const editId = params.get("edit");
+    if (editId) {
+      setEditingId(editId);
+      loadDepartment(editId);
+    }
+  }, []);
+
+  const loadDepartment = async (id: string) => {
+    try {
+      const d = await departmentApi.getById(id);
+      setFormData({
+        code: d.code || "",
+        name: d.name || "",
+        description: d.description || "",
+        icon: d.icon || "🏢",
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Gagal memuat data departemen");
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validation
+    setIsSubmitting(true);
+    setError(null);
+
     if (!formData.name.trim()) {
-      alert("Nama departemen wajib diisi");
+      setError("Nama departemen wajib diisi");
+      setIsSubmitting(false);
       return;
     }
-    
-    // TODO: Implement save logic (API call)
-    console.log("Form data:", formData);
-    
-    // Show success message
-    alert("Departemen berhasil ditambahkan!");
-    
-    // Redirect back to departments list
-    router.push("/dashboard/manager-hr/departments");
+
+    try {
+      if (editingId) {
+        await departmentApi.update(editingId, {
+          code: formData.code || undefined,
+          name: formData.name,
+          description: formData.description || undefined,
+          icon: formData.icon || undefined,
+        });
+        toast.success("Departemen berhasil diperbarui");
+      } else {
+        await departmentApi.create({
+          code: formData.code || undefined,
+          name: formData.name,
+          description: formData.description || undefined,
+          icon: formData.icon || undefined,
+        });
+        toast.success("Departemen berhasil ditambahkan");
+      }
+      router.push("/dashboard/manager-hr/departemen");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal menyimpan departemen";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -105,7 +155,10 @@ export default function AddDepartmentPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
+                {error && (
+                  <div className="mb-2 text-sm text-red-600">{error}</div>
+                )}
               {/* Nama Departemen */}
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-medium text-gray-700">
@@ -199,8 +252,9 @@ export default function AddDepartmentPage() {
                 <Button
                   type="submit"
                   className="px-6 bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={isSubmitting}
                 >
-                  Simpan Departemen
+                  {isSubmitting ? "Menyimpan..." : editingId ? "Simpan Perubahan" : "Simpan Departemen"}
                 </Button>
               </div>
             </form>
