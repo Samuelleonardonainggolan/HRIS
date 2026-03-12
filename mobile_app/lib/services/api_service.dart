@@ -10,7 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 class ApiService {
   static const String baseUrl =
-      'http://10.233.32.215:8080/api/v1'; // Untuk emulator Android
+      'http://10.218.68.218:8080/api/v1'; // Untuk emulator Android
   // static const String baseUrl = 'http://localhost:8080/api/v1'; // Untuk web
   //static const String baseUrl = 'http://192.168.1.100:8080/api/v1'; // Untuk device fisik (ganti dengan IP komputer)
 
@@ -72,7 +72,6 @@ class ApiService {
     return _headers;
   }
 
-  // Auth APIs
   static Future<LoginResponse> login(String email, String password) async {
     try {
       print('[API] Attempting login for: $email');
@@ -89,6 +88,13 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final Map<String, dynamic> responseData = data['data'] ?? data;
+
+        // Log untuk debugging
+        print('[API] Response data: $responseData');
+        print(
+          '[API] requires_face_registration value: ${responseData['requires_face_registration']}',
+        );
+
         final loginResponse = LoginResponse.fromJson(responseData);
 
         // Save tokens
@@ -98,10 +104,14 @@ class ApiService {
           loginResponse.expiresIn,
         );
 
-        // SAVE USER ID - TAMBAHKAN
+        // SAVE USER ID
         await saveUserId(loginResponse.user.id);
 
         print('[API] Login successful for user: ${loginResponse.user.id}');
+        print(
+          '[API] requiresFaceRegistration: ${loginResponse.requiresFaceRegistration}',
+        );
+
         return loginResponse;
       } else {
         try {
@@ -446,12 +456,14 @@ class ApiService {
     }
   }
 
-  // lib/services/api_service.dart - Tambahkan method baru
+  // lib/services/api_service.dart - Perbaiki checkFaceStatus
 
-  // Check face registration status
   static Future<Map<String, dynamic>> checkFaceStatus() async {
     try {
+      print('[API] Checking face status...');
+
       if (await isTokenExpired()) {
+        print('[API] Token expired, refreshing...');
         await refreshToken();
       }
 
@@ -461,14 +473,34 @@ class ApiService {
         headers: headers,
       );
 
+      print('[API] Face status response status: ${response.statusCode}');
+      print('[API] Face status response body: ${response.body}');
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['data'] ?? {};
+
+        // Handle berbagai format response
+        bool hasFaceRegistered = false;
+
+        if (data['data'] != null) {
+          hasFaceRegistered = data['data']['has_face_registered'] == true;
+        } else if (data['has_face_registered'] != null) {
+          hasFaceRegistered = data['has_face_registered'] == true;
+        }
+
+        print('[API] hasFaceRegistered: $hasFaceRegistered');
+
+        return {'has_face_registered': hasFaceRegistered};
       } else {
-        throw Exception('Failed to check face status');
+        print(
+          '[API] Face status error (${response.statusCode}), assuming not registered',
+        );
+        // Jika 404, berarti endpoint belum ada, anggap belum registrasi
+        return {'has_face_registered': false};
       }
     } catch (e) {
-      throw Exception('Face status error: $e');
+      print('[API] Face status error: $e');
+      return {'has_face_registered': false};
     }
   }
 
@@ -481,14 +513,12 @@ class ApiService {
     try {
       print('[API] Registering face for user: $userId');
       print('[API] Embedding length: ${faceEmbedding.length}');
-      print('[API] Embedding sample: ${faceEmbedding.take(5).join(", ")}...');
 
       if (await isTokenExpired()) {
         print('[API] Token expired, refreshing...');
         await refreshToken();
       }
 
-      // Get token for Authorization header
       final token = await getAccessToken();
 
       // Decode base64 image to bytes
@@ -504,11 +534,12 @@ class ApiService {
       print('[API] Temporary file created: ${tempFile.path}');
       print('[API] Image size: ${imageBytes.length} bytes');
 
+      // PERBAIKAN: Gunakan endpoint yang benar - kirim userId di form, bukan di path
+      final url = '$baseUrl/face/register';
+      print('[API] URL: $url');
+
       // Create multipart request
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/face/register'),
-      );
+      var request = http.MultipartRequest('POST', Uri.parse(url));
 
       // Add headers
       request.headers.addAll({
@@ -516,7 +547,8 @@ class ApiService {
         'Accept': 'application/json',
       });
 
-      // Add embedding as JSON string
+      // Add fields - userId dikirim sebagai form field
+      request.fields['user_id'] = userId;
       request.fields['face_embedding'] = jsonEncode(faceEmbedding);
 
       // Add photo file
@@ -524,7 +556,7 @@ class ApiService {
         await http.MultipartFile.fromPath(
           'photo',
           tempFile.path,
-          filename: 'face_${userId}.jpg',
+          filename: 'face.jpg', // Nama file sederhana
         ),
       );
 
@@ -532,22 +564,24 @@ class ApiService {
       print('[API] Fields: ${request.fields.keys}');
       print('[API] Files: ${request.files.length}');
 
-      // Send request
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
       print('[API] Register face response status: ${response.statusCode}');
       print('[API] Register face response body: ${response.body}');
 
-      // Clean up temp file
       await tempFile.delete();
 
       if (response.statusCode == 200) {
         print('[API] Face registered successfully');
         return;
       } else {
-        final error = jsonDecode(response.body);
-        throw Exception(error['message'] ?? 'Failed to register face');
+        try {
+          final error = jsonDecode(response.body);
+          throw Exception(error['message'] ?? 'Failed to register face');
+        } catch (e) {
+          throw Exception('Failed to register face: ${response.body}');
+        }
       }
     } catch (e) {
       print('[API] Register face error: $e');
@@ -647,27 +681,20 @@ class ApiService {
         throw Exception('Token tidak ditemukan. Silakan login ulang.');
       }
 
-      print(
-        '[API] Token (first 20 chars): ${token.substring(0, token.length > 20 ? 20 : token.length)}...',
-      );
-      print('[API] Token length: ${token.length}');
-
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('$baseUrl/attendance/process'),
       );
 
-      // Pastikan header Authorization dikirim
       request.headers.addAll({
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
       });
 
-      print('[API] Request headers: ${request.headers}');
-
       request.fields['record_type'] = recordType;
       request.fields['latitude'] = latitude.toString();
       request.fields['longitude'] = longitude.toString();
+
       request.files.add(
         await http.MultipartFile.fromPath(
           'photo',
@@ -687,11 +714,8 @@ class ApiService {
       final jsonResponse = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
-        return AttendanceProcessResult.fromJson(
-          jsonResponse['data'] ?? jsonResponse,
-        );
+        return AttendanceProcessResult.fromJson(jsonResponse);
       } else if (response.statusCode == 401) {
-        // Token mungkin expired atau tidak valid
         await clearTokens();
         throw Exception('Sesi telah berakhir. Silakan login ulang.');
       } else {
@@ -781,43 +805,71 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('user_id');
   }
+
+  // Extract face embedding from image
+  static Future<List<double>> extractFaceEmbedding(String imagePath) async {
+    try {
+      print('[API] Extracting face embedding from: $imagePath');
+
+      if (await isTokenExpired()) {
+        print('[API] Token expired, refreshing...');
+        await refreshToken();
+      }
+
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('Token tidak ditemukan');
+      }
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/face/extract-embedding'),
+      );
+
+      request.headers.addAll({'Authorization': 'Bearer $token'});
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          imagePath,
+          filename: 'face_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      print('[API] Sending extract embedding request...');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('[API] Extract embedding response status: ${response.statusCode}');
+      print('[API] Extract embedding response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        // Handle berbagai format response
+        List<double> embedding = [];
+
+        if (data['data'] != null && data['data']['embedding'] != null) {
+          embedding = List<double>.from(data['data']['embedding']);
+        } else if (data['embedding'] != null) {
+          embedding = List<double>.from(data['embedding']);
+        } else {
+          throw Exception('Embedding tidak ditemukan dalam response');
+        }
+
+        // Validasi embedding
+        if (embedding.isEmpty) {
+          throw Exception('Tidak ada wajah terdeteksi dalam foto');
+        }
+
+        return embedding;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Gagal mengekstrak face embedding');
+      }
+    } catch (e) {
+      print('[API] Extract embedding error: $e');
+      throw Exception('Gagal mengekstrak embedding: $e');
+    }
+  }
 }
-  // lib/services/api_service.dart - Tambahkan method extractEmbedding
-
-// Extract face embedding from image
-// static Future<List<double>> extractFaceEmbedding(String imagePath) async {
-//   try {
-//     if (await isTokenExpired()) {
-//       await refreshToken();
-//     }
-
-//     final token = await getAccessToken();
-    
-//     var request = http.MultipartRequest(
-//       'POST',
-//       Uri.parse('$baseUrl/face/extract-embedding'), // Sesuaikan dengan endpoint
-//     );
-
-//     request.headers.addAll({
-//       'Authorization': 'Bearer $token',
-//     });
-
-//     request.files.add(
-//       await http.MultipartFile.fromPath('photo', imagePath),
-//     );
-
-//     final streamedResponse = await request.send();
-//     final response = await http.Response.fromStream(streamedResponse);
-
-//     if (response.statusCode == 200) {
-//       final data = jsonDecode(response.body);
-//       // Asumsikan response punya field 'embedding'
-//       return List<double>.from(data['embedding'] ?? []);
-//     } else {
-//       throw Exception('Failed to extract face embedding');
-//     }
-//   } catch (e) {
-//     throw Exception('Extract embedding error: $e');
-//   }
-// }
-// }

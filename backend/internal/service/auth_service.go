@@ -18,80 +18,91 @@ type AuthService interface {
 	Register(ctx context.Context, req models.RegisterRequest) (*models.UserResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.LoginResponse, error)
 	Logout(ctx context.Context, userID string) error
+	GetFaceRegistrationStatus(ctx context.Context, userID string) (bool, error) // Tambahkan interface method
 }
 
 type authService struct {
-	userRepo  repository.UserRepository
-	jwtSecret string
-	jwtExpiry string
+	userRepo          repository.UserRepository
+	faceEmbeddingRepo repository.FaceEmbeddingRepository // TAMBAHKAN FIELD INI
+	jwtSecret         string
+	jwtExpiry         string
 }
 
-func NewAuthService(userRepo repository.UserRepository, jwtSecret, jwtExpiry string) AuthService {
+// UPDATE CONSTRUCTOR - Tambahkan faceEmbeddingRepo sebagai parameter
+func NewAuthService(
+	userRepo repository.UserRepository,
+	faceEmbeddingRepo repository.FaceEmbeddingRepository, // TAMBAHKAN PARAMETER
+	jwtSecret,
+	jwtExpiry string,
+) AuthService {
 	return &authService{
-		userRepo:  userRepo,
-		jwtSecret: jwtSecret,
-		jwtExpiry: jwtExpiry,
+		userRepo:          userRepo,
+		faceEmbeddingRepo: faceEmbeddingRepo, // SIMPAN KE STRUCT
+		jwtSecret:         jwtSecret,
+		jwtExpiry:         jwtExpiry,
 	}
+}
+
+// GetFaceRegistrationStatus - Method untuk cek status face
+func (s *authService) GetFaceRegistrationStatus(ctx context.Context, userID string) (bool, error) {
+	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	return faceEmbedding != nil, nil
 }
 
 func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*models.LoginResponse, error) {
 	log.Printf("🔐 Login attempt - Email: %s", req.Email)
 
-	// Find user by email
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
-	if err != nil {
-		log.Printf("❌ Error finding user: %v", err)
+	if err != nil || user == nil {
 		return nil, errors.New("invalid email or password")
 	}
-
-	if user == nil {
-		log.Printf("❌ User not found in database: %s", req.Email)
-		return nil, errors.New("invalid email or password")
-	}
-
-	log.Printf("✅ User found - Email: %s, Role: %s, Active: %v", user.Email, user.Role, user.IsActive)
-	log.Printf("📝 Password hash in DB: %s...", user.Password[:20]) // Show first 20 chars
 
 	// Check password
-	passwordMatch := auth.CheckPasswordHash(req.Password, user.Password)
-	log.Printf("🔑 Password check - Input: %s, Match: %v", req.Password, passwordMatch)
-
-	if !passwordMatch {
-		log.Printf("❌ Password mismatch for: %s", req.Email)
+	if !auth.CheckPasswordHash(req.Password, user.Password) {
 		return nil, errors.New("invalid email or password")
 	}
 
-	// Check if user is active
 	if !user.IsActive {
-		log.Printf("❌ User account inactive: %s", req.Email)
 		return nil, errors.New("user account is inactive")
 	}
 
-	// Generate access token
+	// Generate tokens
 	accessToken, err := auth.GenerateToken(user.ID.Hex(), user.Role, user.DepartmentName, s.jwtSecret, s.jwtExpiry)
 	if err != nil {
-		log.Printf("❌ Failed to generate access token: %v", err)
 		return nil, errors.New("failed to generate access token")
 	}
 
-	// Generate refresh token
 	refreshToken, err := auth.GenerateToken(user.ID.Hex(), user.Role, user.DepartmentName, s.jwtSecret, "168h")
 	if err != nil {
-		log.Printf("❌ Failed to generate refresh token: %v", err)
 		return nil, errors.New("failed to generate refresh token")
 	}
 
 	expiresIn := time.Now().Add(24 * time.Hour).Unix()
-	userResponse := user.ToResponse()
 
-	log.Printf("✅ Login successful - User ID: %s, Role: %s", user.ID.Hex(), user.Role)
+	// CEK APAKAH USER SUDAH PUNYA FACE EMBEDDING
+	var requiresFaceRegistration bool = true
+	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, user.ID.Hex())
+	if err == nil && faceEmbedding != nil {
+		requiresFaceRegistration = false
+	}
 
-	return &models.LoginResponse{
-		User:         userResponse,
+	log.Printf("✅ Login successful - User ID: %s, requiresFaceRegistration: %v", user.ID.Hex(), requiresFaceRegistration)
+
+	// Buat response dengan field tambahan
+	response := &models.LoginResponse{
+		User:         user.ToResponse(),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
-	}, nil
+	}
+
+	// Simpan requiresFaceRegistration di context atau return value terpisah
+	// Kita akan handle di handler dengan memanggil GetFaceRegistrationStatus lagi
+
+	return response, nil
 }
 
 func (s *authService) Register(ctx context.Context, req models.RegisterRequest) (*models.UserResponse, error) {

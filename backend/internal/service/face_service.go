@@ -4,6 +4,8 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"math"
 	"time"
 
@@ -11,13 +13,34 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type FaceService interface {
 	Health(ctx context.Context) (bool, error)
 	ExtractAndSaveEmbedding(ctx context.Context, userID string, photo []byte, filename string) error
 	ProcessAttendance(ctx context.Context, userID string, latitude, longitude float64, recordType string, photo []byte, filename string) (*faceclient.AttendanceProcessResponse, error)
-	VerifyFaceForAttendance(ctx context.Context, userID string, photo []byte, filename string) (bool, float64, error)
+	ExtractEmbeddingOnly(ctx context.Context, userID string, photo []byte, filename string) ([]float32, error) // TAMBAHKAN INI
+}
+
+// Implementasi method ExtractEmbeddingOnly
+func (s *faceService) ExtractEmbeddingOnly(ctx context.Context, userID string, photo []byte, filename string) ([]float32, error) {
+	log.Printf("[FaceService] ExtractEmbeddingOnly for user: %s", userID)
+
+	// Extract embedding from face client
+	embedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
+	if err != nil {
+		log.Printf("[FaceService] ExtractEmbedding error: %v", err)
+		return nil, fmt.Errorf("extract embedding failed: %w", err)
+	}
+
+	if len(embedding) == 0 {
+		log.Printf("[FaceService] Empty embedding received")
+		return nil, errors.New("embedding kosong")
+	}
+
+	log.Printf("[FaceService] Embedding extracted, length: %d", len(embedding))
+	return embedding, nil
 }
 
 type faceService struct {
@@ -43,25 +66,35 @@ func (s *faceService) Health(ctx context.Context) (bool, error) {
 }
 
 func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string, photo []byte, filename string) error {
+	log.Printf("[FaceService] ExtractAndSaveEmbedding for user: %s", userID)
+
 	// Verify user exists
-	_, err := s.userRepo.FindByID(ctx, userID)
-	if err != nil {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
 		return errors.New("user not found")
 	}
 
-	// Extract embedding from face recognition service
+	// 🔥 EKSTRAK EMBEDDING REAL DARI FACE CLIENT
 	embedding32, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
 	if err != nil {
-		return err
+		log.Printf("[FaceService] ExtractEmbedding error: %v", err)
+		return fmt.Errorf("gagal mengekstrak wajah: %w", err)
 	}
 
 	if len(embedding32) == 0 {
-		return errors.New("embedding kosong")
+		return errors.New("tidak ada wajah terdeteksi dalam foto")
 	}
 
-	// Check if face embedding already exists
+	// Validasi dimensi embedding (harus 128 atau 512)
+	if len(embedding32) != 128 && len(embedding32) != 512 {
+		return errors.New("dimensi embedding tidak valid")
+	}
+
+	log.Printf("[FaceService] Embedding berhasil diekstrak, length: %d", len(embedding32))
+
+	// Check if face already exists for this user
 	existingEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
-	if err != nil {
+	if err != nil && err != mongo.ErrNoDocuments {
 		return err
 	}
 
@@ -93,7 +126,6 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 		return s.faceEmbeddingRepo.Create(ctx, newEmbedding)
 	}
 }
-
 func (s *faceService) VerifyFaceForAttendance(ctx context.Context, userID string, photo []byte, filename string) (bool, float64, error) {
 	// Get stored face embedding
 	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
@@ -193,3 +225,22 @@ func (s *faceService) cosineSimilarity(a, b []float32) float64 {
 
 	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
 }
+
+// func (s *faceService) ExtractEmbeddingOnly(ctx context.Context, userID string, photo []byte, filename string) ([]float32, error) {
+// 	log.Printf("[FaceService] ExtractEmbeddingOnly for user: %s", userID)
+
+// 	// Extract embedding from face client
+// 	embedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
+// 	if err != nil {
+// 		log.Printf("[FaceService] ExtractEmbedding error: %v", err)
+// 		return nil, fmt.Errorf("extract embedding failed: %w", err)
+// 	}
+
+// 	if len(embedding) == 0 {
+// 		log.Printf("[FaceService] Empty embedding received")
+// 		return nil, errors.New("embedding kosong")
+// 	}
+
+// 	log.Printf("[FaceService] Embedding extracted, length: %d", len(embedding))
+// 	return embedding, nil
+// }

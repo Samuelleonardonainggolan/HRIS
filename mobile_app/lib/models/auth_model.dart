@@ -18,42 +18,60 @@ class LoginResponse {
 
   factory LoginResponse.fromJson(Map<String, dynamic> json) {
     print('[LoginResponse] Parsing response: $json');
-    
+
     try {
-      // FIX #2 & #3: Handle both direct response and wrapped response
+      // Handle response wrapper
       final Map<String, dynamic> responseData = json['data'] ?? json;
-      
+
       // Extract user data
       final userData = responseData['user'] ?? responseData;
       final user = User.fromJson(userData);
-      
-      // FIX #2: Convert expiresIn dari Unix timestamp ke seconds jika perlu
+
+      // Parse expiresIn
       int expiresIn = responseData['expires_in'] ?? 3600;
-      
-      // Jika expiresIn adalah Unix timestamp besar (>1000000000), convert ke seconds
       if (expiresIn > 1000000000) {
         expiresIn = expiresIn - DateTime.now().millisecondsSinceEpoch ~/ 1000;
-        if (expiresIn < 0) expiresIn = 3600; // Default 1 hour
+        if (expiresIn < 0) expiresIn = 3600;
       }
 
-      // Get requiresFaceRegistration from response
-      bool? requiresFaceRegistration = responseData['requires_face_registration'];
-      
-      // If not found in responseData, check in data field
-      if (requiresFaceRegistration == null && json['data'] != null) {
-        requiresFaceRegistration = json['data']['requires_face_registration'];
+      // Dapatkan requiresFaceRegistration - CARI DI BEBERAPA TEMPAT
+      bool requiresFaceRegistration = false;
+
+      // 1. Cek di responseData langsung
+      if (responseData.containsKey('requires_face_registration')) {
+        requiresFaceRegistration =
+            responseData['requires_face_registration'] == true;
+        print(
+          '[LoginResponse] Found in responseData: $requiresFaceRegistration',
+        );
+      }
+      // 2. Cek di json.data
+      else if (json.containsKey('data') && json['data'] != null) {
+        if (json['data'].containsKey('requires_face_registration')) {
+          requiresFaceRegistration =
+              json['data']['requires_face_registration'] == true;
+          print(
+            '[LoginResponse] Found in json.data: $requiresFaceRegistration',
+          );
+        }
+      }
+      // 3. Cek di root json
+      else if (json.containsKey('requires_face_registration')) {
+        requiresFaceRegistration = json['requires_face_registration'] == true;
+        print('[LoginResponse] Found in root json: $requiresFaceRegistration');
       }
 
-      final response = LoginResponse(
+      print(
+        '[LoginResponse] FINAL requiresFaceRegistration: $requiresFaceRegistration',
+      );
+
+      return LoginResponse(
         user: user,
         accessToken: responseData['access_token'] ?? '',
         refreshToken: responseData['refresh_token'] ?? '',
         expiresIn: expiresIn,
         requiresFaceRegistration: requiresFaceRegistration,
       );
-      
-      print('[LoginResponse] Parsed successfully - User ID: ${user.id}, requiresFaceRegistration: $requiresFaceRegistration');
-      return response;
     } catch (e) {
       print('[LoginResponse] Parse error: $e');
       rethrow;
@@ -75,16 +93,10 @@ class LoginRequest {
   final String email;
   final String password;
 
-  LoginRequest({
-    required this.email,
-    required this.password,
-  });
+  LoginRequest({required this.email, required this.password});
 
   Map<String, dynamic> toJson() {
-    return {
-      'email': email,
-      'password': password,
-    };
+    return {'email': email, 'password': password};
   }
 }
 
@@ -94,9 +106,7 @@ class RefreshTokenRequest {
   RefreshTokenRequest({required this.refreshToken});
 
   Map<String, dynamic> toJson() {
-    return {
-      'refresh_token': refreshToken,
-    };
+    return {'refresh_token': refreshToken};
   }
 }
 
