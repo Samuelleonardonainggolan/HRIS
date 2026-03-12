@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Geofence, CreateGeofenceRequest } from '@/types/geofence';
 
 interface LocationConfigurationProps {
@@ -18,21 +18,32 @@ export default function LocationConfiguration({
   latitude,
   longitude,
 }: LocationConfigurationProps) {
-  const [formData, setFormData] = useState<CreateGeofenceRequest>({
-    name: '',
-    description: '',
-    latitude: latitude || 0,
-    longitude: longitude || 0,
-    address: '',
-    radius: 150,
-    icon: '📍',
-    color: '#3B82F6',
-    applies_to: 'all',
-  });
+  const key =
+    selectedGeofence?.id ??
+    `${latitude ?? ''}:${longitude ?? ''}`;
 
-  useEffect(() => {
+  return (
+    <LocationConfigurationInner
+      key={key}
+      selectedGeofence={selectedGeofence}
+      onSave={onSave}
+      onCancel={onCancel}
+      latitude={latitude}
+      longitude={longitude}
+    />
+  );
+}
+
+function LocationConfigurationInner({
+  selectedGeofence,
+  onSave,
+  onCancel,
+  latitude,
+  longitude,
+}: LocationConfigurationProps) {
+  const [formData, setFormData] = useState<CreateGeofenceRequest>(() => {
     if (selectedGeofence) {
-      setFormData({
+      return {
         name: selectedGeofence.name,
         description: selectedGeofence.description,
         latitude: selectedGeofence.latitude,
@@ -44,11 +55,21 @@ export default function LocationConfiguration({
         applies_to: selectedGeofence.applies_to,
         department_ids: selectedGeofence.department_ids,
         position_ids: selectedGeofence.position_ids,
-      });
-    } else if (latitude && longitude) {
-      setFormData((prev) => ({ ...prev, latitude, longitude }));
+      };
     }
-  }, [selectedGeofence, latitude, longitude]);
+
+    return {
+      name: '',
+      description: '',
+      latitude: latitude || 0,
+      longitude: longitude || 0,
+      address: '',
+      radius: 150,
+      icon: '📍',
+      color: '#3B82F6',
+      applies_to: 'all',
+    };
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

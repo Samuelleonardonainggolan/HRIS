@@ -31,9 +31,10 @@ export default function GeofencingPage() {
       setError(null);
       const data = await geofenceApi.getAll();
       setGeofences(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load geofences';
       console.error('Error loading geofences:', err);
-      setError(err.message || 'Failed to load geofences');
+      setError(message);
       toast.error('Failed to load geofences');
     } finally {
       setIsLoading(false);
@@ -72,9 +73,10 @@ export default function GeofencingPage() {
       if (selectedGeofence?.id === geofence.id) {
         setSelectedGeofence(null);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to delete geofence';
       console.error('Error deleting geofence:', err);
-      toast.error(err.message || 'Failed to delete geofence');
+      toast.error(message);
     }
   };
 
@@ -95,9 +97,10 @@ export default function GeofencingPage() {
       setIsEditing(false);
       setSelectedGeofence(null);
       setNewLocation(null);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save geofence';
       console.error('Error saving geofence:', err);
-      toast.error(err.message || 'Failed to save geofence');
+      toast.error(message);
     }
   };
 

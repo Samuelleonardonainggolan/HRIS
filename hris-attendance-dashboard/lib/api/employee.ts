@@ -61,22 +61,11 @@ class EmployeeService {
   async createEmployee(employeeData: CreateEmployeeRequest): Promise<CreateEmployeeResponse> {
     try {
       const payload = {
-        payroll_number: employeeData.payrollNumber ?? employeeData.nik,
-        nik: employeeData.nik,
-        email: employeeData.email ?? employeeData.officeEmail,
-        office_email: employeeData.officeEmail,
-        full_name: employeeData.fullName,
-        birth_date: employeeData.birthDate,
-        religion: employeeData.religion,
-        last_education: employeeData.lastEducation,
-        year_enrolled: employeeData.yearEnrolled,
-        employment_status: employeeData.employmentStatus,
-        department_id: employeeData.departmentID ?? employeeData.department,
-        position_id: employeeData.positionID ?? employeeData.position,
-        phone: employeeData.phone ?? employeeData.phoneNumber,
-        phone_number: employeeData.phoneNumber,
-        address: employeeData.address,
-        role: employeeData.role ?? 'staf',
+        ...employeeData,
+        payroll_number: employeeData.payroll_number || employeeData.nik || "",
+        office_email: employeeData.office_email ?? employeeData.email,
+        phone_number: employeeData.phone_number ?? employeeData.phone,
+        role: employeeData.role || "staf",
       };
 
       const response = await fetch(`${API_URL}/employees`, {

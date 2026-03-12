@@ -1,0 +1,15 @@
+{
+  "name": "hris-monorepo",
+  "private": true,
+  "workspaces": [
+    "hris-attendance-dashboard"
+  ],
+  "scripts": {
+    "dev:dashboard": "npm --workspace hris-attendance-dashboard run dev",
+    "build:dashboard": "npm --workspace hris-attendance-dashboard run build",
+    "lint:dashboard": "npm --workspace hris-attendance-dashboard run lint"
+  },
+  "dependencies": {
+    "@radix-ui/react-dropdown-menu": "^2.1.16"
+  }
+}

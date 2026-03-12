@@ -2,23 +2,33 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, MoreVertical } from "lucide-react";
+import { Search, MoreVertical, UserX, UserCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Employee } from "@/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { employeeService } from "@/lib/api/employee";
+import toast from "react-hot-toast";
 
 interface EmployeeTableProps {
   employees: Employee[];
   onSelectEmployee: (employee: Employee) => void;
   selectedEmployeeId?: string;
+  onEmployeeUpdated?: () => void;
 }
 
 export function EmployeeTable({
   employees,
   onSelectEmployee,
   selectedEmployeeId,
+  onEmployeeUpdated,
 }: EmployeeTableProps) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,6 +39,23 @@ export function EmployeeTable({
 
   const handleAddEmployee = () => {
     router.push("/dashboard/manager-hr/karyawan/tambah-pegawai");
+  };
+
+  const handleToggleStatus = async (e: React.MouseEvent, employee: Employee) => {
+    e.stopPropagation(); // Prevent row selection
+    try {
+      const newStatus = employee.status === "AKTIF" ? false : true;
+      await employeeService.updateEmployee(employee.id, { is_active: newStatus });
+      toast.success(
+        `Pegawai berhasil ${newStatus ? "diaktifkan" : "dinonaktifkan"}`
+      );
+      if (onEmployeeUpdated) {
+        onEmployeeUpdated();
+      }
+    } catch (error) {
+      console.error("Failed to update status:", error);
+      toast.error("Gagal mengubah status pegawai");
+    }
   };
 
   return (
@@ -142,9 +169,34 @@ export function EmployeeTable({
                     </Badge>
                   </td>
                   <td className="py-4">
-                    <button className="text-gray-400 hover:text-gray-600">
-                      <MoreVertical className="h-5 w-5" />
-                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button 
+                          className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <MoreVertical className="h-5 w-5" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={(e) => handleToggleStatus(e, employee)}
+                          className={employee.status === "AKTIF" ? "text-red-600" : "text-green-600"}
+                        >
+                          {employee.status === "AKTIF" ? (
+                            <>
+                              <UserX className="mr-2 h-4 w-4" />
+                              Nonaktifkan
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="mr-2 h-4 w-4" />
+                              Aktifkan
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
