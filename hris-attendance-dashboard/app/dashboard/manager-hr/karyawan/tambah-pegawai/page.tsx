@@ -31,15 +31,15 @@ export default function AddEmployeePage() {
     full_name: "",
     birth_date: "",
     religion: "",
-    education: "",
-    join_date: "",
+    last_education: "",
+    year_enrolled: "",
     employment_status: "",
     department_id: "",
     position_id: "",
     email: "",
     phone: "",
     address: "",
-    role: "employee",
+    role: "staf",
   });
 
   useEffect(() => {
@@ -92,8 +92,8 @@ export default function AddEmployeePage() {
       if (!formData.full_name) missing.push("Nama Lengkap");
       if (!formData.birth_date) missing.push("Tanggal Lahir");
       if (!formData.religion) missing.push("Agama");
-      if (!formData.education) missing.push("Pendidikan Terakhir");
-      if (!formData.join_date) missing.push("Tahun Masuk");
+      if (!formData.last_education) missing.push("Pendidikan Terakhir");
+      if (!formData.year_enrolled) missing.push("Tahun Masuk");
       if (!formData.employment_status) missing.push("Status Kepegawaian");
       if (!formData.department_id) missing.push("Departemen");
       if (!formData.position_id) missing.push("Jabatan");
@@ -120,8 +120,9 @@ export default function AddEmployeePage() {
       }
       
       router.push("/dashboard/manager-hr/karyawan");
-    } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || "Gagal membuat pegawai. Silakan coba lagi.";
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Gagal membuat pegawai. Silakan coba lagi.";
       console.error("Failed to create employee:", err);
       setError(message);
     } finally {
@@ -301,13 +302,13 @@ export default function AddEmployeePage() {
                   {/* Row 3: Pendidikan & Tahun Masuk */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="education" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="last_education" className="text-sm font-medium text-gray-700">
                         PENDIDIKAN TERAKHIR <span className="text-red-500">*</span>
                       </Label>
                       <Select
-                        value={formData.education}
+                        value={formData.last_education}
                         onValueChange={(value) =>
-                          setFormData({ ...formData, education: value })
+                          setFormData({ ...formData, last_education: value })
                         }
                       >
                         <SelectTrigger>
@@ -326,16 +327,16 @@ export default function AddEmployeePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="join_date" className="text-sm font-medium text-gray-700">
+                      <Label htmlFor="year_enrolled" className="text-sm font-medium text-gray-700">
                         TANGGAL MASUK <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="join_date"
+                        id="year_enrolled"
                         type="date"
                         required
-                        value={formData.join_date}
+                        value={formData.year_enrolled}
                         onChange={(e) =>
-                          setFormData({ ...formData, join_date: e.target.value })
+                          setFormData({ ...formData, year_enrolled: e.target.value })
                         }
                         className="w-full"
                       />
@@ -466,9 +467,10 @@ export default function AddEmployeePage() {
                           <SelectValue placeholder="Pilih Role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="employee">Employee</SelectItem>
-                          <SelectItem value="department_manager">Manager Departemen</SelectItem>
-                          <SelectItem value="department_admin">Admin Departemen</SelectItem>
+                          <SelectItem value="staf">Staf</SelectItem>
+                          <SelectItem value="manager_departemen">Manager Departemen</SelectItem>
+                          <SelectItem value="admin_departemen">Admin Departemen</SelectItem>
+                          <SelectItem value="accountant">Accountant</SelectItem>
                           <SelectItem value="manager_hr">Manager HR</SelectItem>
                         </SelectContent>
                       </Select>

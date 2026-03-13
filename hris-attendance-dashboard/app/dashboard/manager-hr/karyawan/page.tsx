@@ -84,6 +84,7 @@ export default function PegawaiPage() {
           employees={employees}
           onSelectEmployee={handleSelectEmployee}
           selectedEmployeeId={selectedEmployee?.id}
+          onEmployeeUpdated={fetchEmployees}
         />
       </div>
 

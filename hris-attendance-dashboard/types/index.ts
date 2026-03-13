@@ -33,24 +33,24 @@ export interface Employee {
 }
 
 export interface CreateEmployeeRequest {
-  nik: string;
-  payrollNumber?: string;
-  fullName: string;
-  birthDate: string;
+  payroll_number: string;
+  nik?: string;
+  email: string;
+  office_email?: string;
+  password?: string;
+  full_name: string;
+  birth_date: string;
   religion: string;
-  lastEducation: string;
-  yearEnrolled: string;
-  employmentStatus: string;
-  department: string;
-  departmentID?: string;
-  position: string;
-  positionID?: string;
-  officeEmail: string;
-  email?: string;
-  phoneNumber: string;
-  phone?: string;
+  last_education: string;
+  year_enrolled: string;
+  employment_status: string;
+  department_id: string;
+  position_id: string;
+  phone: string;
+  phone_number?: string;
   address: string;
-  role?: string;
+  role: string;
+  is_active?: boolean;
 }
 
 export interface UpdateEmployeeRequest {
@@ -106,6 +106,7 @@ export interface Department {
   code: string;
   name: string;
   description?: string;
+  icon?: string;
   managerId?: string;
   managerName?: string;
   totalEmployees?: number;

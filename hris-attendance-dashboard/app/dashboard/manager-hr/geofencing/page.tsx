@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { geofenceApi } from '@/lib/api/geofence';
-import { Geofence, CreateGeofenceRequest } from '@/types/geofence';
+import { Geofence } from '@/types/geofence';
 import GeofencingMap from '@/components/geofencing/GeofencingMap';
 import { MapPinIcon, Cog6ToothIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { toast, Toaster } from 'react-hot-toast';
@@ -64,9 +64,10 @@ export default function GeofencingPage() {
       setError(null);
       const data = await geofenceApi.getAll();
       setGeofences(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to load geofences';
       console.error('Error loading geofences:', err);
-      setError(err.message || 'Failed to load geofences');
+      setError(message);
       toast.error('Gagal memuat data geofence');
     } finally {
       setIsLoading(false);
@@ -136,8 +137,10 @@ export default function GeofencingPage() {
       setShowConfig(false);
       setPreviewGeofence(null);
       await loadGeofences();
-    } catch (err: any) {
-      toast.error('Gagal menyimpan perubahan');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan perubahan';
+      console.error('Error saving geofence:', err);
+      toast.error(message);
     }
   };
 

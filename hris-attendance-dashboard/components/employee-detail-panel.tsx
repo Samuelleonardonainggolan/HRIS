@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { X, Mail, Phone, MapPin } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ export function EmployeeDetailPanel({
   employee,
   onClose,
 }: EmployeeDetailPanelProps) {
+  const router = useRouter();
+
   if (!employee) return null;
 
   return (
@@ -137,6 +140,9 @@ export function EmployeeDetailPanel({
           <Button
             variant="outline"
             className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
+            onClick={() =>
+              router.push(`/dashboard/manager-hr/karyawan/edit-pegawai/${employee.id}`)
+            }
           >
             Edit Data
           </Button>
