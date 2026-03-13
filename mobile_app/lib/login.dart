@@ -42,31 +42,37 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
 
         if (!mounted) return;
 
-        // Cek apakah perlu registrasi face (first login)
-        final requiresFaceRegistration = response.requiresFaceRegistration ?? false;
-        
+        print(
+          '🔐 LOGIN RESPONSE - requiresFaceRegistration: ${response.requiresFaceRegistration}',
+        );
+        print('🔐 LOGIN RESPONSE - User ID: ${response.user.id}');
+
+        // CEK APAKAH PERLU REGISTRASI FACE
+        final requiresFaceRegistration =
+            response.requiresFaceRegistration ?? false;
+
         if (requiresFaceRegistration) {
-          // First login - arahkan ke halaman registrasi face
+          // FIRST LOGIN - ARAHKAN KE HALAMAN REGISTRASI FACE
+          print('➡️ First login, redirecting to face registration...');
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (context) => FaceRegistrationPage(
-                userId: response.user.id,
-              ),
+              builder: (context) =>
+                  FaceRegistrationPage(userId: response.user.id),
             ),
           );
         } else {
-          // Normal login - langsung ke home
+          // SUDAH PERNAH LOGIN - LANGSUNG KE HOME
+          print('➡️ User already registered, redirecting to home...');
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => const MainNavigationPage(),
-            ),
+            MaterialPageRoute(builder: (context) => const MainNavigationPage()),
           );
         }
       } catch (e) {
         if (!mounted) return;
-        
+
+        print('❌ LOGIN ERROR: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Login gagal: ${e.toString()}'),
@@ -132,7 +138,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 48),
 
               // Form
@@ -165,7 +171,10 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryColor,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {
@@ -178,9 +187,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         return null;
                       },
                     ),
-                    
+
                     const SizedBox(height: 20),
-                    
+
                     const Text(
                       'Password',
                       style: TextStyle(
@@ -198,7 +207,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         prefixIcon: const Icon(Icons.lock_outline),
                         suffixIcon: IconButton(
                           icon: Icon(
-                            _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                            _isPasswordVisible
+                                ? Icons.visibility_off
+                                : Icons.visibility,
                           ),
                           onPressed: () {
                             setState(() {
@@ -215,7 +226,10 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2),
+                          borderSide: const BorderSide(
+                            color: AppTheme.primaryColor,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {
@@ -228,9 +242,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         return null;
                       },
                     ),
-                    
+
                     const SizedBox(height: 16),
-                    
+
                     // Remember me and Forgot password
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -273,9 +287,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                         ),
                       ],
                     ),
-                    
+
                     const SizedBox(height: 32),
-                    
+
                     // Login button
                     CustomButton(
                       text: 'Login',
@@ -285,9 +299,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Info footer
               Center(
                 child: Column(

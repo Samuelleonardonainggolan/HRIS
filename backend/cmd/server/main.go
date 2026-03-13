@@ -50,7 +50,7 @@ func main() {
 
 	// ==================== Initialize Services ====================
 	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret, jwtExpiryStr)
+	authService := service.NewAuthService(userRepo, faceEmbeddingRepo, cfg.JWTSecret, jwtExpiryStr)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	positionService := service.NewPositionService(positionRepo)

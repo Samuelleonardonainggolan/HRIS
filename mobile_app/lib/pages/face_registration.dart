@@ -1,7 +1,6 @@
 // lib/pages/face_registration.dart
 import 'dart:io';
 import 'dart:convert';
-import 'dart:math'; // Tambahkan import ini untuk sqrt
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_app/main_navigation.dart';
@@ -25,6 +24,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
   bool _isCameraPermissionGranted = false;
   bool _isFaceDetected = false;
   List<double>? _faceEmbedding;
+  String? _errorMessage;
 
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
@@ -34,6 +34,8 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
   @override
   void initState() {
     super.initState();
+    print('🔵 FaceRegistrationPage untuk user: ${widget.userId}');
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -71,6 +73,13 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
       }
     }
 
+    setState(() {
+      _errorMessage = null;
+      _isFaceDetected = false;
+      _faceEmbedding = null;
+      _isLoading = true;
+    });
+
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -83,46 +92,50 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
       if (image != null) {
         setState(() {
           _capturedImage = File(image.path);
-          _isLoading = true;
         });
 
-        // TODO: Ganti dengan pemanggilan face recognition service yang sebenarnya
-        // Untuk sekarang, kita generate dummy embedding yang unik per user
-        await Future.delayed(const Duration(seconds: 2));
+        // 🔥 EKSTRAK EMBEDDING REAL DARI BACKEND (sudah include validasi)
+        try {
+          print('📤 Mengirim foto untuk ekstraksi embedding...');
+          final embedding = await ApiService.extractFaceEmbedding(image.path);
 
-        // Generate embedding yang berbeda untuk setiap user
-        // Menggunakan kombinasi userId dan timestamp sebagai seed
-        final seed = widget.userId.hashCode +
-            DateTime.now().millisecondsSinceEpoch.hashCode;
+          setState(() {
+            _faceEmbedding = embedding;
+            _isFaceDetected = true;
+            _isLoading = false;
+          });
 
-        // Generate 128-dimensional embedding dengan nilai antara -1 dan 1
-        // (seperti hasil dari face recognition model seperti FaceNet)
-        final dummyEmbedding = List.generate(128, (index) {
-          // Gunakan pseudo-random yang konsisten
-          final value = ((seed + index * 31) % 1000) / 500.0 - 1.0;
-          return value;
-        });
-
-        // Normalisasi L2 (panjang vector = 1) seperti embedding face pada umumnya
-        final norm = dummyEmbedding.fold(0.0, (sum, val) => sum + val * val);
-        // PERBAIKAN: Gunakan sqrt dari dart:math
-        final normalizedEmbedding =
-            dummyEmbedding.map((v) => v / sqrt(norm)).toList();
-
+          print('✅ Embedding real diterima, panjang: ${embedding.length}');
+        } catch (e) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = e.toString();
+          });
+          
+          // Tampilkan pesan error yang sesuai
+          String errorMsg = e.toString();
+          if (errorMsg.contains('lebih dari 1 wajah') || 
+              errorMsg.contains('multiple faces')) {
+            _showErrorSnackBar('Hanya satu wajah yang diperbolehkan. Pastikan tidak ada orang lain dalam frame.');
+          } else if (errorMsg.contains('kacamata hitam')) {
+            _showErrorSnackBar('Harap lepas kacamata hitam untuk registrasi.');
+          } else if (errorMsg.contains('masker')) {
+            _showErrorSnackBar('Harap lepas masker untuk registrasi.');
+          } else if (errorMsg.contains('aksesoris')) {
+            _showErrorSnackBar('Harap lepas aksesoris yang menutupi wajah.');
+          } else {
+            _showErrorSnackBar('Gagal mengekstrak wajah: $errorMsg');
+          }
+        }
+      } else {
         setState(() {
-          _faceEmbedding = normalizedEmbedding;
-          _isFaceDetected = true;
           _isLoading = false;
         });
-
-        print('✅ Face embedding generated for user: ${widget.userId}');
-        print('📊 Embedding length: ${normalizedEmbedding.length}');
-        print('📊 Sample values: ${normalizedEmbedding.take(5).join(", ")}...');
-        print('📊 Norm: $norm, sqrt: ${sqrt(norm)}');
       }
     } catch (e) {
       setState(() {
         _isLoading = false;
+        _errorMessage = e.toString();
       });
       _showErrorSnackBar('Gagal mengakses kamera: $e');
     }
@@ -141,6 +154,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
 
     setState(() {
       _isLoading = true;
+      _errorMessage = null;
     });
 
     try {
@@ -150,9 +164,8 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
 
       print('📸 Registering face for user: ${widget.userId}');
       print('📏 Embedding length: ${_faceEmbedding!.length}');
-      print('📷 Image size: ${bytes.length} bytes');
 
-      // Register face to backend
+      // 🔥 KIRIM EMBEDDING REAL KE BACKEND
       await ApiService.registerFace(
         userId: widget.userId,
         faceEmbedding: _faceEmbedding!,
@@ -163,12 +176,12 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
 
       if (!mounted) return;
 
-      // Show success dialog
       _showSuccessDialog();
     } catch (e) {
       print('❌ Error registering face: $e');
       setState(() {
         _isLoading = false;
+        _errorMessage = e.toString();
       });
       _showErrorSnackBar('Gagal registrasi wajah: $e');
     }
@@ -364,8 +377,16 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                       ),
                     ),
                     const SizedBox(height: 8),
+                    Text(
+                      'Akun: ${widget.userId.substring(0, 8)}...',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
                     const Text(
-                      'Ini adalah login pertama Anda. Silakan registrasi wajah untuk menggunakan fitur absensi.',
+                      'Silakan registrasi wajah untuk menggunakan fitur absensi.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
@@ -423,7 +444,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: _capturedImage != null
-                                ? AppTheme.successColor
+                                ? (_isFaceDetected
+                                      ? AppTheme.successColor
+                                      : AppTheme.warningColor)
                                 : Colors.grey.shade300,
                             width: 2,
                           ),
@@ -467,7 +490,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Pastikan wajah Anda terlihat jelas',
+                                    'Pastikan wajah terlihat jelas, tanpa aksesoris',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade500,
@@ -487,7 +510,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                         decoration: BoxDecoration(
                           color: _isFaceDetected
                               ? AppTheme.successColor.withOpacity(0.1)
-                              : AppTheme.warningColor.withOpacity(0.1),
+                              : (_errorMessage != null
+                                    ? AppTheme.errorColor.withOpacity(0.1)
+                                    : AppTheme.warningColor.withOpacity(0.1)),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
@@ -495,10 +520,14 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                             Icon(
                               _isFaceDetected
                                   ? Icons.check_circle
-                                  : Icons.error_outline,
+                                  : (_errorMessage != null
+                                        ? Icons.error
+                                        : Icons.error_outline),
                               color: _isFaceDetected
                                   ? AppTheme.successColor
-                                  : AppTheme.warningColor,
+                                  : (_errorMessage != null
+                                        ? AppTheme.errorColor
+                                        : AppTheme.warningColor),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -508,18 +537,32 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                                   Text(
                                     _isFaceDetected
                                         ? 'Wajah terdeteksi'
-                                        : 'Memproses deteksi wajah...',
+                                        : (_errorMessage != null
+                                              ? 'Gagal deteksi'
+                                              : 'Memproses deteksi wajah...'),
                                     style: TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
                                       color: _isFaceDetected
                                           ? AppTheme.successColor
-                                          : AppTheme.warningColor,
+                                          : (_errorMessage != null
+                                                ? AppTheme.errorColor
+                                                : AppTheme.warningColor),
                                     ),
                                   ),
-                                  if (!_isFaceDetected)
+                                  if (_errorMessage != null)
+                                    Text(
+                                      _errorMessage!,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppTheme.errorColor,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    )
+                                  else if (!_isFaceDetected)
                                     const Text(
-                                      'Mohon tunggu sebentar',
+                                      'Pastikan wajah terlihat jelas',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: AppTheme.textSecondary,
@@ -582,9 +625,10 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                     const Text(
                       '• Gunakan kamera depan untuk foto selfie\n'
                       '• Pastikan wajah terlihat jelas dan pencahayaan cukup\n'
-                      '• Jangan gunakan aksesori yang menutupi wajah\n'
+                      '• HANYA SATU ORANG dalam frame\n'
+                      '• LEPAS aksesoris: kacamata hitam, masker, topi\n'
                       '• Posisikan wajah di tengah frame\n'
-                      '• Ekspresi wajah normal (tidak tersenyum berlebihan)',
+                      '• Ekspresi wajah normal',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFF334155),
@@ -602,7 +646,9 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: _isFaceDetected ? _registerFace : null,
+                  onPressed: (_isFaceDetected && _faceEmbedding != null)
+                      ? _registerFace
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF135BEC),
                     foregroundColor: Colors.white,

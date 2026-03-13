@@ -59,6 +59,8 @@ func SetupRoutes(
 			// ==================== FACE RECOGNITION ====================
 			protected.GET("/internal/face/health", faceHandler.Health)
 			protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
+			protected.POST("/face/extract-embedding", faceHandler.ExtractEmbedding)
+			protected.POST("/face/register", faceHandler.RegisterFace) // TANPA :id di path
 
 			// ==================== ATTENDANCE ====================
 			attendance := protected.Group("/attendance")

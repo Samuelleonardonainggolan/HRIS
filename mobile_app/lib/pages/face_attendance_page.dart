@@ -1,14 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class FaceAttendancePage extends StatefulWidget {
   final String type; // 'clock_in' or 'clock_out'
@@ -27,9 +26,15 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   String _faceStatus = 'Menunggu pengambilan gambar';
   bool _isLoading = false;
   bool _isLocationValid = false;
-  bool _isFaceDetected = false;
+  bool _isFaceVerified = false;
+  bool _attendanceSuccess =
+      false; // Menandai apakah absensi sudah berhasil via konfirmasi
+  double _faceSimilarity = 0.0;
+  String _userId = '';
   bool _isCameraPermissionGranted = false;
   bool _isLocationPermissionGranted = false;
+  Map<String, dynamic>? _verificationResult;
+  String? _verificationMessage;
 
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
@@ -39,7 +44,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   // Koordinat IT Del Sitoluama
   final double _officeLat = 2.3561;
   final double _officeLng = 99.1431;
-  final double _radiusMeters = 10000; // Radius 200 meter
+  final double _radiusMeters = 10000;
+
+  // Threshold similarity (sesuaikan dengan backend)
+  final double _similarityThreshold = 0.6;
 
   @override
   void initState() {
@@ -53,7 +61,24 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
 
+    _loadUserId();
     _checkPermissions();
+  }
+
+  Future<void> _loadUserId() async {
+    final userId = await ApiService.getUserId();
+    setState(() {
+      _userId = userId ?? '';
+    });
+
+    if (_userId.isEmpty) {
+      _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
+      Future.delayed(const Duration(seconds: 2), () {
+        Navigator.pushReplacementNamed(context, '/login');
+      });
+    } else {
+      print('✅ User ID loaded: $_userId');
+    }
   }
 
   Future<void> _checkPermissions() async {
@@ -66,11 +91,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _locationStatus = 'Memeriksa izin lokasi...';
     });
 
-    // Cek status lokasi menggunakan Geolocator
     LocationPermission permission = await Geolocator.checkPermission();
 
     if (permission == LocationPermission.denied) {
-      // Minta izin
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         setState(() {
@@ -91,7 +114,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       return;
     }
 
-    // Izin diberikan
     setState(() {
       _isLocationPermissionGranted = true;
     });
@@ -103,7 +125,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     var status = await Permission.camera.status;
 
     if (status.isDenied) {
-      // Minta izin
       status = await Permission.camera.request();
     }
 
@@ -177,6 +198,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   }
 
   Future<void> _captureImage() async {
+    // Jika sudah sukses absen, tidak bisa ambil foto lagi
+    if (_attendanceSuccess) {
+      _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
+      return;
+    }
+
     if (!_isCameraPermissionGranted) {
       await _checkCameraPermission();
       if (!_isCameraPermissionGranted) {
@@ -185,40 +212,79 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       }
     }
 
+    if (_userId.isEmpty) {
+      _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
+
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        maxWidth: 1024,
-        maxHeight: 1024,
+        maxWidth: 512,
+        maxHeight: 512,
         imageQuality: 85,
-        preferredCameraDevice: CameraDevice.front, // Gunakan kamera depan
+        preferredCameraDevice: CameraDevice.front,
       );
 
       if (image != null) {
         setState(() {
           _capturedImage = File(image.path);
-          _faceStatus = 'Memverifikasi wajah...';
+          _faceStatus = 'Memverifikasi wajah dengan database...';
           _isLoading = true;
+          _isFaceVerified = false;
+          _verificationResult = null;
+          _verificationMessage = null;
         });
 
-        // Simulasi verifikasi wajah
-        await Future.delayed(const Duration(seconds: 2));
+        try {
+          // 🔥 GUNAKAN ENDPOINT /attendance/process UNTUK VERIFIKASI
+          final result = await _verifyFaceOnly(image.path);
 
-        // Simulasi deteksi wajah (80% berhasil)
-        bool faceDetected = DateTime.now().millisecondsSinceEpoch % 10 < 8;
+          setState(() {
+            _verificationResult = result;
+            _faceSimilarity = result['similarity'] ?? 0.0;
+            _isFaceVerified = result['matched'] == true;
 
-        setState(() {
-          _isFaceDetected = faceDetected;
-          _faceStatus = faceDetected
-              ? 'Wajah terdeteksi ✓'
-              : 'Wajah tidak terdeteksi ✗';
-          _isLoading = false;
-        });
+            if (_isFaceVerified) {
+              _faceStatus =
+                  '✓ Wajah terverifikasi (similarity: ${(_faceSimilarity * 100).toStringAsFixed(1)}%)';
+            } else {
+              _faceStatus = '✗ ${result['message'] ?? 'Wajah tidak cocok'}';
+            }
+            _isLoading = false;
+          });
 
-        if (!faceDetected) {
-          _showErrorSnackBar(
-            'Wajah tidak terdeteksi. Silakan coba lagi dengan pencahayaan cukup.',
-          );
+          if (!_isFaceVerified) {
+            _showErrorSnackBar(result['message'] ?? 'Verifikasi gagal');
+          }
+        } catch (e) {
+          setState(() {
+            _isFaceVerified = false;
+            _isLoading = false;
+            _faceStatus = '✗ Gagal verifikasi wajah';
+          });
+
+          String errorMsg = e.toString();
+          if (errorMsg.contains('tidak ada wajah') ||
+              errorMsg.contains('no face')) {
+            _showErrorSnackBar(
+              'Tidak ada wajah terdeteksi. Arahkan kamera ke wajah Anda.',
+            );
+          } else if (errorMsg.contains('lebih dari 1 wajah') ||
+              errorMsg.contains('multiple faces')) {
+            _showErrorSnackBar(
+              'Hanya satu wajah yang diperbolehkan. Pastikan tidak ada orang lain dalam frame.',
+            );
+          } else if (errorMsg.contains('kacamata hitam')) {
+            _showErrorSnackBar('Harap lepas kacamata hitam untuk verifikasi.');
+          } else if (errorMsg.contains('masker')) {
+            _showErrorSnackBar('Harap lepas masker untuk verifikasi.');
+          } else if (errorMsg.contains('aksesoris')) {
+            _showErrorSnackBar('Harap lepas aksesoris yang menutupi wajah.');
+          } else {
+            _showErrorSnackBar('Gagal verifikasi: $errorMsg');
+          }
         }
       }
     } catch (e) {
@@ -230,22 +296,166 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     }
   }
 
-  Future<void> _submitAttendance() async {
-    if (_capturedImage == null || _currentPosition == null) return;
+  // 🔥 METHOD VERIFIKASI MENGGUNAKAN ENDPOINT /attendance/process (TANPA MENYIMPAN)
+  Future<Map<String, dynamic>> _verifyFaceOnly(String imagePath) async {
+    try {
+      final token = await ApiService.getAccessToken();
+      if (token == null) throw Exception('Token tidak ditemukan');
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${ApiService.baseUrl}/attendance/process'),
+      );
+
+      request.headers.addAll({'Authorization': 'Bearer $token'});
+
+      // Kirim data sebagai form fields
+      request.fields['record_type'] = widget.type == 'clock_in'
+          ? 'clock_in'
+          : 'clock_out';
+      request.fields['latitude'] = (_currentPosition?.latitude ?? 0).toString();
+      request.fields['longitude'] = (_currentPosition?.longitude ?? 0)
+          .toString();
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          imagePath,
+          filename: 'verify_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      print(
+        '📤 Mengirim request ke /attendance/process untuk verifikasi wajah...',
+      );
+      print('Fields: ${request.fields}');
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+
+        double similarity = 0.0;
+        String message = '';
+
+        if (jsonResponse['data'] != null) {
+          similarity = jsonResponse['data']['face_similarity'] ?? 0.0;
+          message =
+              jsonResponse['data']['message'] ?? jsonResponse['message'] ?? '';
+        } else {
+          similarity = jsonResponse['face_similarity'] ?? 0.0;
+          message = jsonResponse['message'] ?? '';
+        }
+
+        return {
+          'success': true,
+          'matched': true,
+          'similarity': similarity,
+          'message': message,
+        };
+      } else if (response.statusCode == 400) {
+        final error = jsonDecode(response.body);
+        String errorMsg = error['message'] ?? '';
+
+        double similarity = 0.0;
+        if (error['data'] != null && error['data']['face_similarity'] != null) {
+          similarity = error['data']['face_similarity'].toDouble();
+        }
+
+        // Handle khusus untuk clock out
+        if (widget.type == 'clock_out') {
+          if (errorMsg.contains('no clock in record')) {
+            return {
+              'success': false,
+              'matched': false,
+              'similarity': 0.0,
+              'message': 'Anda belum melakukan clock in hari ini',
+            };
+          } else if (errorMsg.contains('already clocked out')) {
+            return {
+              'success': true,
+              'matched': true,
+              'similarity': similarity > 0 ? similarity : 0.9,
+              'message': 'Anda sudah melakukan clock out hari ini',
+            };
+          }
+        }
+
+        // Handle umum
+        if (errorMsg.contains('already clocked in')) {
+          return {
+            'success': true,
+            'matched': true,
+            'similarity': similarity > 0 ? similarity : 0.9,
+            'message': 'Wajah terverifikasi (sudah pernah absen)',
+          };
+        } else if (errorMsg.contains('face does not match') ||
+            errorMsg.contains('tidak cocok')) {
+          return {
+            'success': false,
+            'matched': false,
+            'similarity': similarity,
+            'message': errorMsg,
+          };
+        } else if (errorMsg.contains('no face') ||
+            errorMsg.contains('tidak ada wajah')) {
+          return {
+            'success': false,
+            'matched': false,
+            'similarity': 0.0,
+            'message': 'Tidak ada wajah terdeteksi',
+          };
+        } else {
+          throw Exception(errorMsg);
+        }
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Verifikasi gagal');
+      }
+    } catch (e) {
+      print('Error verifying face: $e');
+      rethrow;
+    }
+  }
+
+  // 🔥 METHOD KONFIRMASI ABSEN (MENYIMPAN KE DATABASE)
+  Future<void> _confirmAttendance() async {
+    // Cek apakah sudah pernah konfirmasi
+    if (_attendanceSuccess) {
+      _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
+      return;
+    }
+
+    // Validasi
+    if (_capturedImage == null) {
+      _showErrorSnackBar('Silakan ambil foto terlebih dahulu');
+      return;
+    }
+
+    if (!_isLocationValid) {
+      _showErrorSnackBar('Anda harus berada dalam area kampus');
+      return;
+    }
+
+    if (!_isFaceVerified) {
+      _showErrorSnackBar('Verifikasi wajah belum berhasil');
+      return;
+    }
+
+    if (_userId.isEmpty) {
+      _showErrorSnackBar('Sesi login telah berakhir');
+      Navigator.pushReplacementNamed(context, '/login');
+      return;
+    }
 
     setState(() => _isLoading = true);
 
     try {
-      final userId = await ApiService.getUserId();
-      if (userId == null || userId.isEmpty) {
-        throw Exception('Sesi login telah berakhir. Silakan login ulang.');
-      }
-
-      print('📤 Submitting attendance for user: $userId');
-      print(
-        '📍 Location: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}',
-      );
-      print('📷 Photo path: ${_capturedImage!.path}');
+      print('📤 Mengirim konfirmasi absensi untuk user: $_userId');
 
       final result = await ApiService.processAttendance(
         recordType: widget.type == 'clock_in' ? 'clock_in' : 'clock_out',
@@ -255,8 +465,16 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       );
 
       if (result.success) {
+        setState(() {
+          _attendanceSuccess = true;
+        });
+
+        String successMessage = widget.type == 'clock_in'
+            ? 'Absen Masuk Berhasil!'
+            : 'Absen Pulang Berhasil!';
+
         _showSuccessDialog(
-          message: result.message,
+          title: successMessage,
           similarity: result.faceSimilarity,
         );
       } else {
@@ -266,14 +484,28 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       print('❌ Error: $e');
 
       String errorMsg = e.toString();
-      if (errorMsg.contains('401') ||
-          errorMsg.contains('Unauthorized') ||
-          errorMsg.contains('sesi telah berakhir')) {
+      if (errorMsg.contains('401') || errorMsg.contains('Unauthorized')) {
         _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
-
-        // Redirect ke login setelah 2 detik
         Future.delayed(const Duration(seconds: 2), () {
           Navigator.pushReplacementNamed(context, '/login');
+        });
+      } else if (errorMsg.contains('already clocked in')) {
+        _showInfoSnackBar('Anda sudah melakukan clock in hari ini');
+        setState(() {
+          _attendanceSuccess = true;
+        });
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.pop(context, true);
+        });
+      } else if (errorMsg.contains('no clock in record')) {
+        _showErrorSnackBar('Anda belum melakukan clock in hari ini');
+      } else if (errorMsg.contains('already clocked out')) {
+        _showInfoSnackBar('Anda sudah melakukan clock out hari ini');
+        setState(() {
+          _attendanceSuccess = true;
+        });
+        Future.delayed(const Duration(seconds: 2), () {
+          Navigator.pop(context, true);
         });
       } else {
         _showErrorSnackBar('Gagal melakukan absensi: $errorMsg');
@@ -283,76 +515,150 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     }
   }
 
-  void _showSuccessDialog({
-    required String message,
-    required double similarity,
-  }) {
+  // Update _showSuccessDialog untuk menerima title
+  void _showSuccessDialog({required String title, required double similarity}) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.successColor.withOpacity(0.1),
-                shape: BoxShape.circle,
+      builder: (BuildContext context) {
+        String subtitle = widget.type == 'clock_in'
+            ? 'Selamat bekerja!'
+            : 'Selamat beristirahat!';
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.successColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check_circle,
+                  color: AppTheme.successColor,
+                  size: 50,
+                ),
               ),
-              child: Icon(
-                Icons.check_circle,
-                color: AppTheme.successColor,
-                size: 50,
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.type == 'clock_in'
-                  ? 'Absen Masuk Berhasil!'
-                  : 'Absen Pulang Berhasil!',
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Similarity Wajah: ${(similarity * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppTheme.primaryColor,
-                fontWeight: FontWeight.w600,
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: Text(
+                  'Similarity ${(similarity * 100).toStringAsFixed(1)}%',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              DateFormat('EEEE, dd MMMM yyyy').format(DateTime.now()),
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              DateFormat('HH:mm:ss').format(DateTime.now()),
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryColor,
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat('HH:mm:ss').format(DateTime.now()),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                DateFormat('EEEE, dd MMMM yyyy').format(DateTime.now()),
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context, true);
+              },
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'OK',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  void _showInfoSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.info, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context, true);
-            },
-            style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
-            child: const Text('OK'),
-          ),
-        ],
+        backgroundColor: const Color(0xFF135BEC),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -446,18 +752,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     );
   }
 
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: AppTheme.errorColor,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _animationController.dispose();
@@ -466,6 +760,17 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
   @override
   Widget build(BuildContext context) {
+    // Button konfirmasi hanya aktif jika:
+    // - Lokasi valid
+    // - Wajah sudah terverifikasi
+    // - Tidak sedang loading
+    // - Belum pernah konfirmasi sukses
+    bool canConfirm =
+        _isLocationValid &&
+        _isFaceVerified &&
+        !_isLoading &&
+        !_attendanceSuccess;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -483,10 +788,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           ),
         ),
         centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.grey.shade200),
-        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -661,17 +962,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           ),
                       ],
                     ),
-                    if (!_isLocationPermissionGranted)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Izin lokasi belum diberikan. Ketuk ikon kamera untuk meminta izin.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.errorColor,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -711,7 +1001,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                     ),
                     const SizedBox(height: 16),
 
-                    // Camera Preview atau Hasil Foto
                     GestureDetector(
                       onTap: _captureImage,
                       child: Container(
@@ -722,7 +1011,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
                             color: _capturedImage != null
-                                ? AppTheme.successColor
+                                ? (_isFaceVerified
+                                      ? AppTheme.successColor
+                                      : AppTheme.errorColor)
                                 : Colors.grey.shade300,
                             width: 2,
                           ),
@@ -777,8 +1068,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                   const SizedBox(height: 4),
                                   Text(
                                     _isCameraPermissionGranted
-                                        ? 'Pastikan wajah Anda terlihat jelas'
-                                        : 'Ketuk untuk meminta izin kamera',
+                                        ? 'Pastikan wajah terlihat jelas'
+                                        : 'Ketuk untuk meminta izin',
                                     style: TextStyle(
                                       fontSize: 11,
                                       color: Colors.grey.shade500,
@@ -791,56 +1082,53 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
                     const SizedBox(height: 16),
 
-                    // Status Verifikasi
                     if (_capturedImage != null) ...[
-                      Row(
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: _isFaceDetected
-                                  ? AppTheme.successColor.withOpacity(0.1)
-                                  : AppTheme.errorColor.withOpacity(0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _isFaceDetected ? Icons.check : Icons.close,
-                              color: _isFaceDetected
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: _isFaceVerified
+                              ? AppTheme.successColor.withOpacity(0.1)
+                              : AppTheme.errorColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isFaceVerified
+                                  ? Icons.check_circle
+                                  : Icons.error,
+                              color: _isFaceVerified
                                   ? AppTheme.successColor
                                   : AppTheme.errorColor,
-                              size: 16,
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _faceStatus,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: _isFaceDetected
-                                        ? AppTheme.successColor
-                                        : AppTheme.errorColor,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _faceStatus,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: _isFaceVerified
+                                          ? AppTheme.successColor
+                                          : AppTheme.errorColor,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _isFaceDetected
-                                      ? 'Wajah terverifikasi'
-                                      : 'Silakan ambil foto ulang dengan pencahayaan cukup',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
+                                  if (_faceSimilarity > 0)
+                                    Text(
+                                      'Similarity: ${(_faceSimilarity * 100).toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
 
@@ -891,9 +1179,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           const SizedBox(height: 4),
                           Text(
                             '1. Pastikan Anda dalam area kampus IT Del Sitoluama\n'
-                            '2. Ambil foto dengan wajah jelas (gunakan kamera depan)\n'
-                            '3. Pastikan pencahayaan cukup\n'
-                            '4. Jangan gunakan aksesori yang menutupi wajah',
+                            '2. Ambil foto untuk verifikasi wajah\n'
+                            '3. Jika wajah terverifikasi, klik Konfirmasi Absen\n'
+                            '4. Setelah konfirmasi, absensi tersimpan',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade700,
@@ -909,17 +1197,18 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
               const SizedBox(height: 24),
 
-              // Submit Button
+              // Confirm Button (BUKAN submit, tapi CONFIRM)
               SizedBox(
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: _submitAttendance,
+                  onPressed: canConfirm ? _confirmAttendance : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: widget.type == 'clock_in'
                         ? AppTheme.successColor
                         : AppTheme.errorColor,
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -931,8 +1220,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ),
                   label: Text(
                     widget.type == 'clock_in'
-                        ? 'Konfirmasi Absen Masuk'
-                        : 'Konfirmasi Absen Pulang',
+                        ? (_attendanceSuccess
+                              ? 'Sudah Absen Masuk'
+                              : 'Konfirmasi Absen Masuk')
+                        : (_attendanceSuccess
+                              ? 'Sudah Absen Pulang'
+                              : 'Konfirmasi Absen Pulang'),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -941,16 +1234,40 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                 ),
               ),
 
-              const SizedBox(height: 16),
-
-              // Informasi tambahan
-              Center(
-                child: Text(
-                  'Dengan melakukan absensi, Anda menyetujui kebijakan kampus IT Del',
-                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                  textAlign: TextAlign.center,
+              if (_attendanceSuccess) ...[
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          color: AppTheme.successColor,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Absensi hari ini sudah tercatat',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppTheme.successColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

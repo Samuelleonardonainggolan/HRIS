@@ -31,10 +31,24 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, response)
-}
+	// CEK STATUS FACE REGISTRATION
+	requiresFaceRegistration := true
+	faceStatus, _ := h.authService.GetFaceRegistrationStatus(c.Request.Context(), response.User.ID)
+	if faceStatus {
+		requiresFaceRegistration = false
+	}
 
-// Register - User registration
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data": gin.H{
+			"user":                       response.User,
+			"access_token":               response.AccessToken,
+			"refresh_token":              response.RefreshToken,
+			"expires_in":                 response.ExpiresIn,
+			"requires_face_registration": requiresFaceRegistration,
+		},
+	})
+}
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
