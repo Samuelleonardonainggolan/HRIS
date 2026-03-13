@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -51,18 +52,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-0">
       <div className="max-w-md w-full space-y-8">
         {/* Logo & Title */}
         <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-indigo-600 rounded-full flex items-center justify-center mb-4">
-            <span className="text-2xl font-bold text-white">HR</span>
+          <div className="mx-auto h-36 w-36 relative mb-0">
+            <Image
+              src="/logo.png"
+              alt="Logo"
+              fill
+              sizes="64px"
+              className="object-contain"
+              priority
+            />
           </div>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            HRIS Login
+            Masuk Admin HR
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            Face Attendance Management System
+            Silakan masuk untuk mengelola sistem manajemen hotel
           </p>
         </div>
 
@@ -79,7 +87,7 @@ export default function LoginPage() {
             {/* Email Input */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                Email Address
+                Email
               </label>
               <input
                 id="email"
@@ -138,13 +146,13 @@ export default function LoginPage() {
                   className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
-                  Remember me
+                  Ingat Saya
                 </label>
               </div>
 
               <div className="text-sm">
                 <a href="#" className="font-medium text-indigo-600 hover:text-indigo-500">
-                  Forgot password?
+                  Lupa Password ?
                 </a>
               </div>
             </div>
@@ -161,7 +169,7 @@ export default function LoginPage() {
                   Signing in...
                 </>
               ) : (
-                'Sign in'
+                'Masuk'
               )}
             </button>
           </form>
@@ -217,7 +225,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="text-center text-sm text-gray-600">
-          © 2024 HRIS System. All rights reserved.
+          © 2026 HRIS System. All rights reserved.
         </p>
       </div>
     </div>

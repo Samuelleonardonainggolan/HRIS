@@ -39,6 +39,7 @@ export interface LoginResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
+  requires_face_registration?: boolean;
 }
 
 export interface ErrorResponse {
@@ -48,6 +49,17 @@ export interface ErrorResponse {
 }
 
 class AuthService {
+  private setAccessTokenCookie(token: string): void {
+    if (typeof window === 'undefined') return;
+    const maxAgeSeconds = 60 * 60 * 24 * 7;
+    document.cookie = `access_token=${encodeURIComponent(token)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
+  }
+
+  private clearAccessTokenCookie(): void {
+    if (typeof window === 'undefined') return;
+    document.cookie = 'access_token=; Path=/; Max-Age=0; SameSite=Lax';
+  }
+
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     try {
       const response = await fetch(`${API_URL}/auth/login`, {
@@ -64,20 +76,22 @@ class AuthService {
         throw new Error(data.error || data.message || 'Login failed');
       }
 
-      // ✅ Validate response structure
-      if (!data.access_token || !data.user) {
+      const payload = data?.data ?? data;
+
+      if (!payload?.access_token || !payload?.user) {
         console.error('Invalid response structure:', data);
         throw new Error('Invalid response from server');
       }
 
       // Save tokens to localStorage
       if (typeof window !== 'undefined') {
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('refresh_token', data.refresh_token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('access_token', payload.access_token);
+        localStorage.setItem('refresh_token', payload.refresh_token);
+        localStorage.setItem('user', JSON.stringify(payload.user));
+        this.setAccessTokenCookie(payload.access_token);
       }
 
-      return data;
+      return payload;
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -106,6 +120,7 @@ class AuthService {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
+      this.clearAccessTokenCookie();
     }
   }
 
@@ -131,21 +146,23 @@ class AuthService {
         throw new Error(data.error || data.message || 'Token refresh failed');
       }
 
-      // ✅ Validate response
-      if (!data.access_token) {
+      const payload = data?.data ?? data;
+
+      if (!payload?.access_token) {
         throw new Error('Invalid refresh response');
       }
 
       // Update tokens
       if (typeof window !== 'undefined') {
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('refresh_token', data.refresh_token);
-        if (data.user) {
-          localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('access_token', payload.access_token);
+        localStorage.setItem('refresh_token', payload.refresh_token);
+        if (payload.user) {
+          localStorage.setItem('user', JSON.stringify(payload.user));
         }
+        this.setAccessTokenCookie(payload.access_token);
       }
 
-      return data;
+      return payload;
     } catch (error) {
       console.error('Refresh token error:', error);
       // Clear tokens on refresh failure
@@ -183,6 +200,7 @@ class AuthService {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
+      this.clearAccessTokenCookie();
     }
   }
 
