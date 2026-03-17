@@ -48,6 +48,10 @@ export interface ErrorResponse {
   error: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 class AuthService {
   private setAccessTokenCookie(token: string): void {
     if (typeof window === 'undefined') return;
@@ -70,18 +74,41 @@ class AuthService {
         body: JSON.stringify(credentials),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || data.message || 'Login failed');
+      const raw = await response.text();
+      let data: unknown;
+      try {
+        data = raw ? (JSON.parse(raw) as unknown) : {};
+      } catch {
+        throw new Error(`Invalid JSON response (status ${response.status})`);
       }
 
-      const payload = data?.data ?? data;
+      if (!response.ok) {
+        const errorData = data as { error?: string; message?: string };
+        throw new Error(errorData.error || errorData.message || 'Login failed');
+      }
 
-      if (!payload?.access_token || !payload?.user) {
+      const payloadRaw = isRecord(data) && isRecord(data.data) ? data.data : data;
+      if (!isRecord(payloadRaw)) {
         console.error('Invalid response structure:', data);
         throw new Error('Invalid response from server');
       }
+
+      const accessToken = payloadRaw.access_token;
+      const refreshToken = payloadRaw.refresh_token;
+      const expiresIn = payloadRaw.expires_in;
+      const user = payloadRaw.user;
+
+      if (
+        typeof accessToken !== 'string' ||
+        typeof refreshToken !== 'string' ||
+        typeof expiresIn !== 'number' ||
+        !isRecord(user)
+      ) {
+        console.error('Invalid response structure:', data);
+        throw new Error('Invalid response from server');
+      }
+
+      const payload = payloadRaw as unknown as LoginResponse;
 
       // Save tokens to localStorage
       if (typeof window !== 'undefined') {
@@ -106,7 +133,7 @@ class AuthService {
         await fetch(`${API_URL}/logout`, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
           },
         });
       } catch (error) {
@@ -140,17 +167,25 @@ class AuthService {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
 
-      const data = await response.json();
+      const raw = await response.text();
+      let data: unknown;
+      try {
+        data = raw ? (JSON.parse(raw) as unknown) : {};
+      } catch {
+        throw new Error(`Invalid JSON response (status ${response.status})`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Token refresh failed');
+        const errorData = data as { error?: string; message?: string };
+        throw new Error(errorData.error || errorData.message || 'Token refresh failed');
       }
 
-      const payload = data?.data ?? data;
-
-      if (!payload?.access_token) {
+      const payloadRaw = isRecord(data) && isRecord(data.data) ? data.data : data;
+      if (!isRecord(payloadRaw) || typeof payloadRaw.access_token !== 'string') {
         throw new Error('Invalid refresh response');
       }
+
+      const payload = payloadRaw as unknown as LoginResponse;
 
       // Update tokens
       if (typeof window !== 'undefined') {
