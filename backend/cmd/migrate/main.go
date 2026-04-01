@@ -140,4 +140,28 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+    version, name, desc, up, down = migrations.CreateKategoriPengajuan()
+    manager.Register(migration.Migration{
+        Version:     version,
+        Name:        name,
+        Description: desc,
+        Up:          up,
+        Down:        down,
+    })
+    version, name, desc, up, down = migrations.CreateTipePengajuan()
+    manager.Register(migration.Migration{
+        Version:     version,
+        Name:        name,
+        Description: desc,
+        Up:          up,
+        Down:        down,
+    })
+    version, name, desc, up, down = migrations.CreatePengajuanIzinCuti()
+    manager.Register(migration.Migration{
+        Version:     version,
+        Name:        name,
+        Description: desc,
+        Up:          up,
+        Down:        down,
+    })
 }
