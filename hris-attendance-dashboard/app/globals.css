@@ -24,3 +24,42 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Fix kontras teks input di Chrome */
+input, textarea, select {
+  color: #111827; /* text-gray-900 */
+  -webkit-text-fill-color: #111827; /* penting untuk Chrome/Safari */
+}
+
+/* Placeholder lebih jelas */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af; /* text-gray-400 */
+  opacity: 1;     /* Chrome kadang bikin placeholder terlalu pudar */
+}
+
+/* Disabled jangan terlalu pudar */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 1; /* jangan nurunin opacity */
+  color: #6b7280; /* text-gray-500 */
+  -webkit-text-fill-color: #6b7280;
+}
+
+@layer base {
+  input, textarea, select {
+    @apply text-gray-900;
+    -webkit-text-fill-color: #111827;
+  }
+
+  input::placeholder, textarea::placeholder {
+    @apply text-gray-400;
+    opacity: 1;
+  }
+
+  input:disabled, textarea:disabled, select:disabled {
+    opacity: 1;
+    -webkit-text-fill-color: #6b7280;
+  }
+}

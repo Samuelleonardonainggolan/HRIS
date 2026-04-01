@@ -35,18 +35,16 @@ interface LeaveApprovalItem {
   avatarFallback: string; // initials
 }
 
-function typeBadgeVariant(t: RequestType) {
-  // Sesuaikan dengan Badge variant yang Anda punya
-  // Saya pakai "secondary" sebagai default agar tidak error.
+function typeBadgeClass(t: RequestType) {
   switch (t) {
     case "SAKIT":
-      return "destructive" as any;
+      return "bg-red-100 text-red-700 border border-red-200";
     case "TAHUNAN":
-      return "secondary" as any;
+      return "bg-gray-100 text-gray-800 border border-gray-200";
     case "IZIN KHUSUS":
-      return "outline" as any;
+      return "bg-blue-100 text-blue-700 border border-blue-200";
     default:
-      return "secondary" as any;
+      return "bg-gray-100 text-gray-800 border border-gray-200";
   }
 }
 
@@ -196,16 +194,6 @@ export default function PersetujuanIzinCutiPage() {
                   Manajemen Izin &amp; Cuti
                 </h2>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" className="h-9 gap-2">
-                  <Filter className="h-4 w-4" />
-                  Filter
-                </Button>
-                <Button variant="outline" className="h-9 gap-2">
-                  <Download className="h-4 w-4" />
-                  Export
-                </Button>
-              </div>
             </div>
 
             {/* Search bar (wajib di bawah judul) */}
@@ -289,7 +277,7 @@ export default function PersetujuanIzinCutiPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            <Badge variant={typeBadgeVariant(x.type)}>
+                            <Badge variant="secondary" className={typeBadgeClass(x.type)}>
                               {x.type}
                             </Badge>
                           </td>

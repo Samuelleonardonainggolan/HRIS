@@ -77,22 +77,22 @@ export function Sidebar() {
           { name: "Geofencing", href: `${basePath}/geofencing`, icon: "MapPin" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
-          { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "Shield" },
-          { name: "Audit Log", href: `${basePath}/audit-log`, icon: "FileText" },
+          { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
       case "manager_departemen":
         return [
           { name: "Dashboard", href: basePath, icon: "LayoutDashboard" },
-          { name: "Tim Saya", href: `${basePath}/tim`, icon: "Users" },
+          { name: "Tim Saya", href: `${basePath}/karyawan`, icon: "Users" },
+          { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Persetujuan", href: `${basePath}/persetujuan`, icon: "FileText" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
-      case "admin_departemen":
+      case "accountant":
         return [
           { name: "Dashboard", href: basePath, icon: "LayoutDashboard" },
           { name: "Kelola Staf", href: `${basePath}/staf`, icon: "UserCog" },

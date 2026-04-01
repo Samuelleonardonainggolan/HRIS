@@ -1,7 +1,7 @@
 // app/login/page.tsx
 'use client';
 
-import { useEffect, useState } from "react";
+import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -14,26 +14,21 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { login, user, loading } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    if (!loading && user) {
-      router.replace("/dashboard");
-    }
-  }, [loading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError('');
     setIsLoading(true);
 
     try {
       await login({ email, password });
-      // ❌ jangan push di sini
-      // router.push('/dashboard');
+      router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
+      setError(
+        err instanceof Error ? err.message : 'Login failed. Please check your credentials.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -43,14 +38,14 @@ export default function LoginPage() {
   const quickLogin = async (userEmail: string, userPassword: string) => {
     setEmail(userEmail);
     setPassword(userPassword);
-    setError("");
+    setError('');
     setIsLoading(true);
 
     try {
       await login({ email: userEmail, password: userPassword });
-      // ❌ jangan push di sini juga
+      router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);
     }
