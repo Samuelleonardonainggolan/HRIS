@@ -77,7 +77,7 @@ export function Sidebar() {
           { name: "Geofencing", href: `${basePath}/geofencing`, icon: "MapPin" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
-          { name: "Keamanan", href: `${basePath}/keamanan`, icon: "Shield" },
+          { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "Shield" },
           { name: "Audit Log", href: `${basePath}/audit-log`, icon: "FileText" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
