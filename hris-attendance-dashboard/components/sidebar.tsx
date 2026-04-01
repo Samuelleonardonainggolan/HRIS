@@ -87,7 +87,7 @@ export function Sidebar() {
           { name: "Tim Saya", href: `${basePath}/karyawan`, icon: "Users" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
-          { name: "Persetujuan", href: `${basePath}/persetujuan`, icon: "FileText" },
+          { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];

@@ -213,12 +213,12 @@ export default function PegawaiManagerDepartemenPage() {
 
                         {/* NO PAYROLL */}
                         <td className="px-6 py-4">
-                          <div className="text-sm font-semibold text-gray-900">{e.nik || "-"}</div>
+                          <div className="text-sm text-gray-900">{e.nik || "-"}</div>
                         </td>
 
                         {/* Jabatan */}
                         <td className="px-6 py-4">
-                          <div className="text-sm font-semibold text-gray-900">{e.position || "-"}</div>
+                          <div className="text-sm text-gray-900">{e.position || "-"}</div>
                         </td>
 
                         {/* Status */}
