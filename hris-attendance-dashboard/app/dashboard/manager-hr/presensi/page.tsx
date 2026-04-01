@@ -13,7 +13,19 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+import { format } from "date-fns";
+import { id } from "date-fns/locale";
+import type { DateRange } from "react-day-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as UiCalendar } from "@/components/ui/calender"; // ✅ bukan calender
 
 type AttendanceStatus = "HADIR" | "TELAT" | "IZIN" | "ALFA";
 
@@ -23,15 +35,17 @@ interface AttendanceRow {
   email: string;
   empId: string;
   dept: string;
-  dateLabel: string;
-  clockIn: string;  // "08:00" | "--:--"
-  clockOut: string; // "17:05" | "--:--"
+
+  date: Date;        // ✅ untuk filter date range
+  dateLabel: string; // untuk tampilan
+
+  clockIn: string;
+  clockOut: string;
   status: AttendanceStatus;
-  location: string; // "HQ Office" | "Remote - Home" | "Unrecorded"
+  location: string;
 }
 
 function statusBadgeVariant(status: AttendanceStatus) {
-  // sesuaikan dengan varian Badge yg Anda punya
   switch (status) {
     case "HADIR":
       return "success" as any;
@@ -49,21 +63,28 @@ function statusBadgeVariant(status: AttendanceStatus) {
 export default function PresensiKaryawanManagerHRPage() {
   const [isLoading, setIsLoading] = useState(true);
 
-  // filters
-  const [dateRangeLabel, setDateRangeLabel] = useState("01 Okt 2023 - 31 Okt 2023");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
+  const defaultRange: DateRange = {
+    from: new Date(2023, 9, 1),
+    to: new Date(2023, 9, 31),
+  };
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
 
-  // search
+  const dateRangeLabel = useMemo(() => {
+    if (!dateRange?.from) return "Pilih rentang tanggal";
+    const from = format(dateRange.from, "dd MMM yyyy", { locale: id });
+    const to = dateRange.to ? format(dateRange.to, "dd MMM yyyy", { locale: id }) : "-";
+    return `${from} - ${to}`;
+  }, [dateRange]);
+
+  const [departmentFilter, setDepartmentFilter] = useState("all");
   const [searchEmployee, setSearchEmployee] = useState("");
 
-  // pagination (client-side)
   const [page, setPage] = useState(1);
   const pageSize = 4;
 
   const [rows, setRows] = useState<AttendanceRow[]>([]);
 
   useEffect(() => {
-    // dummy fetch
     const t = setTimeout(() => {
       setRows([
         {
@@ -72,6 +93,7 @@ export default function PresensiKaryawanManagerHRPage() {
           email: "budi.s@sapphire.com",
           empId: "EMP-2023-01",
           dept: "IT Development",
+          date: new Date(2023, 9, 25), // ✅ 25 Okt 2023
           dateLabel: "25 Okt 2023",
           clockIn: "08:00",
           clockOut: "17:05",
@@ -84,6 +106,7 @@ export default function PresensiKaryawanManagerHRPage() {
           email: "siti.a@sapphire.com",
           empId: "EMP-2023-14",
           dept: "Finance",
+          date: new Date(2023, 9, 25),
           dateLabel: "25 Okt 2023",
           clockIn: "08:45",
           clockOut: "17:15",
@@ -96,6 +119,7 @@ export default function PresensiKaryawanManagerHRPage() {
           email: "rian.w@sapphire.com",
           empId: "EMP-2023-09",
           dept: "Sales & Mkt",
+          date: new Date(2023, 9, 25),
           dateLabel: "25 Okt 2023",
           clockIn: "--:--",
           clockOut: "--:--",
@@ -108,7 +132,8 @@ export default function PresensiKaryawanManagerHRPage() {
           email: "diana.p@sapphire.com",
           empId: "EMP-2023-05",
           dept: "IT Development",
-          dateLabel: "25 Okt 2023",
+          date: new Date(2023, 9, 10), // ✅ beda tanggal biar kelihatan efek filter
+          dateLabel: "10 Okt 2023",
           clockIn: "07:55",
           clockOut: "17:30",
           status: "HADIR",
@@ -123,12 +148,37 @@ export default function PresensiKaryawanManagerHRPage() {
 
   const filteredRows = useMemo(() => {
     const q = searchEmployee.toLowerCase().trim();
+
+    const from = dateRange?.from
+      ? new Date(
+          dateRange.from.getFullYear(),
+          dateRange.from.getMonth(),
+          dateRange.from.getDate(),
+          0, 0, 0, 0
+        )
+      : null;
+
+    const to = dateRange?.to
+      ? new Date(
+          dateRange.to.getFullYear(),
+          dateRange.to.getMonth(),
+          dateRange.to.getDate(),
+          23, 59, 59, 999
+        )
+      : null;
+
     return rows.filter((r) => {
-      const matchName = r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
-      const matchDept = departmentFilter === "all" ? true : r.dept === departmentFilter;
-      return matchName && matchDept;
+      const matchName =
+        r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+
+      const matchDept =
+        departmentFilter === "all" ? true : r.dept === departmentFilter;
+
+      const matchDate = !from || !to ? true : r.date >= from && r.date <= to;
+
+      return matchName && matchDept && matchDate;
     });
-  }, [rows, searchEmployee, departmentFilter]);
+  }, [rows, searchEmployee, departmentFilter, dateRange]);
 
   const totalItems = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -142,22 +192,21 @@ export default function PresensiKaryawanManagerHRPage() {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, totalItems);
+  const fromText = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toText = Math.min(page * pageSize, totalItems);
 
   const handleReset = () => {
-    setDateRangeLabel("01 Okt 2023 - 31 Okt 2023");
+    setDateRange(defaultRange);
     setDepartmentFilter("all");
     setSearchEmployee("");
     setPage(1);
   };
 
   const handleApplyFilter = () => {
-    // nanti kalau sudah pakai API, trigger fetch di sini
+    // Kalau sudah pakai API: fetch ulang di sini pakai dateRange.from/to
     setPage(1);
   };
 
-  // summary cards (dummy)
   const totalKehadiranPct = 94;
   const tepatWaktu = 42;
   const terlambat = 4;
@@ -184,22 +233,37 @@ export default function PresensiKaryawanManagerHRPage() {
       <Card className="rounded-2xl">
         <CardContent className="p-6 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            {/* Filter Tanggal */}
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
                 Filter Tanggal
               </div>
-              <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5">
-                <Calendar className="h-4 w-4 text-gray-400" />
-                <input
-                  value={dateRangeLabel}
-                  onChange={(e) => setDateRangeLabel(e.target.value)}
-                  className="w-full text-sm outline-none"
-                />
-              </div>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm
+                               hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <span className={dateRange?.from ? "text-gray-900" : "text-gray-400"}>
+                      {dateRangeLabel}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+
+                <PopoverContent className="w-auto p-0" align="start">
+                  <UiCalendar
+                    mode="range"
+                    numberOfMonths={2}
+                    selected={dateRange}
+                    onSelect={setDateRange}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
-            {/* Filter Departemen */}
             <div>
               <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
                 Filter Departemen
@@ -217,7 +281,6 @@ export default function PresensiKaryawanManagerHRPage() {
               </Select>
             </div>
 
-            {/* Actions */}
             <div className="flex md:justify-end gap-3">
               <Button variant="outline" className="rounded-xl" onClick={handleReset}>
                 Reset
@@ -225,13 +288,14 @@ export default function PresensiKaryawanManagerHRPage() {
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
                 onClick={handleApplyFilter}
+                disabled={!dateRange?.from || !dateRange?.to}
+                title={!dateRange?.to ? "Pilih rentang tanggal lengkap (mulai & selesai)" : undefined}
               >
                 Terapkan Filter
               </Button>
             </div>
           </div>
 
-          {/* Search bar (di bawah filter) */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
@@ -287,7 +351,6 @@ export default function PresensiKaryawanManagerHRPage() {
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {pagedRows.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Nama */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
@@ -306,16 +369,13 @@ export default function PresensiKaryawanManagerHRPage() {
                         </div>
                       </td>
 
-                      {/* ID/Dept */}
                       <td className="px-6 py-4">
                         <div className="text-sm font-semibold text-gray-900">{r.empId}</div>
                         <div className="text-xs text-gray-500">{r.dept}</div>
                       </td>
 
-                      {/* Tanggal */}
                       <td className="px-6 py-4 text-sm text-gray-700">{r.dateLabel}</td>
 
-                      {/* Clock In */}
                       <td className="px-6 py-4">
                         <span
                           className={[
@@ -327,17 +387,14 @@ export default function PresensiKaryawanManagerHRPage() {
                         </span>
                       </td>
 
-                      {/* Clock Out */}
                       <td className="px-6 py-4">
                         <span className="text-sm font-semibold text-gray-900">{r.clockOut}</span>
                       </td>
 
-                      {/* Status */}
                       <td className="px-6 py-4">
                         <Badge variant={statusBadgeVariant(r.status)}>{r.status}</Badge>
                       </td>
 
-                      {/* Lokasi */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <MapPin className="h-4 w-4 text-gray-400" />
@@ -347,7 +404,6 @@ export default function PresensiKaryawanManagerHRPage() {
                         </div>
                       </td>
 
-                      {/* Menu */}
                       <td className="px-6 py-4 text-right">
                         <button className="p-2 rounded-lg hover:bg-gray-100">
                           <MoreVertical className="h-4 w-4 text-gray-500" />
@@ -365,10 +421,9 @@ export default function PresensiKaryawanManagerHRPage() {
               )}
             </div>
 
-            {/* footer */}
             <div className="px-6 py-4 flex items-center justify-between text-sm text-gray-600">
               <div>
-                Menampilkan {from} - {to} dari {totalItems} karyawan
+                Menampilkan {fromText} - {toText} dari {totalItems} karyawan
               </div>
 
               <div className="flex items-center gap-2">
