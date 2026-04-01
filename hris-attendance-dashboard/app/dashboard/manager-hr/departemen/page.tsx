@@ -26,11 +26,11 @@ export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   useEffect(() => {
     loadDepartments();
   }, []);
-  
+
   const loadDepartments = async () => {
     try {
       setLoading(true);
@@ -62,6 +62,7 @@ export default function DepartmentsPage() {
         totalStaff: staffCountByDepartmentId[d.id] ?? d.totalEmployees ?? 0,
         status: d.isActive ? "Aktif" : "Nonaktif",
       }));
+
       setDepartments(mapped);
     } catch (err) {
       setError("Gagal memuat departemen");
@@ -71,21 +72,25 @@ export default function DepartmentsPage() {
     }
   };
 
-
   const filteredDepartments = departments.filter((dept) =>
     dept.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleAddDepartment = () => {
-    // Navigate to add page instead of modal
     router.push("/dashboard/manager-hr/departemen/tambah-departemen");
   };
 
-  const handleEdit = (id: string) => {
+  const handleOpenPositions = (departmentId: string) => {
+    router.push(`/dashboard/manager-hr/jabatan`);
+  };
+
+  const handleEdit = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // ✅ supaya klik Edit tidak redirect
     router.push(`/dashboard/manager-hr/departemen/tambah-departemen?edit=${id}`);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // ✅ supaya klik Hapus tidak redirect
     if (!confirm("Apakah Anda yakin ingin menghapus departemen ini?")) return;
     try {
       await departmentApi.delete(id);
@@ -104,9 +109,8 @@ export default function DepartmentsPage() {
           {loading && (
             <div className="mb-4 text-sm text-gray-600">Memuat departemen...</div>
           )}
-          {error && (
-            <div className="mb-4 text-sm text-red-600">{error}</div>
-          )}
+          {error && <div className="mb-4 text-sm text-red-600">{error}</div>}
+
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-gray-900">
@@ -160,35 +164,44 @@ export default function DepartmentsPage() {
                   </th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-gray-200">
                 {filteredDepartments.map((dept) => (
-                  <tr key={dept.id} className="hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={dept.id}
+                    onClick={() => handleOpenPositions(dept.id)}
+                    className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    title="Klik untuk melihat jabatan/posisi"
+                  >
                     <td className="py-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                         <span className="text-xl">{dept.icon}</span>
                       </div>
                     </td>
+
                     <td className="py-4">
-                      <span className="font-medium text-gray-900">
-                        {dept.name}
-                      </span>
+                      <span className="font-medium text-gray-900">{dept.name}</span>
+                      <div className="text-xs text-gray-500">
+                        Klik untuk melihat daftar jabatan/posisi
+                      </div>
                     </td>
+
                     <td className="py-4">
                       <div>
                         <span className="text-sm text-gray-900">
                           {dept.managerName}
                         </span>
-                        <p className="text-xs text-gray-500">
-                          {dept.managerTitle}
-                        </p>
+                        <p className="text-xs text-gray-500">{dept.managerTitle}</p>
                       </div>
                     </td>
+
                     <td className="py-4">
                       <div className="flex items-center gap-1 text-sm text-gray-900">
                         <Users className="h-4 w-4 text-gray-400" />
                         <span>{dept.totalStaff} Staf</span>
                       </div>
                     </td>
+
                     <td className="py-4">
                       <Badge
                         variant={dept.status === "Aktif" ? "success" : "secondary"}
@@ -196,17 +209,18 @@ export default function DepartmentsPage() {
                         {dept.status}
                       </Badge>
                     </td>
+
                     <td className="py-4">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleEdit(dept.id)}
+                          onClick={(e) => handleEdit(e, dept.id)}
                           className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit"
                         >
                           <Edit2 className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(dept.id)}
+                          onClick={(e) => handleDelete(e, dept.id)}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           title="Hapus"
                         >
