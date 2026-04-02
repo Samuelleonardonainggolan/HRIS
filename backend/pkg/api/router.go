@@ -2,18 +2,16 @@ package api
 
 import (
 	"context"
-	"github.com/andikatampubolon10/hris-backend/pkg/cache"
-	"github.com/andikatampubolon10/hris-backend/pkg/database"
-	"github.com/andikatampubolon10/hris-backend/pkg/middleware"
 	"os"
 	"time"
 
 	docs "github.com/andikatampubolon10/hris-backend/docs"
-
+	"github.com/andikatampubolon10/hris-backend/pkg/cache"
+	"github.com/andikatampubolon10/hris-backend/pkg/database"
+	"github.com/andikatampubolon10/hris-backend/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	swaggerfiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-
 	"golang.org/x/time/rate"
 )
 

@@ -12,6 +12,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// wib adalah timezone WIB (UTC+7).
+// MongoDB menyimpan semua waktu dalam UTC. Konversi ke WIB wajib dilakukan
+// sebelum mem-format waktu menjadi string yang dikirim ke client (Flutter).
+var wib = time.FixedZone("WIB", 7*60*60)
+
 // AttendanceRepository interface
 type AttendanceRepository interface {
 	Create(ctx context.Context, attendance *models.Attendance) error
@@ -37,22 +42,30 @@ func NewAttendanceRepository(db *mongo.Database) AttendanceRepository {
 
 // Create implements AttendanceRepository.Create
 func (r *attendanceRepository) Create(ctx context.Context, attendance *models.Attendance) error {
-	attendance.CreatedAt = time.Now()
-	attendance.UpdatedAt = time.Now()
+	attendance.Date = attendance.Date.UTC()
+	attendance.CreatedAt = time.Now().UTC()
+	attendance.UpdatedAt = time.Now().UTC()
 	_, err := r.collection.InsertOne(ctx, attendance)
 	return err
 }
 
 // FindTodayByUserID implements AttendanceRepository.FindTodayByUserID
 func (r *attendanceRepository) FindTodayByUserID(ctx context.Context, userID primitive.ObjectID) (*models.Attendance, error) {
-	startOfDay := time.Now().Truncate(24 * time.Hour)
-	endOfDay := startOfDay.Add(24 * time.Hour)
+	// ✅ FIX: Hitung start/end hari berdasarkan WIB agar query MongoDB konsisten
+	// dengan hari yang dimaksud pengguna, bukan hari UTC yang bisa beda 7 jam.
+	nowWIB := time.Now().In(wib)
+	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
+	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
+
+	// Konversi ke UTC untuk query MongoDB (MongoDB menyimpan dalam UTC)
+	startOfDayUTC := startOfDayWIB.UTC()
+	endOfDayUTC := endOfDayWIB.UTC()
 
 	filter := bson.M{
 		"user_id": userID,
 		"date": bson.M{
-			"$gte": startOfDay,
-			"$lt":  endOfDay,
+			"$gte": startOfDayUTC,
+			"$lt":  endOfDayUTC,
 		},
 	}
 
@@ -99,14 +112,15 @@ func (r *attendanceRepository) UpdateWorkHours(ctx context.Context, id primitive
 
 // FindByUserIDAndMonth implements AttendanceRepository.FindByUserIDAndMonth
 func (r *attendanceRepository) FindByUserIDAndMonth(ctx context.Context, userID primitive.ObjectID, year, month int) ([]models.Attendance, error) {
-	startOfMonth := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Local)
-	endOfMonth := startOfMonth.AddDate(0, 1, 0)
+	// ✅ FIX: Gunakan WIB untuk menentukan range bulan, lalu konversi ke UTC untuk query MongoDB.
+	startOfMonthWIB := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, wib)
+	endOfMonthWIB := startOfMonthWIB.AddDate(0, 1, 0)
 
 	filter := bson.M{
 		"user_id": userID,
 		"date": bson.M{
-			"$gte": startOfMonth,
-			"$lt":  endOfMonth,
+			"$gte": startOfMonthWIB.UTC(),
+			"$lt":  endOfMonthWIB.UTC(),
 		},
 	}
 
@@ -137,18 +151,21 @@ func (r *attendanceRepository) GetMonthlySummary(ctx context.Context, userID pri
 		totalHours += att.WorkHours
 		overtimeHours += att.OvertimeHours
 
+		// ✅ FIX: Konversi semua timestamp dari UTC ke WIB sebelum format string.
+		// Ini adalah root cause dari masalah jam beda 7 jam (UTC vs WIB).
 		clockInStr := "--:--"
 		if att.ClockInTime != nil {
-			clockInStr = att.ClockInTime.Format("15:04")
+			clockInStr = att.ClockInTime.In(wib).Format("15:04")
 		}
 		clockOutStr := "--:--"
 		if att.ClockOutTime != nil {
-			clockOutStr = att.ClockOutTime.Format("15:04")
+			clockOutStr = att.ClockOutTime.In(wib).Format("15:04")
 		}
 
+		// ✅ FIX: Format tanggal juga dalam WIB agar konsisten
 		records = append(records, models.AttendanceResponse{
 			ID:            att.ID.Hex(),
-			Date:          att.Date.Format("2006-01-02"),
+			Date:          att.Date.In(wib).Format("2006-01-02"),
 			ClockInTime:   clockInStr,
 			ClockOutTime:  clockOutStr,
 			Status:        att.Status,

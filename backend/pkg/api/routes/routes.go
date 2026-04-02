@@ -20,6 +20,7 @@ func SetupRoutes(
 	attendanceHandler *handler.AttendanceHandler,
 	geofenceHandler *handler.GeofenceHandler,
 	pengajuanIzinCutiHandler *handler.PengajuanIzinCutiHandler,
+	pengajuanHandler *handler.PengajuanHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -57,18 +58,32 @@ func SetupRoutes(
 			// Logout
 			protected.POST("/logout", authHandler.Logout)
 
+			// ==================== PROFILE ====================
+			protected.GET("/profile", authHandler.GetProfile)
+			protected.PUT("/profile", authHandler.UpdateProfile)
+			protected.POST("/profile/change-password", authHandler.ChangePassword)
+
 			// ==================== FACE RECOGNITION ====================
 			protected.GET("/internal/face/health", faceHandler.Health)
 			protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
 			protected.POST("/face/extract-embedding", faceHandler.ExtractEmbedding)
-			protected.POST("/face/register", faceHandler.RegisterFace) // TANPA :id di path
+			protected.POST("/face/register", faceHandler.RegisterFace)
 
 			// ==================== ATTENDANCE ====================
 			attendance := protected.Group("/attendance")
 			{
 				attendance.POST("/process", attendanceHandler.ProcessAttendance)
-				attendance.GET("/today	", attendanceHandler.GetTodayAttendance)
+				attendance.GET("/today", attendanceHandler.GetTodayAttendance)
 				attendance.GET("/monthly", attendanceHandler.GetMonthlyAttendance)
+			}
+
+			// ==================== PENGAJUAN IZIN / CUTI ====================
+			// ✅ Route baru — sebelumnya menyebabkan 404 di Flutter
+			pengajuan := protected.Group("/pengajuan")
+			{
+				pengajuan.GET("/tipe", pengajuanHandler.GetTipePengajuan) // GET /api/v1/pengajuan/tipe
+				pengajuan.GET("", pengajuanHandler.GetMyPengajuan)        // GET /api/v1/pengajuan
+				pengajuan.POST("", pengajuanHandler.CreatePengajuan)      // POST /api/v1/pengajuan
 			}
 
 			// ==================== DEPARTMENTS (Manager HR Only) ====================
@@ -106,18 +121,15 @@ func SetupRoutes(
 			// ==================== GEOFENCING ====================
 			geofences := protected.Group("/geofences")
 			{
-				// Manager HR only routes
 				geofences.POST("", middleware.ManagerHROnly(), geofenceHandler.CreateGeofence)
 				geofences.PUT("/:id", middleware.ManagerHROnly(), geofenceHandler.UpdateGeofence)
 				geofences.DELETE("/:id", middleware.ManagerHROnly(), geofenceHandler.DeleteGeofence)
 
-				// All authenticated users can read
 				geofences.GET("", geofenceHandler.GetAllGeofences)
 				geofences.GET("/active", geofenceHandler.GetActiveGeofences)
 				geofences.GET("/:id", geofenceHandler.GetGeofenceByID)
 			}
 
-			// Check location (All authenticated users)
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
 
 			// ==================== LEAVE REQUEST APPROVAL (Manager HR Only) ====================

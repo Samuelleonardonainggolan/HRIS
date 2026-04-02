@@ -18,7 +18,11 @@ type AuthService interface {
 	Register(ctx context.Context, req models.RegisterRequest) (*models.UserResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*models.LoginResponse, error)
 	Logout(ctx context.Context, userID string) error
-	GetFaceRegistrationStatus(ctx context.Context, userID string) (bool, error) // Tambahkan interface method
+	GetFaceRegistrationStatus(ctx context.Context, userID string) (bool, error)
+	// Profile
+	GetProfile(ctx context.Context, userID string) (*models.UserResponse, error)
+	UpdateProfile(ctx context.Context, userID string, req *models.UpdateUserRequest) (*models.UserResponse, error)
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
 }
 
 type authService struct {
@@ -198,6 +202,57 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 
 func (s *authService) Logout(ctx context.Context, userID string) error {
 	// In stateless JWT, logout is handled client-side by removing token
-	// Optionally, implement token blacklist here if needed
 	return nil
+}
+
+// GetProfile — ambil profil user berdasarkan userID dari JWT
+func (s *authService) GetProfile(ctx context.Context, userID string) (*models.UserResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, errors.New("user tidak ditemukan")
+	}
+	response := user.ToResponse()
+	return &response, nil
+}
+
+// UpdateProfile — self-update: hanya phone & address
+func (s *authService) UpdateProfile(ctx context.Context, userID string, req *models.UpdateUserRequest) (*models.UserResponse, error) {
+	safeReq := &models.UpdateUserRequest{
+		Phone:   req.Phone,
+		Address: req.Address,
+	}
+	if safeReq.Phone == "" && safeReq.Address == "" {
+		return nil, errors.New("tidak ada data yang diperbarui")
+	}
+	if err := s.userRepo.Update(ctx, userID, safeReq); err != nil {
+		return nil, err
+	}
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, errors.New("gagal mengambil data setelah update")
+	}
+	response := user.ToResponse()
+	return &response, nil
+}
+
+// ChangePassword — verifikasi password lama, hash yang baru, simpan
+func (s *authService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return errors.New("user tidak ditemukan")
+	}
+	if !auth.CheckPasswordHash(oldPassword, user.Password) {
+		return errors.New("password saat ini salah")
+	}
+	if len(newPassword) < 8 {
+		return errors.New("password baru minimal 8 karakter")
+	}
+	if oldPassword == newPassword {
+		return errors.New("password baru tidak boleh sama dengan password lama")
+	}
+	hashed, err := auth.HashPassword(newPassword)
+	if err != nil {
+		return errors.New("gagal memproses password baru")
+	}
+	return s.userRepo.UpdatePassword(ctx, userID, hashed)
 }
