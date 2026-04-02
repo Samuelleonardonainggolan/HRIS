@@ -1,3 +1,4 @@
+// lib/services/api_service.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -9,17 +10,16 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://10.218.68.218:8080/api/v1'; // Untuk emulator Android
-  // static const String baseUrl = 'http://localhost:8080/api/v1'; // Untuk web
-  //static const String baseUrl = 'http://192.168.1.100:8080/api/v1'; // Untuk device fisik (ganti dengan IP komputer)
+  // ✅ Ganti dengan IP yang sesuai environment Anda
+  static const String baseUrl = 'http://10.218.68.218:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
 
-  // Token management
+  // ─── Token Management ───────────────────────────────────────────────────────
+
   static Future<void> saveTokens(
     String accessToken,
     String refreshToken,
@@ -46,13 +46,9 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     final loginTime = prefs.getInt('login_time');
     final expiresIn = prefs.getInt('expires_in');
-
     if (loginTime == null || expiresIn == null) return true;
-
     final now = DateTime.now().millisecondsSinceEpoch;
-    final expiryTime =
-        loginTime + (expiresIn * 1000); // Convert to milliseconds
-
+    final expiryTime = loginTime + (expiresIn * 1000);
     return now >= expiryTime;
   }
 
@@ -62,158 +58,91 @@ class ApiService {
     await prefs.remove('refresh_token');
     await prefs.remove('expires_in');
     await prefs.remove('login_time');
+    await prefs.remove('user_id');
   }
 
   static Future<Map<String, String>> getHeaders() async {
     final token = await getAccessToken();
-    if (token != null) {
+    if (token != null && token.isNotEmpty) {
       return {..._headers, 'Authorization': 'Bearer $token'};
     }
     return _headers;
   }
 
+  static Future<void> saveUserId(String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_id', userId);
+    print('[API] User ID saved: $userId');
+  }
+
+  static Future<String?> getUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('user_id');
+  }
+
+  // ─── Auth ───────────────────────────────────────────────────────────────────
+
   static Future<LoginResponse> login(String email, String password) async {
     try {
-      print('[API] Attempting login for: $email');
+      print('[API] Login untuk: $email');
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: _headers,
+            body: jsonEncode({'email': email, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 30));
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
-        headers: _headers,
-        body: jsonEncode({'email': email, 'password': password}),
-      );
-
-      print('[API] Login response status: ${response.statusCode}');
-      print('[API] Login response body: ${response.body}');
+      print('[API] Login status: ${response.statusCode}');
+      print('[API] Login body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final Map<String, dynamic> responseData = data['data'] ?? data;
-
-        // Log untuk debugging
-        print('[API] Response data: $responseData');
-        print(
-          '[API] requires_face_registration value: ${responseData['requires_face_registration']}',
-        );
-
         final loginResponse = LoginResponse.fromJson(responseData);
 
-        // Save tokens
         await saveTokens(
           loginResponse.accessToken,
           loginResponse.refreshToken,
           loginResponse.expiresIn,
         );
-
-        // SAVE USER ID
         await saveUserId(loginResponse.user.id);
 
-        print('[API] Login successful for user: ${loginResponse.user.id}');
-        print(
-          '[API] requiresFaceRegistration: ${loginResponse.requiresFaceRegistration}',
-        );
-
+        print('[API] Login sukses untuk user: ${loginResponse.user.id}');
         return loginResponse;
       } else {
-        try {
-          final error = jsonDecode(response.body);
-          final errorMessage =
-              error['message'] ?? error['error'] ?? 'Login failed';
-          throw Exception('Login error: $errorMessage');
-        } catch (e) {
-          throw Exception('Login failed with status ${response.statusCode}');
-        }
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Login gagal');
       }
     } catch (e) {
-      print('[API] Login exception: $e');
-      throw Exception('Connection error: $e');
-    }
-  }
-
-  // FIX #5: Add register method yang kurang
-  static Future<User> register({
-    required String nik,
-    required String email,
-    required String password,
-    required String fullName,
-    required String role,
-    required String department,
-    required String position,
-    String? phone,
-    String? address,
-  }) async {
-    try {
-      print('[API] Attempting registration for: $email');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
-        headers: _headers,
-        body: jsonEncode({
-          'nik': nik,
-          'email': email,
-          'password': password,
-          'full_name': fullName,
-          'role': role,
-          'department': department,
-          'position': position,
-          'phone': phone,
-          'address': address,
-        }),
-      );
-
-      print('[API] Register response status: ${response.statusCode}');
-      print('[API] Register response body: ${response.body}');
-
-      if (response.statusCode == 201 || response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final Map<String, dynamic> responseData = data['data'] ?? data;
-
-        final user = User.fromJson(responseData);
-        print('[API] Registration successful for: ${user.email}');
-        return user;
-      } else {
-        try {
-          final error = jsonDecode(response.body);
-          final errorMessage =
-              error['message'] ?? error['error'] ?? 'Registration failed';
-          throw Exception('Registration error: $errorMessage');
-        } catch (e) {
-          throw Exception(
-            'Registration failed with status ${response.statusCode}',
-          );
-        }
-      }
-    } catch (e) {
-      print('[API] Registration exception: $e');
-      throw Exception('Registration error: $e');
+      print('[API] Login error: $e');
+      throw Exception('Login error: $e');
     }
   }
 
   static Future<LoginResponse> refreshToken() async {
     try {
-      final refreshToken = await getRefreshToken();
-      if (refreshToken == null) throw Exception('No refresh token');
+      final token = await getRefreshToken();
+      if (token == null) throw Exception('No refresh token');
 
       final response = await http.post(
         Uri.parse('$baseUrl/auth/refresh'),
         headers: _headers,
-        body: jsonEncode({'refresh_token': refreshToken}),
+        body: jsonEncode({'refresh_token': token}),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // FIX #1: Handle Golang response wrapper
         final Map<String, dynamic> responseData = data['data'] ?? data;
         final loginResponse = LoginResponse.fromJson(responseData);
-
         await saveTokens(
           loginResponse.accessToken,
           loginResponse.refreshToken,
           loginResponse.expiresIn,
         );
-
         return loginResponse;
       } else {
-        throw Exception('Failed to refresh token');
+        throw Exception('Gagal refresh token');
       }
     } catch (e) {
       throw Exception('Refresh token error: $e');
@@ -229,438 +158,7 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> clockOut({
-    required String employeeId,
-    required double latitude,
-    required double longitude,
-    required String photoPath,
-  }) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/attendance/clock-out'),
-      );
-
-      final headers = await getHeaders();
-      request.headers.addAll(headers);
-
-      request.fields['employee_id'] = employeeId;
-      request.fields['latitude'] = latitude.toString();
-      request.fields['longitude'] = longitude.toString();
-      request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
-
-      final response = await request.send();
-      final responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(responseData);
-      } else {
-        throw Exception('Clock out failed: ${response.reasonPhrase}');
-      }
-    } catch (e) {
-      throw Exception('Clock out error: $e');
-    }
-  }
-
-  static Future<List<AttendanceRecord>> getAttendanceHistory({
-    int? month,
-    int? year,
-    String? status,
-  }) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      var url = '$baseUrl/attendance/history';
-      var params = <String, String>{};
-
-      if (month != null) params['month'] = month.toString();
-      if (year != null) params['year'] = year.toString();
-      if (status != null) params['status'] = status;
-
-      if (params.isNotEmpty) {
-        url += '?' + Uri(queryParameters: params).query;
-      }
-
-      final headers = await getHeaders();
-      final response = await http.get(Uri.parse(url), headers: headers);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['data'] != null) {
-          return (data['data'] as List)
-              .map((item) => AttendanceRecord.fromJson(item))
-              .toList();
-        }
-        return [];
-      } else {
-        throw Exception('Failed to get history');
-      }
-    } catch (e) {
-      throw Exception('History error: $e');
-    }
-  }
-
-  // Profile APIs
-  static Future<User> getProfile() async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl/profile'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return User.fromJson(data['user'] ?? data);
-      } else {
-        throw Exception('Failed to get profile');
-      }
-    } catch (e) {
-      throw Exception('Profile error: $e');
-    }
-  }
-
-  static Future<User> updateProfile(Map<String, dynamic> profileData) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.put(
-        Uri.parse('$baseUrl/profile'),
-        headers: headers,
-        body: jsonEncode(profileData),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return User.fromJson(data['user'] ?? data);
-      } else {
-        throw Exception('Failed to update profile');
-      }
-    } catch (e) {
-      throw Exception('Update profile error: $e');
-    }
-  }
-
-  static Future<Map<String, dynamic>> changePassword({
-    required String oldPassword,
-    required String newPassword,
-  }) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.post(
-        Uri.parse('$baseUrl/profile/change-password'),
-        headers: headers,
-        body: jsonEncode({
-          'old_password': oldPassword,
-          'new_password': newPassword,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception('Failed to change password');
-      }
-    } catch (e) {
-      throw Exception('Change password error: $e');
-    }
-  }
-
-  // Request APIs (Cuti, Izin, etc)
-  static Future<Map<String, dynamic>> submitLeaveRequest({
-    required String type,
-    required DateTime startDate,
-    required DateTime endDate,
-    required String reason,
-    String? attachmentPath,
-  }) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/requests/leave'),
-      );
-
-      final headers = await getHeaders();
-      request.headers.addAll(headers);
-
-      request.fields['type'] = type;
-      request.fields['start_date'] = startDate.toIso8601String();
-      request.fields['end_date'] = endDate.toIso8601String();
-      request.fields['reason'] = reason;
-
-      if (attachmentPath != null) {
-        request.files.add(
-          await http.MultipartFile.fromPath('attachment', attachmentPath),
-        );
-      }
-
-      final response = await request.send();
-      final responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(responseData);
-      } else {
-        throw Exception('Failed to submit request');
-      }
-    } catch (e) {
-      throw Exception('Submit request error: $e');
-    }
-  }
-
-  static Future<List<LeaveRequest>> getLeaveRequests() async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl/requests/leave'),
-        headers: headers,
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['data'] != null) {
-          return (data['data'] as List)
-              .map((item) => LeaveRequest.fromJson(item))
-              .toList();
-        }
-        return [];
-      } else {
-        throw Exception('Failed to get leave requests');
-      }
-    } catch (e) {
-      throw Exception('Leave requests error: $e');
-    }
-  }
-
-  // lib/services/api_service.dart - Perbaiki checkFaceStatus
-
-  static Future<Map<String, dynamic>> checkFaceStatus() async {
-    try {
-      print('[API] Checking face status...');
-
-      if (await isTokenExpired()) {
-        print('[API] Token expired, refreshing...');
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl/face/status'),
-        headers: headers,
-      );
-
-      print('[API] Face status response status: ${response.statusCode}');
-      print('[API] Face status response body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        // Handle berbagai format response
-        bool hasFaceRegistered = false;
-
-        if (data['data'] != null) {
-          hasFaceRegistered = data['data']['has_face_registered'] == true;
-        } else if (data['has_face_registered'] != null) {
-          hasFaceRegistered = data['has_face_registered'] == true;
-        }
-
-        print('[API] hasFaceRegistered: $hasFaceRegistered');
-
-        return {'has_face_registered': hasFaceRegistered};
-      } else {
-        print(
-          '[API] Face status error (${response.statusCode}), assuming not registered',
-        );
-        // Jika 404, berarti endpoint belum ada, anggap belum registrasi
-        return {'has_face_registered': false};
-      }
-    } catch (e) {
-      print('[API] Face status error: $e');
-      return {'has_face_registered': false};
-    }
-  }
-
-  // Register face (first login)
-  static Future<void> registerFace({
-    required String userId,
-    required List<double> faceEmbedding,
-    required String faceImage,
-  }) async {
-    try {
-      print('[API] Registering face for user: $userId');
-      print('[API] Embedding length: ${faceEmbedding.length}');
-
-      if (await isTokenExpired()) {
-        print('[API] Token expired, refreshing...');
-        await refreshToken();
-      }
-
-      final token = await getAccessToken();
-
-      // Decode base64 image to bytes
-      final imageBytes = base64Decode(faceImage);
-
-      // Create temporary file
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File(
-        '${tempDir.path}/face_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      await tempFile.writeAsBytes(imageBytes);
-
-      print('[API] Temporary file created: ${tempFile.path}');
-      print('[API] Image size: ${imageBytes.length} bytes');
-
-      // PERBAIKAN: Gunakan endpoint yang benar - kirim userId di form, bukan di path
-      final url = '$baseUrl/face/register';
-      print('[API] URL: $url');
-
-      // Create multipart request
-      var request = http.MultipartRequest('POST', Uri.parse(url));
-
-      // Add headers
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      });
-
-      // Add fields - userId dikirim sebagai form field
-      request.fields['user_id'] = userId;
-      request.fields['face_embedding'] = jsonEncode(faceEmbedding);
-
-      // Add photo file
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'photo',
-          tempFile.path,
-          filename: 'face.jpg', // Nama file sederhana
-        ),
-      );
-
-      print('[API] Sending multipart request...');
-      print('[API] Fields: ${request.fields.keys}');
-      print('[API] Files: ${request.files.length}');
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      print('[API] Register face response status: ${response.statusCode}');
-      print('[API] Register face response body: ${response.body}');
-
-      await tempFile.delete();
-
-      if (response.statusCode == 200) {
-        print('[API] Face registered successfully');
-        return;
-      } else {
-        try {
-          final error = jsonDecode(response.body);
-          throw Exception(error['message'] ?? 'Failed to register face');
-        } catch (e) {
-          throw Exception('Failed to register face: ${response.body}');
-        }
-      }
-    } catch (e) {
-      print('[API] Register face error: $e');
-      throw Exception('Register face error: $e');
-    }
-  }
-
-  // Verify face for attendance
-  static Future<Map<String, dynamic>> verifyFace({
-    required List<double> faceEmbedding,
-    double threshold = 0.6,
-  }) async {
-    try {
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      final headers = await getHeaders();
-      final response = await http.post(
-        Uri.parse('$baseUrl/face/verify'),
-        headers: headers,
-        body: jsonEncode({
-          'face_embedding': faceEmbedding,
-          'threshold': threshold,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['data'] ?? {};
-      } else {
-        throw Exception('Face verification failed');
-      }
-    } catch (e) {
-      throw Exception('Verify face error: $e');
-    }
-  }
-
-  // Update clockIn method to include face verification
-  static Future<Map<String, dynamic>> clockIn({
-    required String employeeId,
-    required double latitude,
-    required double longitude,
-    required String photoPath,
-  }) async {
-    try {
-      // Check if token expired
-      if (await isTokenExpired()) {
-        await refreshToken();
-      }
-
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/attendance/clock-in'),
-      );
-
-      final headers = await getHeaders();
-      request.headers.addAll(headers);
-
-      // Add fields
-      request.fields['employee_id'] = employeeId;
-      request.fields['latitude'] = latitude.toString();
-      request.fields['longitude'] = longitude.toString();
-
-      // Add photo
-      request.files.add(await http.MultipartFile.fromPath('photo', photoPath));
-
-      final response = await request.send();
-      final responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return jsonDecode(responseData);
-      } else {
-        throw Exception('Clock in failed: ${response.reasonPhrase}');
-      }
-    } catch (e) {
-      throw Exception('Clock in error: $e');
-    }
-  }
+  // ─── Attendance ─────────────────────────────────────────────────────────────
 
   static Future<AttendanceProcessResult> processAttendance({
     required String recordType,
@@ -669,7 +167,7 @@ class ApiService {
     required String photoPath,
   }) async {
     try {
-      print('[API] Processing $recordType...');
+      print('[API] Processing attendance: $recordType');
 
       if (await isTokenExpired()) {
         print('[API] Token expired, refreshing...');
@@ -699,17 +197,22 @@ class ApiService {
         await http.MultipartFile.fromPath(
           'photo',
           photoPath,
-          filename: 'attendance_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          filename:
+              '${recordType}_${DateTime.now().millisecondsSinceEpoch}.jpg',
         ),
       );
 
-      print('[API] Sending request with fields: ${request.fields}');
+      print(
+        '[API] Sending: record_type=$recordType, lat=$latitude, lng=$longitude',
+      );
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('[API] Process attendance response status: ${response.statusCode}');
-      print('[API] Process attendance response body: ${response.body}');
+      print('[API] Process attendance status: ${response.statusCode}');
+      print('[API] Process attendance body: ${response.body}');
 
       final jsonResponse = jsonDecode(response.body);
 
@@ -718,48 +221,53 @@ class ApiService {
       } else if (response.statusCode == 401) {
         await clearTokens();
         throw Exception('Sesi telah berakhir. Silakan login ulang.');
-      } else {
-        throw Exception(
-          jsonResponse['message'] ?? 'Failed to process attendance',
+      } else if (response.statusCode == 400) {
+        final message = jsonResponse['message'] ?? 'Absensi gagal';
+        return AttendanceProcessResult(
+          success: false,
+          message: message,
+          faceSimilarity:
+              jsonResponse['data']?['face_similarity']?.toDouble() ?? 0.0,
+          locationValid: jsonResponse['data']?['location_valid'] ?? false,
+          distance: jsonResponse['data']?['distance_m']?.toDouble() ?? 0.0,
         );
+      } else {
+        throw Exception(jsonResponse['message'] ?? 'Gagal memproses absensi');
       }
     } catch (e) {
       print('[API] Process attendance error: $e');
-      throw Exception('Process attendance error: $e');
+      rethrow;
     }
   }
 
-  // Get today's attendance
-  static Future<AttendanceRecord?> getTodayAttendance() async {
+  static Future<TodayAttendanceDetail?> getTodayAttendance() async {
     try {
       if (await isTokenExpired()) {
         await refreshToken();
       }
 
       final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse('$baseUrl/attendance/today'),
-        headers: headers,
-      );
+      final response = await http
+          .get(Uri.parse('$baseUrl/attendance/today'), headers: headers)
+          .timeout(const Duration(seconds: 30));
 
-      print('[API] Get today attendance response: ${response.body}');
+      print('[API] Today attendance status: ${response.statusCode}');
+      print('[API] Today attendance body: ${response.body}');
 
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
-        if (jsonResponse['data'] != null) {
-          return AttendanceRecord.fromJson(jsonResponse['data']);
+        if (jsonResponse['data'] == null) {
+          return null;
         }
-        return null;
-      } else {
-        return null;
+        return TodayAttendanceDetail.fromJson(jsonResponse['data']);
       }
+      return null;
     } catch (e) {
       print('[API] Get today attendance error: $e');
       return null;
     }
   }
 
-  // Get monthly attendance
   static Future<MonthlyAttendanceSummary> getMonthlyAttendance({
     int? month,
     int? year,
@@ -774,20 +282,23 @@ class ApiService {
       final queryYear = year ?? now.year;
 
       final headers = await getHeaders();
-      final response = await http.get(
-        Uri.parse(
-          '$baseUrl/attendance/monthly?month=$queryMonth&year=$queryYear',
-        ),
-        headers: headers,
-      );
+      final response = await http
+          .get(
+            Uri.parse(
+              '$baseUrl/attendance/monthly?month=$queryMonth&year=$queryYear',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
 
-      print('[API] Get monthly attendance response: ${response.body}');
+      print('[API] Monthly attendance status: ${response.statusCode}');
+      print('[API] Monthly attendance body: ${response.body}');
 
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
         return MonthlyAttendanceSummary.fromJson(jsonResponse['data'] ?? {});
       } else {
-        throw Exception('Failed to get monthly attendance');
+        throw Exception('Gagal mengambil data absensi bulanan');
       }
     } catch (e) {
       print('[API] Get monthly attendance error: $e');
@@ -795,24 +306,392 @@ class ApiService {
     }
   }
 
-  static Future<void> saveUserId(String userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_id', userId);
-    print('[API] User ID saved: $userId');
-  }
+  // ─── Pengajuan Izin/Cuti ────────────────────────────────────────────────────
 
-  static Future<String?> getUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('user_id');
-  }
-
-  // Extract face embedding from image
-  static Future<List<double>> extractFaceEmbedding(String imagePath) async {
+  /// GET /api/v1/pengajuan/tipe
+  /// Mengambil daftar tipe pengajuan (Izin Sakit, Cuti Tahunan, dll.)
+  static Future<List<TipePengajuan>> getTipePengajuan() async {
     try {
-      print('[API] Extracting face embedding from: $imagePath');
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/pengajuan/tipe'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] GetTipePengajuan status: ${response.statusCode}');
+      print('[API] GetTipePengajuan body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> list = data['data'] ?? data['tipe'] ?? [];
+        return list.map((e) => TipePengajuan.fromJson(e)).toList();
+      } else {
+        throw Exception(
+          'Gagal mengambil tipe pengajuan (${response.statusCode})',
+        );
+      }
+    } catch (e) {
+      print('[API] GetTipePengajuan error: $e');
+      throw Exception('GetTipePengajuan error: $e');
+    }
+  }
+
+  /// POST /api/v1/pengajuan
+  /// Mengirimkan pengajuan izin/cuti baru
+  static Future<void> submitPengajuan({
+    required String tipePengajuanId,
+    required String tanggalMulai, // format "yyyy-MM-dd"
+    required String tanggalSelesai, // format "yyyy-MM-dd"
+    required int totalHari,
+    required String alasan,
+    String? dokumenUrl,
+    // Lembur-specific (opsional)
+    String? startTime,
+    String? endTime,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final userId = await getUserId();
+      if (userId == null) throw Exception('User ID tidak ditemukan');
+
+      final headers = await getHeaders();
+
+      final body = <String, dynamic>{
+        'user_id': userId,
+        'tipe_pengajuan_id': tipePengajuanId,
+        'tanggal_mulai': tanggalMulai,
+        'tanggal_selesai': tanggalSelesai,
+        'total_hari': totalHari,
+        'alasan': alasan,
+        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
+          'dokumen_url': dokumenUrl,
+        if (startTime != null) 'start_time': startTime,
+        if (endTime != null) 'end_time': endTime,
+      };
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/pengajuan'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] submitPengajuan status: ${response.statusCode}');
+      print('[API] submitPengajuan body: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return;
+      } else {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal mengirimkan pengajuan');
+      }
+    } catch (e) {
+      print('[API] submitPengajuan error: $e');
+      rethrow;
+    }
+  }
+
+  /// GET /api/v1/pengajuan — ambil riwayat pengajuan user
+  static Future<List<LeaveRequest>> getMyPengajuan() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/pengajuan'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getMyPengajuan status: ${response.statusCode}');
+      print('[API] getMyPengajuan body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Backend bisa return data sebagai List, atau Map dengan key data/pengajuan.
+        List<dynamic> list;
+        if (data is List) {
+          list = data;
+        } else if (data is Map<String, dynamic>) {
+          final rawData = data['data'];
+          if (rawData is List) {
+            list = rawData;
+          } else if (rawData is Map<String, dynamic>) {
+            list = rawData['data'] ?? rawData['pengajuan'] ?? [];
+          } else {
+            list = data['pengajuan'] ?? [];
+          }
+        } else {
+          list = [];
+        }
+        return list
+            .map((e) => LeaveRequest.fromJson(e as Map<String, dynamic>))
+            .toList()
+          ..sort((a, b) => b.startDate.compareTo(a.startDate));
+      } else {
+        throw Exception(
+          'Gagal mengambil data pengajuan (${response.statusCode})',
+        );
+      }
+    } catch (e) {
+      print('[API] getMyPengajuan error: $e');
+      throw Exception('getMyPengajuan error: $e');
+    }
+  }
+
+  /// Ambil semua pengajuan user yang APPROVED dan memiliki overlap dengan bulan [month]/[year]
+  /// Filter dilakukan di client (bukan query param backend) karena
+  /// endpoint GET /pengajuan tidak mendukung filter status/bulan.
+  /// Jika gagal, kembalikan [] agar history page tetap tampil.
+  static Future<List<LeaveRequest>> getApprovedPengajuanByMonth({
+    required int month,
+    required int year,
+  }) async {
+    try {
+      // Reuse getMyPengajuan — sudah handle berbagai format response backend
+      final all = await getMyPengajuan();
+
+      print(
+        '[API] getApprovedPengajuanByMonth: total pengajuan = ${all.length}',
+      );
+      for (final p in all) {
+        print(
+          '[API]   id=${p.id} type=${p.type} status=${p.statusFinal}'
+          ' start=${p.startDate} end=${p.endDate}',
+        );
+      }
+
+      final firstDay = DateTime(year, month, 1);
+      // Hari terakhir bulan: hari pertama bulan berikutnya dikurangi 1 hari
+      final lastDay = DateTime(
+        year,
+        month + 1,
+        1,
+      ).subtract(const Duration(days: 1));
+
+      final approved = all.where((p) {
+        if (p.statusFinal != 'APPROVED') return false;
+
+        // Normalisasi tanggal ke midnight untuk perbandingan yang akurat
+        final s = DateTime(
+          p.startDate.year,
+          p.startDate.month,
+          p.startDate.day,
+        );
+        final e = DateTime(p.endDate.year, p.endDate.month, p.endDate.day);
+
+        // Overlap: range pengajuan harus memiliki setidaknya satu hari yang berada di bulan yang ditampilkan
+        // Kondisi overlap: mulai <= lastDay DAN selesai >= firstDay
+        // Ini akan menangkap kasus:
+        // - pengajuan yang dimulai sebelum bulan ini dan berakhir di bulan ini
+        // - pengajuan yang dimulai di bulan ini dan berakhir setelah bulan ini
+        // - pengajuan yang sepenuhnya di dalam bulan ini
+        final hasOverlap = !s.isAfter(lastDay) && !e.isBefore(firstDay);
+
+        print(
+          '[API]   checking: ${p.id} s=${s} e=${e} firstDay=$firstDay lastDay=$lastDay overlap=$hasOverlap',
+        );
+
+        return hasOverlap;
+      }).toList();
+
+      print(
+        '[API] getApprovedPengajuanByMonth: approved & overlap = ${approved.length}',
+      );
+      return approved;
+    } catch (e) {
+      print('[API] getApprovedPengajuanByMonth error: $e');
+      return [];
+    }
+  }
+
+  /// Konversi respons backend pengajuan_izin_cuti → format LeaveRequest Flutter
+  static Map<String, dynamic> _mapPengajuanToLeave(Map<String, dynamic> json) {
+    // Mapping status backend (PENDING/APPROVED/REJECTED) ke bahasa Indonesia
+    final rawStatus =
+        json['status_final'] ?? json['status_kepala_departemen'] ?? 'PENDING';
+    String status;
+    switch ((rawStatus as String).toUpperCase()) {
+      case 'APPROVED':
+        status = 'Disetujui';
+        break;
+      case 'REJECTED':
+        status = 'Ditolak';
+        break;
+      default:
+        status = 'Menunggu';
+    }
+
+    return {
+      'id': json['id'] ?? '',
+      'type': json['nama_tipe'] ?? json['tipe'] ?? 'Izin',
+      'start_date': json['tanggal_mulai'] ?? DateTime.now().toIso8601String(),
+      'end_date': json['tanggal_selesai'] ?? DateTime.now().toIso8601String(),
+      'reason': json['alasan'] ?? '',
+      'status': status,
+      'days': json['total_hari'] ?? 0,
+    };
+  }
+
+  // ─── Face Registration ──────────────────────────────────────────────────────
+
+  static Future<void> registerFace({
+    required String userId,
+    required String photoPath,
+  }) async {
+    try {
+      print('[API] Registering face for user: $userId');
 
       if (await isTokenExpired()) {
-        print('[API] Token expired, refreshing...');
+        await refreshToken();
+      }
+
+      final token = await getAccessToken();
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/face/register'),
+      );
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      request.fields['user_id'] = userId;
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          photoPath,
+          filename: 'face_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      print('[API] Sending face registration...');
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('[API] Register face status: ${response.statusCode}');
+      print('[API] Register face body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('[API] Face registered successfully');
+        return;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Gagal mendaftarkan wajah');
+      }
+    } catch (e) {
+      print('[API] Register face error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> registerFaceWithBytes({
+    required String userId,
+    required List<double> faceEmbedding,
+    required String faceImageBase64,
+  }) async {
+    try {
+      print('[API] Registering face (with bytes) for user: $userId');
+
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final token = await getAccessToken();
+      final imageBytes = base64Decode(faceImageBase64);
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File(
+        '${tempDir.path}/face_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      await tempFile.writeAsBytes(imageBytes);
+
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/face/register'),
+      );
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+      request.fields['user_id'] = userId;
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'photo',
+          tempFile.path,
+          filename: 'face.jpg',
+        ),
+      );
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+
+      await tempFile.delete();
+
+      print('[API] Register face status: ${response.statusCode}');
+      print('[API] Register face body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('[API] Face registered successfully');
+        return;
+      } else {
+        final error = jsonDecode(response.body);
+        throw Exception(error['message'] ?? 'Gagal mendaftarkan wajah');
+      }
+    } catch (e) {
+      print('[API] Register face (bytes) error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<Map<String, dynamic>> checkFaceStatus() async {
+    try {
+      print('[API] Checking face status...');
+
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/face/status'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] Face status: ${response.statusCode}');
+      print('[API] Face status body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        bool hasFaceRegistered = false;
+
+        if (data['data'] != null) {
+          hasFaceRegistered = data['data']['has_face_registered'] == true;
+        } else if (data['has_face_registered'] != null) {
+          hasFaceRegistered = data['has_face_registered'] == true;
+        }
+
+        return {'has_face_registered': hasFaceRegistered};
+      } else {
+        return {'has_face_registered': false};
+      }
+    } catch (e) {
+      print('[API] Face status error: $e');
+      return {'has_face_registered': false};
+    }
+  }
+
+  static Future<List<double>> extractFaceEmbedding(String imagePath) async {
+    try {
+      print('[API] Extracting face embedding dari: $imagePath');
+
+      if (await isTokenExpired()) {
         await refreshToken();
       }
 
@@ -828,6 +707,9 @@ class ApiService {
 
       request.headers.addAll({'Authorization': 'Bearer $token'});
 
+      final userId = await getUserId();
+      if (userId != null) request.fields['employee_id'] = userId;
+
       request.files.add(
         await http.MultipartFile.fromPath(
           'photo',
@@ -836,17 +718,16 @@ class ApiService {
         ),
       );
 
-      print('[API] Sending extract embedding request...');
-      final streamedResponse = await request.send();
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('[API] Extract embedding response status: ${response.statusCode}');
-      print('[API] Extract embedding response body: ${response.body}');
+      print('[API] Extract embedding status: ${response.statusCode}');
+      print('[API] Extract embedding body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
-        // Handle berbagai format response
         List<double> embedding = [];
 
         if (data['data'] != null && data['data']['embedding'] != null) {
@@ -857,19 +738,163 @@ class ApiService {
           throw Exception('Embedding tidak ditemukan dalam response');
         }
 
-        // Validasi embedding
         if (embedding.isEmpty) {
-          throw Exception('Tidak ada wajah terdeteksi dalam foto');
+          throw Exception('Embedding kosong');
         }
 
         return embedding;
       } else {
         final error = jsonDecode(response.body);
-        throw Exception(error['message'] ?? 'Gagal mengekstrak face embedding');
+        throw Exception(error['message'] ?? 'Gagal mengekstrak wajah');
       }
     } catch (e) {
       print('[API] Extract embedding error: $e');
-      throw Exception('Gagal mengekstrak embedding: $e');
+      rethrow;
     }
   }
+
+  // ─── Profile ─────────────────────────────────────────────────────────────────
+
+  static Future<User> getProfile() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/profile'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final userJson = data['data'] ?? data['user'] ?? data;
+        return User.fromJson(userJson);
+      } else {
+        throw Exception('Gagal mengambil profil (${response.statusCode})');
+      }
+    } catch (e) {
+      throw Exception('Profile error: $e');
+    }
+  }
+
+  static Future<void> updateProfile(Map<String, dynamic> profileData) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+      final headers = await getHeaders();
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/profile'),
+            headers: headers,
+            body: jsonEncode(profileData),
+          )
+          .timeout(const Duration(seconds: 30));
+      print('[API] updateProfile status: ${response.statusCode}');
+      if (response.statusCode == 200) return;
+      if (response.statusCode == 401) {
+        await clearTokens();
+        throw Exception('Sesi berakhir, silakan login ulang.');
+      }
+      final err = jsonDecode(response.body);
+      throw Exception(
+        err['error'] ?? err['message'] ?? 'Gagal memperbarui profil',
+      );
+    } catch (e) {
+      print('[API] updateProfile error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/profile/change-password'),
+            headers: headers,
+            body: jsonEncode({
+              'old_password': oldPassword,
+              'new_password': newPassword,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      print('[API] changePassword status: ${response.statusCode}');
+      if (response.statusCode == 200) return;
+      if (response.statusCode == 401) {
+        await clearTokens();
+        throw Exception('Sesi berakhir, silakan login ulang.');
+      }
+      final err = jsonDecode(response.body);
+      throw Exception(
+        err['error'] ?? err['message'] ?? 'Gagal mengubah password',
+      );
+    } catch (e) {
+      print('[API] changePassword error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<List<AttendanceRecord>> getAttendanceHistory({
+    int? month,
+    int? year,
+    String? status,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final now = DateTime.now();
+      final queryMonth = month ?? now.month;
+      final queryYear = year ?? now.year;
+
+      final headers = await getHeaders();
+      final response = await http.get(
+        Uri.parse(
+          '$baseUrl/attendance/monthly?month=$queryMonth&year=$queryYear',
+        ),
+        headers: headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final Map<String, dynamic> responseData = data['data'] ?? {};
+        final List<dynamic> records = responseData['records'] ?? [];
+        return records.map((item) => AttendanceRecord.fromJson(item)).toList();
+      } else {
+        throw Exception('Gagal mengambil history');
+      }
+    } catch (e) {
+      throw Exception('History error: $e');
+    }
+  }
+}
+
+// ─── Model TipePengajuan (untuk dropdown di NewRequestPage) ──────────────────
+
+class TipePengajuan {
+  final String id;
+  final String namaTipe;
+  final String namaKategori; // "Izin" atau "Cuti"
+  final bool potongKuota;
+  final bool wajibLampiran;
+
+  const TipePengajuan({
+    required this.id,
+    required this.namaTipe,
+    required this.namaKategori,
+    required this.potongKuota,
+    required this.wajibLampiran,
+  });
+
+  factory TipePengajuan.fromJson(Map<String, dynamic> json) {
+    return TipePengajuan(
+      id: json['id'] ?? '',
+      namaTipe: json['nama_tipe'] ?? '',
+      namaKategori: json['nama_kategori'] ?? '',
+      potongKuota: json['potong_kuota'] == true,
+      wajibLampiran: json['wajib_lampiran'] == true,
+    );
+  }
+
+  @override
+  String toString() => namaTipe;
 }

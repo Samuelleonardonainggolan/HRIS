@@ -1,9 +1,9 @@
+// lib/pages/main_navigation.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_app/pages/dashboard_page.dart';
 import 'package:mobile_app/pages/history_page.dart';
 import 'package:mobile_app/pages/request_page.dart';
 import 'package:mobile_app/pages/profile_page.dart';
-import 'package:mobile_app/theme/app_theme.dart';
 
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
@@ -12,84 +12,120 @@ class MainNavigationPage extends StatefulWidget {
   State<MainNavigationPage> createState() => _MainNavigationPageState();
 }
 
-class _MainNavigationPageState extends State<MainNavigationPage> {
+class _MainNavigationPageState extends State<MainNavigationPage>
+    with TickerProviderStateMixin {
   int _selectedIndex = 0;
 
-  final List<Widget> _pages = [
-    const EmployeeDashboardPage(),
-    const HistoryPage(),
-    const RequestPage(),
-    const ProfilePage(),
+  final List<Widget> _pages = const [
+    EmployeeDashboardPage(),
+    HistoryPage(),
+    RequestPage(),
+    ProfilePage(),
+  ];
+
+  // Nav items config
+  static const _navItems = [
+    _NavItem(icon: Icons.home_rounded,          activeIcon: Icons.home_rounded,          label: 'Beranda'),
+    _NavItem(icon: Icons.history_rounded,        activeIcon: Icons.history_rounded,        label: 'Riwayat'),
+    _NavItem(icon: Icons.assignment_rounded,     activeIcon: Icons.assignment_rounded,     label: 'Pengajuan'),
+    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded,         label: 'Profil'),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _pages[_selectedIndex],
-      bottomNavigationBar: Container(
-        height: 70,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(25),
-            topRight: Radius.circular(25),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      height: 76,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF135BEC).withOpacity(0.08),
+            blurRadius: 24,
+            offset: const Offset(0, -4),
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 15,
-              offset: const Offset(0, -3),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(Icons.dashboard_rounded, "Dashboard", 0),
-            _buildNavItem(Icons.history_rounded, "History", 1),
-            _buildNavItem(Icons.request_page_rounded, "Request", 2),
-            _buildNavItem(Icons.person_rounded, "Profile", 3),
-          ],
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, -1),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: List.generate(_navItems.length, (i) => _buildNavItem(i)),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index) {
+  Widget _buildNavItem(int index) {
+    final item = _navItems[index];
     final isSelected = _selectedIndex == index;
-    
-    return InkWell(
-      onTap: () {
-        setState(() {
-          _selectedIndex = index;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected 
-                  ? AppTheme.primaryColor
-                  : const Color(0xFF94A3B8),
-              size: 22,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected 
-                    ? AppTheme.primaryColor
-                    : const Color(0xFF64748B),
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? const Color(0xFF135BEC).withOpacity(0.09)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: Icon(
+                  isSelected ? item.activeIcon : item.icon,
+                  key: ValueKey(isSelected),
+                  color: isSelected
+                      ? const Color(0xFF135BEC)
+                      : const Color(0xFF94A3B8),
+                  size: isSelected ? 24 : 22,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 3),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected
+                      ? const Color(0xFF135BEC)
+                      : const Color(0xFF94A3B8),
+                ),
+                child: Text(item.label),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class _NavItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  const _NavItem({required this.icon, required this.activeIcon, required this.label});
 }
