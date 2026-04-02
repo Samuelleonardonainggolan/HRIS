@@ -14,7 +14,7 @@ import (
 func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
 	version := 7
 	name := "create_jam_kerja"
-	description := "Create jam_kerja collection, indexes, and seed from attendances"
+	description := "Create jam_kerja collection, indexes, and seed unique per user"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
@@ -23,96 +23,85 @@ func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*m
 		// =========================
 		// 1) INDEXES
 		// =========================
-
-		// Unique: 1 attendance => 1 jam_kerja
-		uniqAttendance := mongo.IndexModel{
-			Keys: bson.D{{Key: "attendance_id", Value: 1}},
+		uniqUser := mongo.IndexModel{
+			Keys: bson.D{{Key: "user_id", Value: 1}},
 			Options: options.Index().
 				SetUnique(true).
-				SetName("uniq_attendance_id"),
+				SetName("uniq_user_id"),
 		}
 
-		// Query helpers
-		idxUserStart := mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "user_id", Value: 1},
-				{Key: "start_time", Value: 1},
-			},
-			Options: options.Index().SetName("idx_user_start_time"),
+		idxActive := mongo.IndexModel{
+			Keys:    bson.D{{Key: "aktif", Value: 1}},
+			Options: options.Index().SetName("idx_aktif"),
 		}
 
-		idxUserAttendance := mongo.IndexModel{
-			Keys: bson.D{
-				{Key: "user_id", Value: 1},
-				{Key: "attendance_id", Value: 1},
-			},
-			Options: options.Index().SetName("idx_user_attendance"),
+		// optional untuk filter by hari kerja
+		idxHari := mongo.IndexModel{
+			Keys:    bson.D{{Key: "hari_kerja", Value: 1}},
+			Options: options.Index().SetName("idx_hari_kerja"),
 		}
 
 		_, err := collection.Indexes().CreateMany(ctx, []mongo.IndexModel{
-			uniqAttendance,
-			idxUserStart,
-			idxUserAttendance,
+			uniqUser,
+			idxActive,
+			idxHari,
 		})
 		if err != nil {
 			return err
 		}
 
 		// =========================
-		// 2) SEEDER (FROM attendances)
+		// 2) SEEDER (UNIQUE PER USER)
 		// =========================
-		attendanceColl := db.Collection("attendances")
+		userColl := db.Collection("users")
 
-		// Ambil semua attendance (kalau ingin batasi, bisa filter date range)
-		cur, err := attendanceColl.Find(
+		cur, err := userColl.Find(
 			ctx,
-			bson.M{}, // or: bson.M{"status": bson.M{"$in": []string{"present", "late"}}}
-			options.Find().SetProjection(bson.M{"_id": 1, "user_id": 1, "date": 1}),
+			bson.M{"is_active": true}, // optional: hanya user aktif
+			options.Find().SetProjection(bson.M{"_id": 1}),
 		)
 		if err != nil {
 			return err
 		}
 		defer cur.Close(ctx)
 
-		type attendanceSeed struct {
-			ID     primitive.ObjectID `bson:"_id"`
-			UserID primitive.ObjectID `bson:"user_id"`
-			Date   time.Time          `bson:"date"`
+		type userSeed struct {
+			ID primitive.ObjectID `bson:"_id"`
 		}
 
 		now := time.Now()
 
-		// Default jam kerja: 09:00 - 18:00 di tanggal attendance
-		defaultStartHour := 9
-		defaultEndHour := 18
+		// default: Senin-Jumat, 09:00-18:00 (tanpa tanggal spesifik)
+		defaultHari := []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"}
+
+		// pakai tanggal "hari ini" untuk menyimpan jam, karena type date butuh full datetime
+		// nanti saat dipakai cukup ambil HH:mm
+		y, m, d := now.Date()
+		loc := now.Location()
+		if loc == nil {
+			loc = time.Local
+		}
+
+		defaultMulai := time.Date(y, m, d, 9, 0, 0, 0, loc)
+		defaultSelesai := time.Date(y, m, d, 18, 0, 0, 0, loc)
 
 		var writes []mongo.WriteModel
 
 		for cur.Next(ctx) {
-			var a attendanceSeed
-			if err := cur.Decode(&a); err != nil {
+			var u userSeed
+			if err := cur.Decode(&u); err != nil {
 				return err
 			}
 
-			// Normalisasi: start/end harus “tanggal attendance” + jam default
-			y, m, d := a.Date.Date()
-			loc := a.Date.Location()
-			if loc == nil {
-				loc = time.Local
-			}
-
-			startTime := time.Date(y, m, d, defaultStartHour, 0, 0, 0, loc)
-			endTime := time.Date(y, m, d, defaultEndHour, 0, 0, 0, loc)
-
-			filter := bson.M{"attendance_id": a.ID}
+			filter := bson.M{"user_id": u.ID}
 
 			update := bson.M{
 				"$setOnInsert": bson.M{
-					"user_id":       a.UserID,
-					"attendance_id": a.ID,
-					"start_time":    startTime,
-					"end_time":      endTime,
-					"is_active":     true,
+					"user_id":       u.ID,
+					"hari_kerja":    defaultHari,
+					"waktu_mulai":   defaultMulai,
+					"waktu_selesai": defaultSelesai,
+					"aktif":         true,
 					"created_at":    now,
 					"updated_at":    now,
 				},

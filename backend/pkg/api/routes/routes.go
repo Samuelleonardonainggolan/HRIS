@@ -141,6 +141,14 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
+
+			// ==================== WORK SCHEDULES (Manager Departemen Only) ====================
+			workSchedules := protected.Group("/work-schedules")
+			workSchedules.Use(middleware.ManagerDepartmentOnly()) // jika belum ada, sementara gunakan middleware.ManagerOnly()
+			{
+				workSchedules.GET("", workScheduleHandler.ListForManagerDepartment)
+				workSchedules.PUT("/:userId", workScheduleHandler.UpsertForManagerDepartment)
+			}
 		}
 	}
 }
