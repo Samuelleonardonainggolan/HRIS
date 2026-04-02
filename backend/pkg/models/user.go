@@ -120,6 +120,12 @@ type UpdateUserRequest struct {
 	IsActive         *bool  `json:"is_active,omitempty"`
 }
 
+// ChangePasswordRequest untuk POST /profile/change-password
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
+}
+
 // ToResponse converts User to UserResponse
 func (u *User) ToResponse() UserResponse {
 	return UserResponse{

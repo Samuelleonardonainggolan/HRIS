@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Filter, Download, Loader2, MoreVertical } from "lucide-react";
+import { Search, Loader2, MoreVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { leaveRequestsApi, LeaveRequestStatus, LeaveRequestApprovalResponse } from "@/lib/api/leave-requests";
-import toast from "react-hot-toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type RequestStatus = "Pending" | "Disetujui" | "Ditolak";
-
-type RequestType = string;
+type RequestType = "SAKIT" | "TAHUNAN" | "IZIN KHUSUS";
 
 interface LeaveApprovalItem {
   id: string;
@@ -20,12 +24,12 @@ interface LeaveApprovalItem {
   position: string;
 
   type: RequestType;
-  startAt: string; // display string
-  endAt: string;   // display string
-  startDateLabel: string; // "22 Okt 2023"
-  startTimeLabel: string; // "Pukul 08:00 WIB"
-  endDateLabel: string;   // "24 Okt 2023"
-  endTimeLabel: string;   // "Pukul 17:00 WIB"
+  startAt: string;
+  endAt: string;
+  startDateLabel: string;
+  startTimeLabel: string;
+  endDateLabel: string;
+  endTimeLabel: string;
 
   reason: string;
   attachmentName?: string;
@@ -33,99 +37,21 @@ interface LeaveApprovalItem {
 
   status: RequestStatus;
 
-  avatarUrl?: string; // optional
-  avatarFallback: string; // initials
+  avatarUrl?: string;
+  avatarFallback: string;
 }
 
 function typeBadgeClass(t: RequestType) {
-  switch (t.toUpperCase()) {
+  switch (t) {
     case "SAKIT":
       return "bg-red-100 text-red-700 border border-red-200";
     case "TAHUNAN":
       return "bg-gray-100 text-gray-800 border border-gray-200";
     case "IZIN KHUSUS":
       return "bg-blue-100 text-blue-700 border border-blue-200";
-    case "CUTI KHUSUS":
-      return "bg-orange-100 text-orange-800 border border-orange-200";
     default:
       return "bg-gray-100 text-gray-800 border border-gray-200";
   }
-}
-
-function mapStatus(status: LeaveRequestStatus): RequestStatus {
-  switch (status) {
-    case "APPROVED":
-      return "Disetujui";
-    case "REJECTED":
-      return "Ditolak";
-    default:
-      return "Pending";
-  }
-}
-
-function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
-  return (first + last).toUpperCase() || "?";
-}
-
-function formatDateLabel(d: Date) {
-  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
-}
-
-function formatTimeLabel(d: Date) {
-  const t = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-  return `Pukul ${t} WIB`;
-}
-
-function formatListDateTime(d: Date) {
-  const date = formatDateLabel(d);
-  const time = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-  return `${date}, ${time}`;
-}
-
-function getFileNameFromUrl(url?: string) {
-  if (!url) return undefined;
-  try {
-    const u = new URL(url);
-    const pathname = u.pathname.split("/").filter(Boolean);
-    return pathname[pathname.length - 1];
-  } catch {
-    const parts = url.split("/").filter(Boolean);
-    return parts[parts.length - 1];
-  }
-}
-
-function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
-  const employeeName = x.employee?.full_name ?? "(Karyawan)";
-  const employeeId = x.employee?.payroll_number ?? x.pengajuan.user_id;
-  const department = x.employee?.department_name ?? "-";
-  const position = x.employee?.position_name ?? "-";
-  const start = new Date(x.pengajuan.tanggal_mulai);
-  const end = new Date(x.pengajuan.tanggal_selesai);
-  const attachmentName = getFileNameFromUrl(x.pengajuan.dokumen_url);
-
-  return {
-    id: x.pengajuan.id,
-    employeeName,
-    employeeId,
-    department,
-    position,
-    type: (x.pengajuan.nama_tipe || "IZIN KHUSUS").toUpperCase(),
-    startAt: formatListDateTime(start),
-    endAt: formatListDateTime(end),
-    startDateLabel: formatDateLabel(start),
-    startTimeLabel: formatTimeLabel(start),
-    endDateLabel: formatDateLabel(end),
-    endTimeLabel: formatTimeLabel(end),
-    reason: x.pengajuan.alasan,
-    attachmentName,
-    attachmentSize: undefined,
-    status: mapStatus(x.pengajuan.status_manager_hr),
-    avatarUrl: "",
-    avatarFallback: getInitials(employeeName),
-  };
 }
 
 function statusDotColor(s: RequestStatus) {
@@ -141,55 +67,101 @@ function statusDotColor(s: RequestStatus) {
   }
 }
 
-export default function PersetujuanIzinCutiPage() {
+export default function PersetujuanIzinCutiManagerDepartemenPage() {
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [isActing, setIsActing] = useState(false);
   const [searchEmployee, setSearchEmployee] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // ✅ filter jabatan
+  const [positionFilter, setPositionFilter] = useState("all");
+
   const [items, setItems] = useState<LeaveApprovalItem[]>([]);
 
-  const activeStatus = "PENDING" as const;
-
   useEffect(() => {
-    let cancelled = false;
     const t = setTimeout(() => {
-      (async () => {
-        try {
-          setLoadError(null);
-          setIsLoading(true);
-          const res = await leaveRequestsApi.listForManagerHR({
-            status: activeStatus,
-            search: searchEmployee.trim() || undefined,
-          });
-          const mapped = res.map(mapResponseToItem);
-          if (cancelled) return;
-          setItems(mapped);
-          setSelectedId((prev) => {
-            if (prev && mapped.some((x) => x.id === prev)) return prev;
-            return mapped[0]?.id ?? null;
-          });
-        } catch (e) {
-          if (cancelled) return;
-          setLoadError(e instanceof Error ? e.message : "Gagal memuat pengajuan");
-        } finally {
-          if (!cancelled) setIsLoading(false);
-        }
-      })();
-    }, 250);
+      const mock: LeaveApprovalItem[] = [
+        {
+          id: "req-1",
+          employeeName: "Adinda Larasati",
+          employeeId: "SI-2024-089",
+          department: "Marketing",
+          position: "Marketing Coordinator",
+          type: "SAKIT",
+          startAt: "22 Okt 2023, 08:00",
+          endAt: "24 Okt 2023, 17:00",
+          startDateLabel: "22 Okt 2023",
+          startTimeLabel: "Pukul 08:00 WIB",
+          endDateLabel: "24 Okt 2023",
+          endTimeLabel: "Pukul 17:00 WIB",
+          reason:
+            "Saya merasa kurang enak badan sejak semalam. Berdasarkan pemeriksaan dokter, saya memerlukan istirahat total selama 3 hari karena gejala flu berat dan demam tinggi.",
+          attachmentName: "Surat_Dokter_Adinda_220ct.pdf",
+          attachmentSize: "1.2 MB",
+          status: "Pending",
+          avatarUrl: "",
+          avatarFallback: "AL",
+        },
+        {
+          id: "req-2",
+          employeeName: "Bagus Pranogo",
+          employeeId: "SI-2024-112",
+          department: "Engineering",
+          position: "Backend Engineer",
+          type: "TAHUNAN",
+          startAt: "25 Okt 2023, 09:00",
+          endAt: "27 Okt 2023, 17:00",
+          startDateLabel: "25 Okt 2023",
+          startTimeLabel: "Pukul 09:00 WIB",
+          endDateLabel: "27 Okt 2023",
+          endTimeLabel: "Pukul 17:00 WIB",
+          reason: "Mengambil cuti tahunan untuk keperluan keluarga.",
+          status: "Pending",
+          avatarFallback: "BP",
+        },
+        {
+          id: "req-3",
+          employeeName: "Citra Kirana",
+          employeeId: "SI-2024-045",
+          department: "Human Resources",
+          position: "HR Staff",
+          type: "IZIN KHUSUS",
+          startAt: "23 Okt 2023, 13:00",
+          endAt: "23 Okt 2023, 17:00",
+          startDateLabel: "23 Okt 2023",
+          startTimeLabel: "Pukul 13:00 WIB",
+          endDateLabel: "23 Okt 2023",
+          endTimeLabel: "Pukul 17:00 WIB",
+          reason: "Izin khusus untuk keperluan administrasi pribadi.",
+          status: "Pending",
+          avatarFallback: "CK",
+        },
+      ];
 
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [activeStatus, searchEmployee]);
+      setItems(mock);
+      setSelectedId(mock[0]?.id ?? null);
+      setIsLoading(false);
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, []);
+
+  const positionOptions = useMemo(() => {
+    const uniq = Array.from(new Set(items.map((x) => x.position).filter(Boolean))).sort();
+    return uniq;
+  }, [items]);
 
   const filtered = useMemo(() => {
     const q = searchEmployee.toLowerCase().trim();
-    if (!q) return items;
-    return items.filter((x) => x.employeeName.toLowerCase().includes(q));
-  }, [items, searchEmployee]);
+
+    return items.filter((x) => {
+      const matchText =
+        !q ? true : x.employeeName.toLowerCase().includes(q) || x.employeeId.toLowerCase().includes(q);
+
+      const matchPosition = positionFilter === "all" ? true : x.position === positionFilter;
+
+      return matchText && matchPosition;
+    });
+  }, [items, searchEmployee, positionFilter]);
 
   const selected = useMemo(
     () => filtered.find((x) => x.id === selectedId) ?? filtered[0] ?? null,
@@ -201,44 +173,18 @@ export default function PersetujuanIzinCutiPage() {
     setSelectedId(selected.id);
   }, [selected]);
 
-  const handleApprove = async () => {
-    if (!selected || isActing) return;
-    try {
-      setIsActing(true);
-      await leaveRequestsApi.approve(selected.id);
-      toast.success("Pengajuan disetujui");
-      const res = await leaveRequestsApi.listForManagerHR({
-        status: activeStatus,
-        search: searchEmployee.trim() || undefined,
-      });
-      const mapped = res.map(mapResponseToItem);
-      setItems(mapped);
-      setSelectedId(mapped[0]?.id ?? null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menyetujui pengajuan");
-    } finally {
-      setIsActing(false);
-    }
+  const handleApprove = () => {
+    if (!selected) return;
+    setItems((prev) =>
+      prev.map((x) => (x.id === selected.id ? { ...x, status: "Disetujui" } : x))
+    );
   };
 
-  const handleReject = async () => {
-    if (!selected || isActing) return;
-    try {
-      setIsActing(true);
-      await leaveRequestsApi.reject(selected.id);
-      toast.success("Pengajuan ditolak");
-      const res = await leaveRequestsApi.listForManagerHR({
-        status: activeStatus,
-        search: searchEmployee.trim() || undefined,
-      });
-      const mapped = res.map(mapResponseToItem);
-      setItems(mapped);
-      setSelectedId(mapped[0]?.id ?? null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Gagal menolak pengajuan");
-    } finally {
-      setIsActing(false);
-    }
+  const handleReject = () => {
+    if (!selected) return;
+    setItems((prev) =>
+      prev.map((x) => (x.id === selected.id ? { ...x, status: "Ditolak" } : x))
+    );
   };
 
   if (isLoading) {
@@ -252,47 +198,49 @@ export default function PersetujuanIzinCutiPage() {
     );
   }
 
-  if (loadError) {
-    return (
-      <div className="flex h-full items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-sm font-semibold text-gray-900">Gagal memuat data</p>
-          <p className="mt-1 text-sm text-gray-500">{loadError}</p>
-          <Button className="mt-4" onClick={() => window.location.reload()}>
-            Muat Ulang
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full gap-6 p-6">
-      {/* LEFT: list */}
+      {/* LEFT */}
       <div className="flex-1 min-w-0">
         <Card className="h-full">
           <CardContent className="p-6 h-full flex flex-col">
-            {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">
                   Manajemen Izin &amp; Cuti
                 </h2>
+                <p className="mt-1 text-sm text-gray-600">
+                  Persetujuan izin &amp; cuti karyawan dalam departemen Anda
+                </p>
               </div>
             </div>
 
-            {/* Search bar (wajib di bawah judul) */}
-            <div className="mt-4">
-              <div className="relative">
+            {/* ✅ Search + Filter Jabatan */}
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                 <input
                   value={searchEmployee}
                   onChange={(e) => setSearchEmployee(e.target.value)}
-                  placeholder="Cari Karyawan"
+                  placeholder="Cari karyawan / ID..."
                   className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
                              focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
+
+              <Select value={positionFilter} onValueChange={setPositionFilter}>
+                <SelectTrigger className="rounded-xl w-full md:w-[240px]">
+                  <SelectValue placeholder="Semua Jabatan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Jabatan</SelectItem>
+                  {positionOptions.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Table */}
@@ -304,9 +252,12 @@ export default function PersetujuanIzinCutiPage() {
                       <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                         Nama Karyawan
                       </th>
+
+                      {/* ✅ Departemen -> Jabatan */}
                       <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                        Departemen
+                        Jabatan
                       </th>
+
                       <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                         Tipe Pengajuan
                       </th>
@@ -339,7 +290,11 @@ export default function PersetujuanIzinCutiPage() {
                               <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
                                 {x.avatarUrl ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={x.avatarUrl} alt={x.employeeName} className="h-full w-full object-cover" />
+                                  <img
+                                    src={x.avatarUrl}
+                                    alt={x.employeeName}
+                                    className="h-full w-full object-cover"
+                                  />
                                 ) : (
                                   <span className="text-xs font-semibold text-gray-700">
                                     {x.avatarFallback}
@@ -357,8 +312,9 @@ export default function PersetujuanIzinCutiPage() {
                             </div>
                           </td>
 
+                          {/* ✅ Jabatan */}
                           <td className="px-5 py-4 text-sm text-gray-700">
-                            {x.department}
+                            {x.position}
                           </td>
 
                           <td className="px-5 py-4">
@@ -367,13 +323,8 @@ export default function PersetujuanIzinCutiPage() {
                             </Badge>
                           </td>
 
-                          <td className="px-5 py-4 text-sm text-gray-700">
-                            {x.startAt}
-                          </td>
-
-                          <td className="px-5 py-4 text-sm text-gray-700">
-                            {x.endAt}
-                          </td>
+                          <td className="px-5 py-4 text-sm text-gray-700">{x.startAt}</td>
+                          <td className="px-5 py-4 text-sm text-gray-700">{x.endAt}</td>
 
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-2 text-sm text-gray-700">
@@ -395,7 +346,6 @@ export default function PersetujuanIzinCutiPage() {
               </div>
             </div>
 
-            {/* Footer (simple info) */}
             <div className="mt-4 text-xs text-gray-500">
               Menampilkan {filtered.length} pengajuan
             </div>
@@ -403,14 +353,12 @@ export default function PersetujuanIzinCutiPage() {
         </Card>
       </div>
 
-      {/* RIGHT: detail */}
+      {/* RIGHT */}
       <div className="w-[360px] shrink-0">
         <Card className="h-full">
           <CardContent className="p-6 h-full flex flex-col">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">
-                Detail Pengajuan
-              </h3>
+              <h3 className="text-sm font-semibold text-gray-900">Detail Pengajuan</h3>
               <button className="p-2 rounded-lg hover:bg-gray-100">
                 <MoreVertical className="h-4 w-4 text-gray-500" />
               </button>
@@ -422,13 +370,16 @@ export default function PersetujuanIzinCutiPage() {
               </div>
             ) : (
               <>
-                {/* Employee card */}
                 <div className="mt-4 rounded-xl border border-gray-100 p-4">
                   <div className="flex items-center gap-3">
                     <div className="h-12 w-12 rounded-xl bg-gray-100 overflow-hidden flex items-center justify-center">
                       {selected.avatarUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={selected.avatarUrl} alt={selected.employeeName} className="h-full w-full object-cover" />
+                        <img
+                          src={selected.avatarUrl}
+                          alt={selected.employeeName}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <span className="text-sm font-semibold text-gray-700">
                           {selected.avatarFallback}
@@ -439,17 +390,15 @@ export default function PersetujuanIzinCutiPage() {
                       <div className="font-semibold text-gray-900 truncate">
                         {selected.employeeName}
                       </div>
+                      {/* Anda boleh tetap tampilkan department di detail, atau hilangkan */}
                       <div className="text-xs text-gray-500 truncate">
                         {selected.department} • {selected.position}
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {selected.employeeId}
-                      </div>
+                      <div className="text-xs text-gray-400">{selected.employeeId}</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Dates */}
                 <div className="mt-5 grid grid-cols-2 gap-4">
                   <div>
                     <div className="text-[11px] font-semibold text-gray-500 uppercase">
@@ -458,9 +407,7 @@ export default function PersetujuanIzinCutiPage() {
                     <div className="mt-2 text-sm font-semibold text-gray-900">
                       {selected.startDateLabel}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {selected.startTimeLabel}
-                    </div>
+                    <div className="text-xs text-gray-500">{selected.startTimeLabel}</div>
                   </div>
                   <div>
                     <div className="text-[11px] font-semibold text-gray-500 uppercase">
@@ -469,13 +416,10 @@ export default function PersetujuanIzinCutiPage() {
                     <div className="mt-2 text-sm font-semibold text-gray-900">
                       {selected.endDateLabel}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {selected.endTimeLabel}
-                    </div>
+                    <div className="text-xs text-gray-500">{selected.endTimeLabel}</div>
                   </div>
                 </div>
 
-                {/* Reason */}
                 <div className="mt-5">
                   <div className="text-[11px] font-semibold text-gray-500 uppercase">
                     Alasan Pengajuan
@@ -485,7 +429,6 @@ export default function PersetujuanIzinCutiPage() {
                   </div>
                 </div>
 
-                {/* Attachment */}
                 <div className="mt-5">
                   <div className="text-[11px] font-semibold text-gray-500 uppercase">
                     Dokumen Pendukung
@@ -505,20 +448,19 @@ export default function PersetujuanIzinCutiPage() {
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="mt-auto pt-6 grid grid-cols-2 gap-3">
                   <Button
                     variant="outline"
                     className="border-red-200 text-red-600 hover:bg-red-50"
                     onClick={handleReject}
-                    disabled={selected.status !== "Pending" || isActing}
+                    disabled={selected.status !== "Pending"}
                   >
                     Tolak
                   </Button>
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={handleApprove}
-                    disabled={selected.status !== "Pending" || isActing}
+                    disabled={selected.status !== "Pending"}
                   >
                     Setuju
                   </Button>

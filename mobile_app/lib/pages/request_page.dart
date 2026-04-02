@@ -1,736 +1,332 @@
+// lib/pages/request_page.dart
 import 'package:flutter/material.dart';
-import 'package:mobile_app/theme/app_theme.dart';
-import 'package:mobile_app/widgets/custom_app_bar.dart';
-import 'package:mobile_app/models/attendance_model.dart';
-import 'package:intl/intl.dart';
-import 'package:mobile_app/models/attendance_model.dart';
-import 'package:file_picker/file_picker.dart';
-import 'new_request_page.dart'; 
+import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
+import 'package:intl/intl.dart';
+import 'new_request_page.dart';
 
 class RequestPage extends StatefulWidget {
   const RequestPage({super.key});
-
   @override
   State<RequestPage> createState() => _RequestPageState();
 }
 
-class _RequestPageState extends State<RequestPage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  List<LeaveRequest> _myRequests = [];
-  List<LeaveRequest> _pendingRequests = [];
+class _RequestPageState extends State<RequestPage> {
+  int _selectedTab = 0; // 0=Semua, 1=Izin, 2=Cuti, 3=Lembur
+  final _tabs = ['Pengajuan Terbaru', 'Izin', 'Cuti', 'Lembur'];
   bool _isLoading = true;
+  User? _user;
 
-  final List<String> _leaveTypes = [
-    'Annual Leave',
-    'Sick Leave',
-    'Emergency Leave',
-    'Unpaid Leave',
-    'Maternity Leave',
-    'Paternity Leave',
-  ];
-
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  // Dummy data — ganti dengan API call
+  List<LeaveRequest> _requests = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadDummyData();
+    _loadUser();
+    _loadRequests();
   }
 
-  Future<void> _loadDummyData() async {
+  Future<void> _loadUser() async {
+    try {
+      final u = await ApiService.getProfile();
+      if (mounted) setState(() => _user = u);
+    } catch (_) {}
+  }
+
+  Future<void> _loadRequests() async {
     setState(() => _isLoading = true);
-    
-    await Future.delayed(const Duration(seconds: 1));
-    
-    _myRequests = [
-      LeaveRequest(
-        id: '1',
-        type: 'Annual Leave',
-        startDate: DateTime.now().add(const Duration(days: 5)),
-        endDate: DateTime.now().add(const Duration(days: 7)),
-        reason: 'Family gathering',
-        status: 'Pending',
-        days: 3,
-      ),
-      LeaveRequest(
-        id: '2',
-        type: 'Sick Leave',
-        startDate: DateTime.now().subtract(const Duration(days: 10)),
-        endDate: DateTime.now().subtract(const Duration(days: 8)),
-        reason: 'Flu',
-        status: 'Approved',
-        days: 3,
-      ),
-      LeaveRequest(
-        id: '3',
-        type: 'Emergency Leave',
-        startDate: DateTime.now().subtract(const Duration(days: 20)),
-        endDate: DateTime.now().subtract(const Duration(days: 19)),
-        reason: 'Family emergency',
-        status: 'Rejected',
-        days: 2,
-      ),
-    ];
-    
-    _pendingRequests = [
-      LeaveRequest(
-        id: '4',
-        type: 'Annual Leave',
-        startDate: DateTime.now().add(const Duration(days: 10)),
-        endDate: DateTime.now().add(const Duration(days: 15)),
-        reason: 'Vacation',
-        status: 'Pending',
-        days: 6,
-      ),
-      LeaveRequest(
-        id: '5',
-        type: 'Sick Leave',
-        startDate: DateTime.now().add(const Duration(days: 2)),
-        endDate: DateTime.now().add(const Duration(days: 4)),
-        reason: 'Medical checkup',
-        status: 'Pending',
-        days: 3,
-      ),
-    ];
-    
-    setState(() => _isLoading = false);
+    try {
+      // ✅ Ambil data real dari backend
+      final data = await ApiService.getMyPengajuan();
+      if (mounted) setState(() { _requests = data; _isLoading = false; });
+    } catch (e) {
+      print('[Request] load error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _navigateToNewRequest() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const NewRequestPage(),
-      ),
-    ).then((_) {
-      // Refresh data if needed when returning from new request page
-      _loadDummyData();
-    });
+  List<LeaveRequest> get _filtered {
+    if (_selectedTab == 0) return _requests;
+    final cat = _tabs[_selectedTab]; // 'Izin' | 'Cuti' | 'Lembur'
+    return _requests.where((r) =>
+      r.namaKategori.toLowerCase() == cat.toLowerCase()
+    ).toList();
   }
 
-  String _getGreeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return "Good Morning";
-    if (hour < 15) return "Good Afternoon";
-    if (hour < 18) return "Good Evening";
-    return "Good Night";
+  String _greeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Selamat Pagi';
+    if (h < 15) return 'Selamat Siang';
+    if (h < 18) return 'Selamat Sore';
+    return 'Selamat Malam';
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  String _avatarUrl() {
+    final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
+    return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
   }
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: true,
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: const Color(0xFFF8FAFC),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              double horizontalPadding = constraints.maxWidth > 600 ? 40 : 20;
-              double maxWidth = constraints.maxWidth > 600 ? 600 : double.infinity;
-              
-              return Center(
-                child: Container(
-                  constraints: BoxConstraints(maxWidth: maxWidth),
-                  child: Column(
-                    children: [
-                      // Header yang sama dengan dashboard
-                      _buildHeader(horizontalPadding),
-                      
-                      Expanded(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
-                          child: Column(
-                            children: [
-                              const SizedBox(height: 16),
-                              
-                              // New Request Button
-                              _buildNewRequestButton(),
-                              
-                              const SizedBox(height: 16),
-                              
-                              // Tab Bar
-                              Container(
-                                color: Colors.white,
-                                child: TabBar(
-                                  controller: _tabController,
-                                  tabs: const [
-                                    Tab(text: 'My Requests'),
-                                    Tab(text: 'Pending'),
-                                    Tab(text: 'Quick Request'),
-                                  ],
-                                  labelColor: const Color(0xFF135BEC),
-                                  unselectedLabelColor: Colors.grey,
-                                  indicatorColor: const Color(0xFF135BEC),
-                                ),
-                              ),
-                              
-                              const SizedBox(height: 12),
-                              
-                              // Tab Content
-                              _isLoading
-                                  ? const SizedBox(
-                                      height: 200,
-                                      child: Center(child: CircularProgressIndicator())
-                                    )
-                                  : SizedBox(
-                                      height: constraints.maxHeight * 0.6,
-                                      child: TabBarView(
-                                        controller: _tabController,
-                                        children: [
-                                          _buildMyRequestsTab(),
-                                          _buildPendingTab(),
-                                          _buildQuickRequestTab(),
-                                        ],
-                                      ),
-                                    ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(child: Column(children: [
+        _buildHeader(),
+        _buildTabs(),
+        Expanded(child: _buildBody()),
+      ])),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const NewRequestPage()));
+          if (res == true) _loadRequests();
+        },
+        backgroundColor: const Color(0xFF135BEC),
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
       ),
     );
   }
 
-  // ================= HEADER (Sama dengan Dashboard) =================
-  Widget _buildHeader(double horizontalPadding) {
+  Widget _buildHeader() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(30),
-          bottomRight: Radius.circular(30),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 20,
-            offset: const Offset(0, 5),
-          ),
-        ],
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4))],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const SizedBox(width: 8),
-              Stack(
-                children: [
-                  Hero(
-                    tag: 'profile',
-                    child: Container(
-                      height: 52,
-                      width: 52,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF135BEC).withOpacity(0.3),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(2),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                          ),
-                          child: ClipOval(
-                            child: Image.network(
-                              'https://ui-avatars.com/api/?name=Alex+Morgan&background=135BEC&color=fff&size=100',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.white,
-                                  child: const Icon(
-                                    Icons.person,
-                                    color: Color(0xFF135BEC),
-                                    size: 30,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 2,
-                    right: 2,
-                    child: Container(
-                      height: 14,
-                      width: 14,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFF2ECC71),
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+      child: Row(children: [
+        Stack(children: [
+          Container(
+              height: 48, width: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)]),
+                boxShadow: [BoxShadow(color: const Color(0xFF135BEC).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
               ),
-              const SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _getGreeting(),
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  const Text(
-                    "Alex Morgan",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+              child: Padding(padding: const EdgeInsets.all(2),
+                child: Container(
+                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                  child: ClipOval(child: Image.network(_avatarUrl(), fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Color(0xFF135BEC), size: 26))),
+                )),
           ),
-          
-          Row(
-            children: [
-              Stack(
-                children: [
-                  Container(
-                    height: 48,
-                    width: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.notifications_none,
-                        color: Color(0xFF475569),
-                        size: 22,
-                      ),
-                      onPressed: () {},
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: Container(
-                      height: 8,
-                      width: 8,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFFEF4444),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
+          Positioned(bottom: 1, right: 1,
+            child: Container(height: 12, width: 12,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF2ECC71), border: Border.all(color: Colors.white, width: 2)))),
+        ]),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_greeting(), style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+          Text(_user?.fullName ?? 'Profil Saya',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            overflow: TextOverflow.ellipsis),
+        ])),
+        Stack(children: [
+          Container(height: 44, width: 44,
+            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), shape: BoxShape.circle),
+            child: IconButton(
+              icon: const Icon(Icons.notifications_none, color: Color(0xFF475569), size: 22),
+              onPressed: () {}, padding: EdgeInsets.zero)),
+          Positioned(top: 9, right: 9,
+            child: Container(height: 8, width: 8,
+              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEF4444)))),
+        ]),
+      ]),
     );
   }
 
-  Widget _buildNewRequestButton() {
+  Widget _buildTabs() {
     return Container(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _navigateToNewRequest,
-        icon: const Icon(Icons.add),
-        label: const Text('New Request'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF135BEC),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: List.generate(_tabs.length, (i) {
+          final sel = _selectedTab == i;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedTab = i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                decoration: BoxDecoration(
+                  color: sel ? const Color(0xFF135BEC) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2))],
+                ),
+                child: Text(_tabs[i], style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600,
+                  color: sel ? Colors.white : Colors.grey.shade600)),
+              ),
+            ),
+          );
+        })),
       ),
     );
   }
 
-  Widget _buildMyRequestsTab() {
-    if (_myRequests.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.request_page_outlined,
-        message: 'No requests found',
-        subMessage: 'Create your first request by tapping +',
-      );
-    }
+  Widget _buildBody() {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_filtered.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      Icon(Icons.assignment_outlined, size: 52, color: Colors.grey.shade300),
+      const SizedBox(height: 12),
+      Text('Belum ada pengajuan', style: TextStyle(color: Colors.grey.shade500)),
+      const SizedBox(height: 6),
+      Text('Ketuk + untuk buat pengajuan baru', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+    ]));
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16),
-      itemCount: _myRequests.length,
-      itemBuilder: (context, index) {
-        final request = _myRequests[index];
-        return _buildRequestCard(request);
-      },
-    );
-  }
-
-  Widget _buildPendingTab() {
-    if (_pendingRequests.isEmpty) {
-      return _buildEmptyState(
-        icon: Icons.pending_actions_outlined,
-        message: 'No pending requests',
-        subMessage: 'All requests are processed',
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 16),
-      itemCount: _pendingRequests.length,
-      itemBuilder: (context, index) {
-        final request = _pendingRequests[index];
-        return _buildRequestCard(request, showActions: true);
-      },
-    );
-  }
-
-  Widget _buildQuickRequestTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            const Text(
-              'Leave Balance',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildBalanceItem('Annual', '12', 'days', Colors.blue),
-                _buildBalanceItem('Sick', '5', 'days', Colors.green),
-                _buildBalanceItem('Emergency', '3', 'days', Colors.orange),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const Divider(),
-            const SizedBox(height: 20),
-            const Text(
-              'Quick Actions',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _leaveTypes.map((type) {
-                return FilterChip(
-                  label: Text(type),
-                  selected: false,
-                  onSelected: (selected) {
-                    // Navigasi ke halaman baru dengan tipe leave yang dipilih
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => NewRequestPage(initialLeaveType: type),
-                      ),
-                    ).then((_) {
-                      _loadDummyData();
-                    });
-                  },
-                  backgroundColor: Colors.grey.shade100,
-                  selectedColor: const Color(0xFF135BEC).withOpacity(0.1),
-                  checkmarkColor: const Color(0xFF135BEC),
-                  labelStyle: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 12,
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
+    return RefreshIndicator(
+      onRefresh: _loadRequests,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+        itemCount: _filtered.length,
+        itemBuilder: (_, i) => _buildCard(_filtered[i]),
       ),
     );
   }
 
-  Widget _buildBalanceItem(String label, String value, String unit, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.grey.shade600,
-          ),
-        ),
-        Text(
-          unit,
-          style: TextStyle(
-            fontSize: 9,
-            color: Colors.grey.shade500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRequestCard(LeaveRequest request, {bool showActions = false}) {
-    Color statusColor;
-    switch (request.status) {
-      case 'Approved':
-        statusColor = AppTheme.successColor;
-        break;
-      case 'Rejected':
-        statusColor = AppTheme.errorColor;
-        break;
-      default:
-        statusColor = AppTheme.warningColor;
-    }
+  Widget _buildCard(LeaveRequest r) {
+    final isLembur = r.namaKategori.toLowerCase() == 'lembur';
+    final sc  = _statusColor(r.statusFinal);
+    final sl  = _statusLabel(r.statusFinal);
+    final fmt = DateFormat('EEE, dd MMM yyyy', 'id');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: Colors.white, borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        request.type == 'Sick Leave' 
-                            ? Icons.sick 
-                            : request.type == 'Emergency Leave'
-                                ? Icons.emergency
-                                : Icons.beach_access,
-                        color: statusColor,
-                        size: 16,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            request.type,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${request.days} days',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  request.status,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: statusColor,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.calendar_today, size: 12, color: Colors.grey.shade600),
-              const SizedBox(width: 6),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Ikon kategori
+          Container(
+            height: 44, width: 44,
+            decoration: BoxDecoration(
+              color: _kategoriColor(r.namaKategori).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12)),
+            child: Icon(_kategoriIcon(r.namaKategori),
+              color: _kategoriColor(r.namaKategori), size: 22)),
+          const SizedBox(width: 14),
+          // Info tengah
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.calendar_today_rounded, size: 11, color: Colors.grey.shade400),
+              const SizedBox(width: 4),
+              Text(fmt.format(r.startDate),
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
+            ]),
+            const SizedBox(height: 4),
+            // ✅ Gunakan r.type (nama_tipe dari backend, misal "Izin Sakit")
+            Text(r.type,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(isLembur ? Icons.access_time_rounded : Icons.date_range_rounded,
+                size: 13, color: const Color(0xFF135BEC)),
+              const SizedBox(width: 5),
               Text(
-                '${DateFormat('dd MMM').format(request.startDate)} - ${DateFormat('dd MMM yyyy').format(request.endDate)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Icon(Icons.description, size: 12, color: Colors.grey.shade600),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  request.reason,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade700,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          if (showActions && request.status == 'Pending') ...[
-            const SizedBox(height: 12),
-            const Divider(),
+                r.days <= 1 && !isLembur
+                    ? DateFormat('dd MMM yyyy').format(r.startDate)
+                    : isLembur
+                        ? DateFormat('dd MMM yyyy').format(r.startDate)
+                        : '${DateFormat('dd MMM').format(r.startDate)} s/d ${DateFormat('dd MMM').format(r.endDate)}',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF135BEC), fontWeight: FontWeight.w500)),
+            ]),
             const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () {},
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppTheme.errorColor,
-                  ),
-                  child: const Text('Reject'),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.successColor,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Approve'),
-                ),
-              ],
-            ),
-          ],
-        ],
+            // ✅ Approval chain bertahap
+            _buildApprovalChain(r),
+          ])),
+          const SizedBox(width: 10),
+          // Kanan: status + durasi
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: sc.withOpacity(0.1), borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: sc.withOpacity(0.3))),
+              child: Text(sl, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: sc))),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                isLembur ? '— Jam' : '${r.days} Hari',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
+          ]),
+        ]),
       ),
     );
   }
 
-  Widget _buildEmptyState({
-    required IconData icon,
-    required String message,
-    required String subMessage,
-  }) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 60,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subMessage,
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey.shade500,
-            ),
-          ),
-        ],
-      ),
-    );
+  Widget _buildApprovalChain(LeaveRequest r) {
+    return Row(children: [
+      _approvalDot(r.statusKepala, 'Ka.Dept'),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Container(width: 14, height: 1, color: Colors.grey.shade200)),
+      _approvalDot(r.statusManagerHr, 'Mgr HR'),
+    ]);
+  }
+
+  Widget _approvalDot(String status, String label) {
+    final c = status == 'APPROVED'
+        ? const Color(0xFF2ECC71)
+        : status == 'REJECTED'
+            ? const Color(0xFFEF4444)
+            : const Color(0xFFF59E0B);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: c)),
+      const SizedBox(width: 3),
+      Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
+  String _statusLabel(String s) {
+    switch (s.toUpperCase()) {
+      case 'APPROVED': return 'DISETUJUI';
+      case 'REJECTED': return 'DITOLAK';
+      default:         return 'MENUNGGU';
+    }
+  }
+
+  IconData _kategoriIcon(String k) {
+    switch (k.toLowerCase()) {
+      case 'cuti':   return Icons.beach_access_rounded;
+      case 'lembur': return Icons.timelapse_rounded;
+      default:       return Icons.assignment_late_rounded;
+    }
+  }
+
+  Color _kategoriColor(String k) {
+    switch (k.toLowerCase()) {
+      case 'cuti':   return const Color(0xFF8B5CF6);
+      case 'lembur': return const Color(0xFFF59E0B);
+      default:       return const Color(0xFF135BEC);
+    }
+  }
+
+  String _calcHours(String? start, String? end) {
+    if (start == null || end == null) return '0 Jam';
+    try {
+      final s = start.split(':');
+      final e = end.split(':');
+      final mins = (int.parse(e[0]) * 60 + int.parse(e[1])) - (int.parse(s[0]) * 60 + int.parse(s[1]));
+      final h = mins ~/ 60; final m = mins % 60;
+      return m == 0 ? '$h Jam' : '$h Jam $m Menit';
+    } catch (_) { return '0 Jam'; }
+  }
+
+  Color _statusColor(String s) {
+    switch (s.toUpperCase()) {
+      case 'APPROVED': return const Color(0xFF2ECC71);
+      case 'PENDING':  return const Color(0xFFF59E0B);
+      case 'REJECTED': return const Color(0xFFEF4444);
+      default: return Colors.grey;
+    }
   }
 }

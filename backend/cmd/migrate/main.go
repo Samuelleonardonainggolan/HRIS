@@ -106,6 +106,7 @@ func registerMigrations(manager *migration.Manager) {
 		Down:        down,
 	})
 
+	// Migration 4: Face Embeddings
 	version, name, desc, up, down = migrations.CreateFaceEmbeddings()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -115,6 +116,7 @@ func registerMigrations(manager *migration.Manager) {
 		Down:        down,
 	})
 
+	// Migration 5: Geofences
 	version, name, desc, up, down = migrations.CreateGeofences()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -124,6 +126,7 @@ func registerMigrations(manager *migration.Manager) {
 		Down:        down,
 	})
 
+	// Migration 6: Attendances
 	version, name, desc, up, down = migrations.CreateAttendances()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -132,6 +135,8 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	// Migration 7: Jam Kerja
 	version, name, desc, up, down = migrations.CreateJamKerja()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -140,6 +145,18 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	// Migration 8: Waktu Istirahat
+	version, name, desc, up, down = migrations.CreateWaktuIstirahat()
+	manager.Register(migration.Migration{
+		Version:     version,
+		Name:        name,
+		Description: desc,
+		Up:          up,
+		Down:        down,
+	})
+
+	// Migration 9: Kategori Pengajuan
 	version, name, desc, up, down = migrations.CreateKategoriPengajuan()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -148,6 +165,8 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	// Migration 10: Tipe Pengajuan
 	version, name, desc, up, down = migrations.CreateTipePengajuan()
 	manager.Register(migration.Migration{
 		Version:     version,
@@ -156,6 +175,8 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	// Migration 11: Pengajuan Izin/Cuti
 	version, name, desc, up, down = migrations.CreatePengajuanIzinCuti()
 	manager.Register(migration.Migration{
 		Version:     version,
