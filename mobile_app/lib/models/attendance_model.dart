@@ -1,6 +1,9 @@
 // lib/models/attendance_model.dart
 
-/// Model untuk record absensi per hari
+/// Record absensi per hari.
+/// Bisa berasal dari dua sumber:
+///  • [isLeaveRecord]=false → clock in/out real dari /attendance/monthly
+///  • [isLeaveRecord]=true  → sintetis dari pengajuan izin/cuti yang APPROVED
 class AttendanceRecord {
   final String id;
   final DateTime date;
@@ -10,8 +13,18 @@ class AttendanceRecord {
   final double workHours;
   final double overtimeHours;
   final double? faceSimilarity;
+  final String shiftName;
+  final String location;
+  final String? breakStart;
+  final String? breakEnd;
 
-  AttendanceRecord({
+  // ── Field khusus record izin/cuti dari pengajuan APPROVED ─────────────────
+  final bool isLeaveRecord;
+  final String? leaveType;      // "Izin Sakit", "Cuti Tahunan", dll.
+  final String? leaveKategori;  // "Izin" | "Cuti" | "Lembur"
+  final String? leaveReason;
+
+  const AttendanceRecord({
     required this.id,
     required this.date,
     required this.clockIn,
@@ -20,36 +33,90 @@ class AttendanceRecord {
     required this.workHours,
     required this.overtimeHours,
     this.faceSimilarity,
+    this.shiftName     = '',
+    this.location      = '',
+    this.breakStart,
+    this.breakEnd,
+    this.isLeaveRecord = false,
+    this.leaveType,
+    this.leaveKategori,
+    this.leaveReason,
   });
 
+  /// Parse dari JSON backend (/attendance/monthly)
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) {
     return AttendanceRecord(
-      id: json['id'] ?? '',
-      date: DateTime.parse(json['date'] ?? DateTime.now().toIso8601String()),
-      clockIn: json['clock_in_time'] ?? '--:--',
-      clockOut: json['clock_out_time'] ?? '--:--',
-      status: json['status'] ?? 'Unknown',
-      workHours: (json['work_hours'] ?? 0).toDouble(),
-      overtimeHours: (json['overtime_hours'] ?? 0).toDouble(),
-      faceSimilarity: json['face_similarity']?.toDouble(),
+      id:            json['id']?.toString()             ?? '',
+      date:          _parseDate(json['date']),
+      clockIn:       json['clock_in_time']?.toString()  ??
+                     json['clock_in']?.toString()       ?? '--:--',
+      clockOut:      json['clock_out_time']?.toString() ??
+                     json['clock_out']?.toString()      ?? '--:--',
+      status:        json['status']?.toString()         ?? 'Unknown',
+      workHours:     (json['work_hours']    as num?)?.toDouble() ?? 0,
+      overtimeHours: (json['overtime_hours'] as num?)?.toDouble() ?? 0,
+      faceSimilarity: (json['face_similarity'] as num?)?.toDouble(),
+      shiftName:     json['shift_name']?.toString() ??
+                     json['shift']?.toString()       ?? '',
+      location:      json['location']?.toString() ??
+                     (json['clock_in_location'] is Map
+                         ? (json['clock_in_location'] as Map)['name']?.toString() ?? ''
+                         : ''),
+      breakStart:    json['break_start']?.toString() ??
+                     json['break_start_time']?.toString(),
+      breakEnd:      json['break_end']?.toString() ??
+                     json['break_end_time']?.toString(),
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'date': date.toIso8601String(),
-      'clock_in_time': clockIn,
-      'clock_out_time': clockOut,
-      'status': status,
-      'work_hours': workHours,
-      'overtime_hours': overtimeHours,
-      'face_similarity': faceSimilarity,
-    };
+  static DateTime _parseDate(dynamic v) {
+    if (v == null) return DateTime.now();
+    try { return DateTime.parse(v.toString()); } catch (_) { return DateTime.now(); }
   }
+
+  /// Buat record sintetis untuk SATU HARI dari pengajuan APPROVED.
+  factory AttendanceRecord.fromLeave({
+    required String pengajuanId,
+    required DateTime date,
+    required String leaveType,
+    required String leaveKategori,
+    required String leaveReason,
+  }) {
+    final d = DateTime(date.year, date.month, date.day);
+    return AttendanceRecord(
+      id: '${pengajuanId}_'
+          '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}',
+      date:          d,
+      clockIn:       '--:--',
+      clockOut:      '--:--',
+      status:        _kategoriToStatus(leaveKategori),
+      workHours:     0,
+      overtimeHours: 0,
+      isLeaveRecord: true,
+      leaveType:     leaveType,
+      leaveKategori: leaveKategori,
+      leaveReason:   leaveReason,
+    );
+  }
+
+  static String _kategoriToStatus(String k) {
+    switch (k.trim().toLowerCase()) {
+      case 'cuti':   return 'Cuti';
+      case 'lembur': return 'Lembur';
+      default:       return 'Izin';
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id, 'date': date.toIso8601String(),
+    'clock_in_time': clockIn, 'clock_out_time': clockOut,
+    'status': status, 'work_hours': workHours,
+    'overtime_hours': overtimeHours, 'face_similarity': faceSimilarity,
+    'shift_name': shiftName, 'location': location,
+    'break_start': breakStart, 'break_end': breakEnd,
+  };
 }
 
-/// Model untuk ringkasan absensi bulanan
 class MonthlyAttendanceSummary {
   final String month;
   final int year;
@@ -58,44 +125,33 @@ class MonthlyAttendanceSummary {
   final double overtimeHours;
   final List<AttendanceRecord> records;
 
-  MonthlyAttendanceSummary({
-    required this.month,
-    required this.year,
-    required this.totalDays,
-    required this.totalHours,
-    required this.overtimeHours,
-    required this.records,
+  const MonthlyAttendanceSummary({
+    required this.month, required this.year, required this.totalDays,
+    required this.totalHours, required this.overtimeHours, required this.records,
   });
 
   factory MonthlyAttendanceSummary.fromJson(Map<String, dynamic> json) {
-    var recordsJson = json['records'] as List? ?? [];
-    List<AttendanceRecord> records = recordsJson
-        .map((item) => AttendanceRecord.fromJson(item))
-        .toList();
-
+    final raw = json['records'];
+    final list = raw is List ? raw : <dynamic>[];
     return MonthlyAttendanceSummary(
-      month: json['month'] ?? '',
-      year: json['year'] ?? DateTime.now().year,
-      totalDays: json['total_days'] ?? 0,
-      totalHours: (json['total_hours'] ?? 0).toDouble(),
-      overtimeHours: (json['overtime_hours'] ?? 0).toDouble(),
-      records: records,
+      month:         json['month']?.toString() ?? '',
+      year:          (json['year']  as int?)   ?? DateTime.now().year,
+      totalDays:     (json['total_days'] as int?) ?? 0,
+      totalHours:    (json['total_hours']    as num?)?.toDouble() ?? 0,
+      overtimeHours: (json['overtime_hours'] as num?)?.toDouble() ?? 0,
+      records: list
+          .map((e) => AttendanceRecord.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'month': month,
-      'year': year,
-      'total_days': totalDays,
-      'total_hours': totalHours,
-      'overtime_hours': overtimeHours,
-      'records': records.map((r) => r.toJson()).toList(),
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'month': month, 'year': year, 'total_days': totalDays,
+    'total_hours': totalHours, 'overtime_hours': overtimeHours,
+    'records': records.map((r) => r.toJson()).toList(),
+  };
 }
 
-/// Model untuk hasil proses absensi (response dari endpoint /attendance/process)
 class AttendanceProcessResult {
   final bool success;
   final String message;
@@ -106,189 +162,121 @@ class AttendanceProcessResult {
   final FaceVerificationResult? face;
   final GeoVerificationResult? geo;
 
-  AttendanceProcessResult({
-    required this.success,
-    required this.message,
-    required this.faceSimilarity,
-    required this.locationValid,
-    required this.distance,
-    this.data,
-    this.face,
-    this.geo,
+  const AttendanceProcessResult({
+    required this.success, required this.message,
+    required this.faceSimilarity, required this.locationValid,
+    required this.distance, this.data, this.face, this.geo,
   });
 
   factory AttendanceProcessResult.fromJson(Map<String, dynamic> json) {
-    // Handle response wrapper dari Go backend
-    // Format: { "status": "success", "data": { ... } } atau langsung { ... }
-    
-    bool isSuccess = json['status'] == 'success';
-    Map<String, dynamic> responseData = json['data'] ?? json;
-    
-    // Ekstrak informasi face verification
-    FaceVerificationResult? faceResult;
-    double similarity = 0.0;
-    
-    if (responseData['face'] != null) {
-      faceResult = FaceVerificationResult.fromJson(responseData['face']);
-      similarity = faceResult.similarity;
-    } else if (responseData['face_similarity'] != null) {
-      similarity = responseData['face_similarity'].toDouble();
-    }
-    
-    // Ekstrak informasi geo verification
-    GeoVerificationResult? geoResult;
-    bool locValid = false;
-    double dist = 0.0;
-    
-    if (responseData['geo'] != null) {
-      geoResult = GeoVerificationResult.fromJson(responseData['geo']);
-      locValid = geoResult.isValid;
-      dist = geoResult.distanceM;
-    } else if (responseData['location_valid'] != null) {
-      locValid = responseData['location_valid'] == true;
-      dist = responseData['distance_m']?.toDouble() ?? 0.0;
+    final isSuccess = json['status'] == 'success';
+    final rd = (json['data'] is Map)
+        ? json['data'] as Map<String, dynamic>
+        : json;
+
+    FaceVerificationResult? faceR;
+    double sim = 0;
+    if (rd['face'] is Map) {
+      faceR = FaceVerificationResult.fromJson(
+          rd['face'] as Map<String, dynamic>);
+      sim = faceR.similarity;
+    } else {
+      sim = (rd['face_similarity'] as num?)?.toDouble() ?? 0;
     }
 
-    // Tentukan apakah absensi disetujui
-    bool approved = responseData['approved'] == true || 
-                    responseData['decision'] == 'approved' ||
-                    (isSuccess && responseData['success'] == true);
+    GeoVerificationResult? geoR;
+    bool locV = false; double dist = 0;
+    if (rd['geo'] is Map) {
+      geoR = GeoVerificationResult.fromJson(
+          rd['geo'] as Map<String, dynamic>);
+      locV = geoR.isValid; dist = geoR.distanceM;
+    } else {
+      locV = rd['location_valid'] == true;
+      dist = (rd['distance_m'] as num?)?.toDouble() ?? 0;
+    }
+
+    final approved = rd['approved'] == true ||
+        rd['decision'] == 'approved' ||
+        (isSuccess && rd['success'] == true);
 
     return AttendanceProcessResult(
       success: approved,
-      message: responseData['message'] ?? json['message'] ?? '',
-      faceSimilarity: similarity,
-      locationValid: locValid,
-      distance: dist,
-      data: responseData,
-      face: faceResult,
-      geo: geoResult,
+      message: rd['message']?.toString() ?? json['message']?.toString() ?? '',
+      faceSimilarity: sim, locationValid: locV, distance: dist,
+      data: rd is Map<String, dynamic> ? rd : null,
+      face: faceR, geo: geoR,
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'success': success,
-      'message': message,
-      'face_similarity': faceSimilarity,
-      'location_valid': locationValid,
-      'distance_m': distance,
-      'data': data,
-      'face': face?.toJson(),
-      'geo': geo?.toJson(),
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'success': success, 'message': message,
+    'face_similarity': faceSimilarity, 'location_valid': locationValid,
+    'distance_m': distance, 'data': data,
+    'face': face?.toJson(), 'geo': geo?.toJson(),
+  };
 }
 
-/// Model untuk hasil verifikasi wajah dari FastAPI
 class FaceVerificationResult {
   final bool matched;
-  final double similarity;
-  final double confidence;
-  final double threshold;
+  final double similarity, confidence, threshold;
   final String message;
-
-  FaceVerificationResult({
-    required this.matched,
-    required this.similarity,
-    required this.confidence,
-    required this.threshold,
-    required this.message,
+  const FaceVerificationResult({
+    required this.matched, required this.similarity,
+    required this.confidence, required this.threshold, required this.message,
   });
-
-  factory FaceVerificationResult.fromJson(Map<String, dynamic> json) {
-    return FaceVerificationResult(
-      matched: json['matched'] == true,
-      similarity: (json['similarity'] ?? 0).toDouble(),
-      confidence: (json['confidence'] ?? 0).toDouble(),
-      threshold: (json['threshold'] ?? 0.6).toDouble(),
-      message: json['message'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'matched': matched,
-      'similarity': similarity,
-      'confidence': confidence,
-      'threshold': threshold,
-      'message': message,
-    };
-  }
+  factory FaceVerificationResult.fromJson(Map<String, dynamic> j) =>
+      FaceVerificationResult(
+        matched:    j['matched'] == true,
+        similarity: (j['similarity'] as num?)?.toDouble() ?? 0,
+        confidence: (j['confidence'] as num?)?.toDouble() ?? 0,
+        threshold:  (j['threshold']  as num?)?.toDouble() ?? 0.6,
+        message:    j['message']?.toString() ?? '',
+      );
+  Map<String, dynamic> toJson() => {
+    'matched': matched, 'similarity': similarity,
+    'confidence': confidence, 'threshold': threshold, 'message': message,
+  };
 }
 
-/// Model untuk hasil verifikasi lokasi
 class GeoVerificationResult {
   final bool isValid;
-  final double distanceM;
-  final double radiusM;
-  final double officeLat;
-  final double officeLng;
+  final double distanceM, radiusM, officeLat, officeLng;
   final String message;
-
-  GeoVerificationResult({
-    required this.isValid,
-    required this.distanceM,
-    required this.radiusM,
-    required this.officeLat,
-    required this.officeLng,
-    required this.message,
+  const GeoVerificationResult({
+    required this.isValid, required this.distanceM, required this.radiusM,
+    required this.officeLat, required this.officeLng, required this.message,
   });
-
-  factory GeoVerificationResult.fromJson(Map<String, dynamic> json) {
-    return GeoVerificationResult(
-      isValid: json['is_valid'] == true,
-      distanceM: (json['distance_m'] ?? 0).toDouble(),
-      radiusM: (json['radius_m'] ?? 100).toDouble(),
-      officeLat: (json['office_lat'] ?? 0).toDouble(),
-      officeLng: (json['office_lng'] ?? 0).toDouble(),
-      message: json['message'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'is_valid': isValid,
-      'distance_m': distanceM,
-      'radius_m': radiusM,
-      'office_lat': officeLat,
-      'office_lng': officeLng,
-      'message': message,
-    };
-  }
+  factory GeoVerificationResult.fromJson(Map<String, dynamic> j) =>
+      GeoVerificationResult(
+        isValid:   j['is_valid'] == true,
+        distanceM: (j['distance_m'] as num?)?.toDouble() ?? 0,
+        radiusM:   (j['radius_m']   as num?)?.toDouble() ?? 100,
+        officeLat: (j['office_lat'] as num?)?.toDouble() ?? 0,
+        officeLng: (j['office_lng'] as num?)?.toDouble() ?? 0,
+        message:   j['message']?.toString() ?? '',
+      );
+  Map<String, dynamic> toJson() => {
+    'is_valid': isValid, 'distance_m': distanceM, 'radius_m': radiusM,
+    'office_lat': officeLat, 'office_lng': officeLng, 'message': message,
+  };
 }
 
-/// Model untuk request absensi
 class AttendanceRequest {
-  final String employeeId;
-  final double latitude;
-  final double longitude;
-  final String recordType; // 'clock_in' or 'clock_out'
-  final double? threshold;
-  final double? radiusM;
-
-  AttendanceRequest({
-    required this.employeeId,
-    required this.latitude,
-    required this.longitude,
-    required this.recordType,
-    this.threshold,
-    this.radiusM,
+  final String employeeId, recordType;
+  final double latitude, longitude;
+  final double? threshold, radiusM;
+  const AttendanceRequest({
+    required this.employeeId, required this.latitude,
+    required this.longitude,  required this.recordType,
+    this.threshold, this.radiusM,
   });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'employee_id': employeeId,
-      'latitude': latitude,
-      'longitude': longitude,
-      'record_type': recordType,
-      'threshold': threshold ?? 0.6,
-      'radius_m': radiusM ?? 100,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'employee_id': employeeId, 'latitude': latitude,
+    'longitude': longitude,   'record_type': recordType,
+    'threshold': threshold ?? 0.6, 'radius_m': radiusM ?? 100,
+  };
 }
 
-/// Model untuk ringkasan absensi di dashboard
 class TodayAttendanceSummary {
   final bool isClockedIn;
   final String clockInTime;
@@ -296,67 +284,86 @@ class TodayAttendanceSummary {
   final String status;
   final double workHours;
   final double? faceSimilarity;
-
-  TodayAttendanceSummary({
-    required this.isClockedIn,
-    required this.clockInTime,
-    this.clockOutTime,
-    required this.status,
-    required this.workHours,
-    this.faceSimilarity,
+  const TodayAttendanceSummary({
+    required this.isClockedIn, required this.clockInTime,
+    this.clockOutTime, required this.status,
+    required this.workHours, this.faceSimilarity,
   });
-
-  factory TodayAttendanceSummary.fromJson(Map<String, dynamic> json) {
-    String clockIn = json['clock_in'] ?? '--:--';
-    String? clockOut = json['clock_out'];
-    
+  factory TodayAttendanceSummary.fromJson(Map<String, dynamic> j) {
+    final ci = j['clock_in']?.toString()  ?? '--:--';
+    final co = j['clock_out']?.toString();
     return TodayAttendanceSummary(
-      isClockedIn: clockOut == null || clockOut == '--:--',
-      clockInTime: clockIn,
-      clockOutTime: clockOut,
-      status: json['status'] ?? 'Unknown',
-      workHours: (json['work_hours'] ?? 0).toDouble(),
-      faceSimilarity: json['similarity']?.toDouble(),
+      isClockedIn: co == null || co == '--:--',
+      clockInTime: ci, clockOutTime: co,
+      status: j['status']?.toString() ?? 'Unknown',
+      workHours: (j['work_hours'] as num?)?.toDouble() ?? 0,
+      faceSimilarity: (j['similarity'] as num?)?.toDouble(),
     );
   }
 }
 
-/// Enum untuk status absensi
 enum AttendanceStatus {
-  onTime('On Time'),
-  late('Late'),
-  absent('Absent'),
-  overtime('Overtime'),
-  unknown('Unknown');
-
+  onTime('On Time'), late('Late'), absent('Absent'),
+  overtime('Overtime'), unknown('Unknown');
   final String value;
   const AttendanceStatus(this.value);
-
-  static AttendanceStatus fromString(String value) {
-    switch (value.toLowerCase()) {
-      case 'on time':
-        return AttendanceStatus.onTime;
-      case 'late':
-        return AttendanceStatus.late;
-      case 'absent':
-        return AttendanceStatus.absent;
-      case 'overtime':
-        return AttendanceStatus.overtime;
-      default:
-        return AttendanceStatus.unknown;
+  static AttendanceStatus fromString(String v) {
+    switch (v.toLowerCase()) {
+      case 'on time':  return AttendanceStatus.onTime;
+      case 'late':     return AttendanceStatus.late;
+      case 'absent':   return AttendanceStatus.absent;
+      case 'overtime': return AttendanceStatus.overtime;
+      default:         return AttendanceStatus.unknown;
     }
   }
 }
 
-/// Enum untuk tipe record absensi
 enum RecordType {
-  clockIn('clock_in'),
-  clockOut('clock_out');
-
+  clockIn('clock_in'), clockOut('clock_out');
   final String value;
   const RecordType(this.value);
+  static RecordType fromString(String v) =>
+      v == 'clock_in' ? RecordType.clockIn : RecordType.clockOut;
+}
 
-  static RecordType fromString(String value) {
-    return value == 'clock_in' ? RecordType.clockIn : RecordType.clockOut;
+class TodayAttendanceDetail {
+  final String id;
+  final DateTime date;
+  final String clockInTime;
+  final String? clockOutTime;
+  final String status;
+  final double workHours;
+  final double? overtimeHours, faceSimilarity;
+  final bool hasClockedIn, hasClockedOut;
+
+  const TodayAttendanceDetail({
+    required this.id, required this.date,
+    required this.clockInTime, this.clockOutTime,
+    required this.status, required this.workHours,
+    this.overtimeHours, this.faceSimilarity,
+    required this.hasClockedIn, required this.hasClockedOut,
+  });
+
+  factory TodayAttendanceDetail.fromJson(Map<String, dynamic> j) {
+    final ci = j['clock_in_time']?.toString()  ?? '--:--';
+    final co = j['clock_out_time']?.toString();
+    return TodayAttendanceDetail(
+      id:   j['id']?.toString() ?? '',
+      date: DateTime.tryParse(j['date']?.toString() ?? '') ?? DateTime.now(),
+      clockInTime: ci, clockOutTime: co,
+      status:    j['status']?.toString() ?? 'Unknown',
+      workHours: (j['work_hours'] as num?)?.toDouble() ?? 0,
+      overtimeHours:  (j['overtime_hours'] as num?)?.toDouble(),
+      faceSimilarity: (j['face_similarity'] as num?)?.toDouble(),
+      hasClockedIn:  ci.isNotEmpty && ci != '--:--',
+      hasClockedOut: co != null && co.isNotEmpty && co != '--:--',
+    );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id, 'date': date.toIso8601String(),
+    'clock_in_time': clockInTime, 'clock_out_time': clockOutTime,
+    'status': status, 'work_hours': workHours,
+    'overtime_hours': overtimeHours, 'face_similarity': faceSimilarity,
+  };
 }
