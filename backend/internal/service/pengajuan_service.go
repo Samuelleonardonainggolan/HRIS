@@ -1,3 +1,4 @@
+// internal/service/pengajuan_service.go
 package service
 
 import (
@@ -6,139 +7,173 @@ import (
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// PengajuanService interface mendefinisikan semua operasi pengajuan.
 type PengajuanService interface {
-	GetTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error)
-	GetMyPengajuan(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error)
-	CreatePengajuan(ctx context.Context, userID string, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
+	GetAllTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error)
+	CreatePengajuan(ctx context.Context, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
+	GetPengajuanByUser(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error)
 }
 
+// CreatePengajuanRequest adalah request untuk membuat pengajuan baru.
 type CreatePengajuanRequest struct {
-	TipePengajuanID string
-	TanggalMulai    string
-	TanggalSelesai  string
-	TotalHari       int
-	Alasan          string
-	DokumenURL      string
+	UserID          string `json:"user_id"`
+	TipePengajuanID string `json:"tipe_pengajuan_id" binding:"required"`
+	TanggalMulai    string `json:"tanggal_mulai" binding:"required"`   // format: yyyy-MM-dd
+	TanggalSelesai  string `json:"tanggal_selesai" binding:"required"` // format: yyyy-MM-dd
+	TotalHari       int    `json:"total_hari" binding:"required"`
+	Alasan          string `json:"alasan" binding:"required"`
+	DokumenURL      string `json:"dokumen_url,omitempty"`
 }
 
+// pengajuanService adalah implementasi konkret dari PengajuanService.
 type pengajuanService struct {
+	tipePengajuanCol interface {
+		FindAll(ctx context.Context) ([]models.TipePengajuan, error)
+	}
+	pengajuanCol interface {
+		Create(ctx context.Context, p *models.PengajuanIzinCuti) error
+		FindByUserID(ctx context.Context, userID primitive.ObjectID) ([]models.PengajuanIzinCuti, error)
+		FindTipeByID(ctx context.Context, id primitive.ObjectID) (*models.TipePengajuan, error)
+	}
 	db *mongo.Database
 }
 
+// NewPengajuanService membuat service pengajuan baru.
+// Karena repository belum tentu ada, kita buat implementasi langsung ke MongoDB
+// via db parameter untuk kesederhanaan integrasi.
 func NewPengajuanService(db *mongo.Database) PengajuanService {
-	return &pengajuanService{db: db}
+	return &pengajuanServiceImpl{db: db}
 }
 
-func (s *pengajuanService) GetTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error) {
-	coll := s.db.Collection("tipe_pengajuan")
-	cur, err := coll.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "nama_tipe", Value: 1}}))
+// ── Implementasi konkret menggunakan MongoDB langsung ────────────────────────
+
+type pengajuanServiceImpl struct {
+	db *mongo.Database
+}
+
+func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error) {
+	col := s.db.Collection("tipe_pengajuan")
+
+	cursor, err := col.Find(ctx, map[string]interface{}{})
 	if err != nil {
 		return nil, err
 	}
-	defer cur.Close(ctx)
+	defer cursor.Close(ctx)
 
-	var items []models.TipePengajuan
-	if err := cur.All(ctx, &items); err != nil {
+	var tipes []models.TipePengajuan
+	if err = cursor.All(ctx, &tipes); err != nil {
 		return nil, err
 	}
 
-	out := make([]models.TipePengajuanResponse, 0, len(items))
-	for i := range items {
-		out = append(out, items[i].ToResponse())
+	result := make([]models.TipePengajuanResponse, 0, len(tipes))
+	for _, t := range tipes {
+		result = append(result, t.ToResponse())
 	}
-	return out, nil
+	return result, nil
 }
 
-func (s *pengajuanService) GetMyPengajuan(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error) {
-	uid, err := primitive.ObjectIDFromHex(userID)
+func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error) {
+	// Validasi user ID
+	userObjID, err := primitive.ObjectIDFromHex(req.UserID)
 	if err != nil {
 		return nil, errors.New("user ID tidak valid")
 	}
 
-	coll := s.db.Collection("pengajuan_izin_cuti")
-	cur, err := coll.Find(ctx, bson.M{"user_id": uid}, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}))
+	// Validasi tipe pengajuan ID
+	tipeObjID, err := primitive.ObjectIDFromHex(req.TipePengajuanID)
 	if err != nil {
-		return nil, err
-	}
-	defer cur.Close(ctx)
-
-	var items []models.PengajuanIzinCuti
-	if err := cur.All(ctx, &items); err != nil {
-		return nil, err
+		return nil, errors.New("tipe pengajuan ID tidak valid")
 	}
 
-	out := make([]models.PengajuanIzinCutiResponse, 0, len(items))
-	for i := range items {
-		out = append(out, items[i].ToResponse())
-	}
-	return out, nil
-}
-
-func (s *pengajuanService) CreatePengajuan(ctx context.Context, userID string, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error) {
-	uid, err := primitive.ObjectIDFromHex(userID)
-	if err != nil {
-		return nil, errors.New("user ID tidak valid")
-	}
-
-	tipeID, err := primitive.ObjectIDFromHex(req.TipePengajuanID)
-	if err != nil {
-		return nil, errors.New("tipe_pengajuan_id tidak valid")
-	}
-
-	start, err := parseTimeFlexible(req.TanggalMulai)
-	if err != nil {
-		return nil, errors.New("tanggal_mulai tidak valid")
-	}
-	end, err := parseTimeFlexible(req.TanggalSelesai)
-	if err != nil {
-		return nil, errors.New("tanggal_selesai tidak valid")
-	}
-
+	// Ambil detail tipe pengajuan
 	var tipe models.TipePengajuan
-	_ = s.db.Collection("tipe_pengajuan").FindOne(ctx, bson.M{"_id": tipeID}).Decode(&tipe)
+	err = s.db.Collection("tipe_pengajuan").FindOne(ctx, map[string]interface{}{"_id": tipeObjID}).Decode(&tipe)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("tipe pengajuan tidak ditemukan")
+		}
+		return nil, err
+	}
+
+	// Parse tanggal
+	const layout = "2006-01-02"
+	tanggalMulai, err := time.ParseInLocation(layout, req.TanggalMulai, time.FixedZone("WIB", 7*60*60))
+	if err != nil {
+		return nil, errors.New("format tanggal_mulai tidak valid (gunakan yyyy-MM-dd)")
+	}
+	tanggalSelesai, err := time.ParseInLocation(layout, req.TanggalSelesai, time.FixedZone("WIB", 7*60*60))
+	if err != nil {
+		return nil, errors.New("format tanggal_selesai tidak valid (gunakan yyyy-MM-dd)")
+	}
+
+	if tanggalSelesai.Before(tanggalMulai) {
+		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
+	}
+
+	// Cari kepala departemen dan manager HR (pakai approver pertama sebagai fallback)
+	// TODO: sesuaikan dengan struktur organisasi backend Anda
+	var approver struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	_ = s.db.Collection("users").FindOne(ctx, map[string]interface{}{"role": "manager_hr"}).Decode(&approver)
+	if approver.ID.IsZero() {
+		// fallback ke user pertama jika tidak ada manager HR
+		_ = s.db.Collection("users").FindOne(ctx, map[string]interface{}{}).Decode(&approver)
+	}
 
 	now := time.Now()
-	doc := models.PengajuanIzinCuti{
-		ID:                   primitive.NewObjectID(),
-		UserID:               uid,
-		TipePengajuanID:      tipeID,
-		NamaTipe:             tipe.NamaTipe,
-		TanggalMulai:         start,
-		TanggalSelesai:       end,
-		TotalHari:            req.TotalHari,
-		Alasan:               req.Alasan,
-		DokumenURL:           req.DokumenURL,
-		KuotaCutiID:          nil,
+	pengajuan := &models.PengajuanIzinCuti{
+		ID:                     primitive.NewObjectID(),
+		UserID:                 userObjID,
+		TipePengajuanID:        tipeObjID,
+		NamaTipe:               tipe.NamaTipe,
+		TanggalMulai:           tanggalMulai,
+		TanggalSelesai:         tanggalSelesai,
+		TotalHari:              req.TotalHari,
+		Alasan:                 req.Alasan,
+		DokumenURL:             req.DokumenURL,
 		StatusKepalaDepartemen: models.StatusPending,
-		KepalaDepartemenID:     primitive.NilObjectID,
-		ManagerHRID:            primitive.NilObjectID,
+		KepalaDepartemenID:     approver.ID,
+		ManagerHRID:            approver.ID,
 		StatusManagerHR:        models.StatusPending,
 		StatusFinal:            models.StatusPending,
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}
 
-	if _, err := s.db.Collection("pengajuan_izin_cuti").InsertOne(ctx, doc); err != nil {
+	_, err = s.db.Collection("pengajuan_izin_cuti").InsertOne(ctx, pengajuan)
+	if err != nil {
 		return nil, err
 	}
 
-	resp := doc.ToResponse()
+	resp := pengajuan.ToResponse()
 	return &resp, nil
 }
 
-func parseTimeFlexible(value string) (time.Time, error) {
-	if t, err := time.Parse(time.RFC3339, value); err == nil {
-		return t, nil
+func (s *pengajuanServiceImpl) GetPengajuanByUser(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
 	}
-	if t, err := time.Parse("2006-01-02", value); err == nil {
-		return t, nil
-	}
-	return time.Time{}, errors.New("invalid time")
-}
 
+	cursor, err := s.db.Collection("pengajuan_izin_cuti").Find(ctx, map[string]interface{}{"user_id": userObjID})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var list []models.PengajuanIzinCuti
+	if err = cursor.All(ctx, &list); err != nil {
+		return nil, err
+	}
+
+	result := make([]models.PengajuanIzinCutiResponse, 0, len(list))
+	for _, p := range list {
+		result = append(result, p.ToResponse())
+	}
+	return result, nil
+}

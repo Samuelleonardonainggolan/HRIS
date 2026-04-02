@@ -77,7 +77,7 @@ func CreateTipePengajuan() (int, string, string, func(*mongo.Database) error, fu
 			},
 			models.TipePengajuan{
 				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Pribadi",
+				NamaTipe:            "Izin Menikah",
 				KategoriPengajuanID: izin.ID.Hex(),
 				NamaKategori:        izin.NamaKategori,
 				PotongKuota:         false,
@@ -85,7 +85,23 @@ func CreateTipePengajuan() (int, string, string, func(*mongo.Database) error, fu
 			},
 			models.TipePengajuan{
 				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Khusus",
+				NamaTipe:            "Izin Baptisan / Akikah",
+				KategoriPengajuanID: izin.ID.Hex(),
+				NamaKategori:        izin.NamaKategori,
+				PotongKuota:         false,
+				WajibLampiran:       false,
+			},
+			models.TipePengajuan{
+				ID:                  primitive.NewObjectID(),
+				NamaTipe:            "Izin Anak Manikah",
+				KategoriPengajuanID: izin.ID.Hex(),
+				NamaKategori:        izin.NamaKategori,
+				PotongKuota:         false,
+				WajibLampiran:       false,
+			},
+			models.TipePengajuan{
+				ID:                  primitive.NewObjectID(),
+				NamaTipe:            "Izin Dukacita Keluarga Kandung",
 				KategoriPengajuanID: izin.ID.Hex(),
 				NamaKategori:        izin.NamaKategori,
 				PotongKuota:         false,
