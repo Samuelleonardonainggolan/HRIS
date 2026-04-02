@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -12,6 +13,11 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// wib adalah timezone WIB (UTC+7).
+// Seluruh logika bisnis (status Late, overtime, dll.) harus menggunakan
+// waktu WIB agar sesuai dengan jam kerja di Indonesia.
+var wib = time.FixedZone("WIB", 7*60*60)
 
 type AttendanceService interface {
 	ClockIn(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
@@ -23,8 +29,8 @@ type AttendanceService interface {
 
 type attendanceService struct {
 	attendanceRepo    repository.AttendanceRepository
-	userRepo          repository.UserRepository          // Gunakan interface
-	faceEmbeddingRepo repository.FaceEmbeddingRepository // Gunakan interface
+	userRepo          repository.UserRepository
+	faceEmbeddingRepo repository.FaceEmbeddingRepository
 	faceClient        *faceclient.Client
 	officeLat         float64
 	officeLng         float64
@@ -51,9 +57,9 @@ func NewAttendanceService(
 		userRepo:          userRepo,
 		faceEmbeddingRepo: faceEmbeddingRepo,
 		faceClient:        faceClient,
-		officeLat:         2.3561,  // IT Del Sitoluama
-		officeLng:         99.1431, // IT Del Sitoluama
-		radiusMeters:      10000,   // 10 km radius
+		officeLat:         2.3561,
+		officeLng:         99.1431,
+		radiusMeters:      10000,
 	}
 }
 
@@ -69,23 +75,28 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		return nil, errors.New("already clocked in today")
 	}
 
-	now := time.Now()
+	// ✅ FIX: Gunakan waktu WIB untuk logika bisnis (status Late/On Time).
+	// time.Now() mengembalikan waktu lokal server. Jika server berjalan dalam UTC,
+	// kita harus eksplisit konversi ke WIB agar jam kerja (08:00) dievaluasi benar.
+	now := time.Now().In(wib)
+
 	location := models.GeoLocation{
 		Latitude:  latitude,
 		Longitude: longitude,
 	}
 
-	// Calculate status based on time
+	// Hitung status berdasarkan jam WIB (jam kerja mulai 08:00 WIB)
 	status := models.StatusOnTime
-	standardStart := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, now.Location())
+	standardStart := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, wib)
 	if now.After(standardStart.Add(15 * time.Minute)) {
 		status = models.StatusLate
 	}
 
+	attendanceDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, wib)
 	attendance := &models.Attendance{
 		ID:              primitive.NewObjectID(),
 		UserID:          userObjID,
-		Date:            now,
+		Date:            attendanceDate.UTC(), // simpan sebagai tanggal hari ini dalam UTC
 		ClockInTime:     &now,
 		ClockInPhoto:    filename,
 		ClockInLocation: location,
@@ -93,8 +104,8 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		WorkHours:       0,
 		OvertimeHours:   0,
 		FaceSimilarity:  faceSimilarity,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		CreatedAt:       now.UTC(),
+		UpdatedAt:       now.UTC(),
 	}
 
 	err = s.attendanceRepo.Create(ctx, attendance)
@@ -117,38 +128,41 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 		return nil, errors.New("no clock in record found for today")
 	}
 
+	if attendance.ClockInTime == nil {
+		return nil, errors.New("no clock in record found for today")
+	}
+
 	if attendance.ClockOutTime != nil {
 		return nil, errors.New("already clocked out today")
 	}
 
-	now := time.Now()
+	// ✅ FIX: Gunakan waktu WIB untuk konsistensi
+	now := time.Now().In(wib)
+
 	location := models.GeoLocation{
 		Latitude:  latitude,
 		Longitude: longitude,
 	}
 
 	// Calculate work hours
-	if attendance.ClockInTime != nil {
-		workDuration := now.Sub(*attendance.ClockInTime)
-		workHours := workDuration.Hours()
+	workDuration := now.Sub(*attendance.ClockInTime)
+	workHours := workDuration.Hours()
 
-		// Calculate overtime (more than 9 hours including 1 hour break)
-		overtimeHours := 0.0
-		if workHours > 9.0 {
-			overtimeHours = workHours - 9.0
-		}
-
-		// Update status if worked overtime
-		status := attendance.Status
-		if overtimeHours > 0 {
-			status = models.StatusOvertime
-		}
-
-		attendance.WorkHours = workHours
-		attendance.OvertimeHours = overtimeHours
-		attendance.Status = status
+	// Calculate overtime (lebih dari 9 jam)
+	overtimeHours := 0.0
+	if workHours > 9.0 {
+		overtimeHours = workHours - 9.0
 	}
 
+	// Update status
+	status := attendance.Status
+	if overtimeHours > 0 {
+		status = models.StatusOvertime
+	}
+
+	attendance.WorkHours = workHours
+	attendance.OvertimeHours = overtimeHours
+	attendance.Status = status
 	attendance.ClockOutTime = &now
 	attendance.ClockOutPhoto = filename
 	attendance.ClockOutLocation = location
@@ -197,57 +211,76 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	recordType string,
 ) (*AttendanceProcessResult, error) {
 
-	// 1. Validate location
+	// 1. Validate location menggunakan Haversine
 	distance := s.calculateDistance(latitude, longitude, s.officeLat, s.officeLng)
 	locationValid := distance <= s.radiusMeters
+
+	if !locationValid {
+		return &AttendanceProcessResult{
+			Success:       false,
+			Message:       "Anda berada di luar area kantor (jarak: " + formatDistance(distance) + "m, max: " + formatDistance(s.radiusMeters) + "m)",
+			LocationValid: false,
+			Distance:      distance,
+		}, nil
+	}
 
 	// 2. Get user's face embedding from database
 	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
 	if err != nil || faceEmbedding == nil {
 		return &AttendanceProcessResult{
 			Success:       false,
-			Message:       "Face not registered. Please register your face first.",
+			Message:       "Wajah belum terdaftar. Silakan daftarkan wajah Anda terlebih dahulu.",
 			LocationValid: locationValid,
 			Distance:      distance,
 		}, nil
 	}
 
-	// 3. Extract embedding from current photo
+	if len(faceEmbedding.FaceEmbedding) == 0 {
+		return &AttendanceProcessResult{
+			Success:       false,
+			Message:       "Data embedding wajah tidak valid. Silakan daftarkan ulang wajah Anda.",
+			LocationValid: locationValid,
+			Distance:      distance,
+		}, nil
+	}
+
+	// 3. Extract embedding dari foto saat ini menggunakan Face Client
 	currentEmbedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
 	if err != nil {
 		return &AttendanceProcessResult{
 			Success:       false,
-			Message:       "Failed to extract face: " + err.Error(),
+			Message:       "Gagal memproses foto: " + err.Error(),
 			LocationValid: locationValid,
 			Distance:      distance,
 		}, nil
 	}
 
-	// 4. Calculate similarity between stored and current embedding
+	if len(currentEmbedding) == 0 {
+		return &AttendanceProcessResult{
+			Success:       false,
+			Message:       "Tidak ada wajah terdeteksi dalam foto",
+			LocationValid: locationValid,
+			Distance:      distance,
+		}, nil
+	}
+
+	// 4. Calculate similarity antara embedding tersimpan dan saat ini
 	similarity := s.cosineSimilarity(currentEmbedding, faceEmbedding.FaceEmbedding)
-	faceValid := similarity >= 0.6 // Threshold 60%
+
+	const threshold = 0.60
+	faceValid := similarity >= threshold
 
 	if !faceValid {
 		return &AttendanceProcessResult{
 			Success:        false,
-			Message:        "Face does not match registered face",
+			Message:        "Wajah tidak cocok dengan data terdaftar (similarity: " + formatFloat(similarity*100) + "%, min: " + formatFloat(threshold*100) + "%)",
 			FaceSimilarity: similarity,
 			LocationValid:  locationValid,
 			Distance:       distance,
 		}, nil
 	}
 
-	if !locationValid {
-		return &AttendanceProcessResult{
-			Success:        false,
-			Message:        "Location outside allowed radius",
-			FaceSimilarity: similarity,
-			LocationValid:  locationValid,
-			Distance:       distance,
-		}, nil
-	}
-
-	// 5. Process attendance
+	// 5. Process attendance (clock_in atau clock_out)
 	var attendance *models.Attendance
 	if recordType == "clock_in" {
 		attendance, err = s.ClockIn(ctx, userID, latitude, longitude, photo, filename, similarity)
@@ -266,21 +299,28 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 6. Update face verification stats
-	now := time.Now()
-	faceEmbedding.LastVerifiedAt = &now
+	nowUTC := time.Now()
+	faceEmbedding.LastVerifiedAt = &nowUTC
 	faceEmbedding.VerificationCount++
-	faceEmbedding.UpdatedAt = now
-	s.faceEmbeddingRepo.Update(ctx, faceEmbedding)
+	faceEmbedding.UpdatedAt = nowUTC
+	_ = s.faceEmbeddingRepo.Update(ctx, faceEmbedding)
+
+	actionMsg := "Clock In"
+	if recordType == "clock_out" {
+		actionMsg = "Clock Out"
+	}
 
 	return &AttendanceProcessResult{
 		Success:        true,
-		Message:        "Attendance processed successfully",
+		Message:        actionMsg + " berhasil dicatat",
 		FaceSimilarity: similarity,
 		LocationValid:  locationValid,
 		Distance:       distance,
 		Attendance:     attendance,
 	}, nil
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 func (s *attendanceService) calculateDistance(lat1, lng1, lat2, lng2 float64) float64 {
 	const R = 6371000 // Earth radius in meters
@@ -317,4 +357,15 @@ func (s *attendanceService) cosineSimilarity(a, b []float32) float64 {
 	}
 
 	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+func formatDistance(d float64) string {
+	if d < 1000 {
+		return fmt.Sprintf("%.0f", d)
+	}
+	return fmt.Sprintf("%.1f km", d/1000)
+}
+
+func formatFloat(f float64) string {
+	return fmt.Sprintf("%.1f", f)
 }

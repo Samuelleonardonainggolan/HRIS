@@ -56,6 +56,7 @@ func main() {
 	positionService := service.NewPositionService(positionRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
 	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, faceClient)
+	pengajuanService := service.NewPengajuanService(mongodb.Database)
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 
 	log.Println("⚙️  Services initialized")
@@ -68,6 +69,7 @@ func main() {
 	positionHandler := handler.NewPositionHandler(positionService)
 	faceHandler := handler.NewFaceHandler(faceService)
 	attendanceHandler := handler.NewAttendanceHandler(attendanceService, faceService)
+	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
 	geofenceHandler := handler.NewGeofenceHandler(geofenceService)
 
 	log.Println("🎯 Handlers initialized")
@@ -91,6 +93,7 @@ func main() {
 		userHandler,
 		attendanceHandler,
 		geofenceHandler,
+		pengajuanHandler,
 	)
 
 	log.Println("🛣️  Routes configured")

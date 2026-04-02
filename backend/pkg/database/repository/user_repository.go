@@ -16,10 +16,11 @@ type UserRepository interface {
 	Create(ctx context.Context, user *models.User) error
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
-	FindByPayrollNumber(ctx context.Context, payrollNumber string) (*models.User, error) // Changed from FindByNIK
+	FindByPayrollNumber(ctx context.Context, payrollNumber string) (*models.User, error)
 	FindAll(ctx context.Context) ([]models.User, error)
 	FindByDepartment(ctx context.Context, departmentID string) ([]models.User, error)
 	Update(ctx context.Context, id string, user *models.UpdateUserRequest) error
+	UpdatePassword(ctx context.Context, id string, hashedPassword string) error
 	Delete(ctx context.Context, id string) error
 }
 
@@ -197,6 +198,29 @@ func (r *userRepository) Update(ctx context.Context, id string, req *models.Upda
 		return errors.New("user not found")
 	}
 
+	return nil
+}
+
+// UpdatePassword — khusus untuk ChangePassword, tidak ubah field lain
+func (r *userRepository) UpdatePassword(ctx context.Context, id string, hashedPassword string) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid user ID")
+	}
+	result, err := r.collection.UpdateOne(
+		ctx,
+		bson.M{"_id": objectID},
+		bson.M{"$set": bson.M{
+			"password":   hashedPassword,
+			"updated_at": time.Now(),
+		}},
+	)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
 	return nil
 }
 

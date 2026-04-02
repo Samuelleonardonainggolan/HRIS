@@ -86,21 +86,84 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 // Logout - User logout
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// Get user ID from context (set by auth middleware)
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "User not found"))
 		return
 	}
-
-	// Call logout service (for future implementation like token blacklist)
 	err := h.authService.Logout(c.Request.Context(), userID.(string))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
 		return
 	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Logout successful", gin.H{"user_id": userID}))
+}
 
-	c.JSON(http.StatusOK, models.SuccessResponse("Logout successful", gin.H{
-		"user_id": userID,
-	}))
+// GetProfile - GET /api/v1/profile
+func (h *AuthHandler) GetProfile(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "User ID tidak ditemukan"))
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Format user ID tidak valid"))
+		return
+	}
+	profile, err := h.authService.GetProfile(c.Request.Context(), userIDStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Profile retrieved", profile))
+}
+
+// UpdateProfile - PUT /api/v1/profile
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "User ID tidak ditemukan"))
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Format user ID tidak valid"))
+		return
+	}
+	var req models.UpdateUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+	profile, err := h.authService.UpdateProfile(c.Request.Context(), userIDStr, &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Profile updated successfully", profile))
+}
+
+// ChangePassword - POST /api/v1/profile/change-password
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "User ID tidak ditemukan"))
+		return
+	}
+	userIDStr, ok := userID.(string)
+	if !ok || userIDStr == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "Format user ID tidak valid"))
+		return
+	}
+	var req models.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+	if err := h.authService.ChangePassword(c.Request.Context(), userIDStr, req.OldPassword, req.NewPassword); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Password berhasil diubah", nil))
 }
