@@ -112,13 +112,13 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 				if !shouldBePresent {
 					// Absent record
 					attendances = append(attendances, models.Attendance{
-						ID:         primitive.NewObjectID(),
-						UserID:     user.ID,
-						Date:       date,
-						Status:     models.StatusAbsent,
-						WorkHours:  0,
-						CreatedAt:  date,
-						UpdatedAt:  date,
+						ID:        primitive.NewObjectID(),
+						UserID:    user.ID,
+						Date:      date,
+						Status:    models.StatusAbsent,
+						WorkHours: 0,
+						CreatedAt: date,
+						UpdatedAt: date,
 					})
 					continue
 				}

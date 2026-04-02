@@ -12,36 +12,36 @@ type Geofence struct {
 	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	Name        string             `json:"name" bson:"name"` // Nama lokasi (e.g., "Hotel Labosta")
 	Description string             `json:"description" bson:"description"`
-	
+
 	// Location
 	Location GeoPoint `json:"location" bson:"location"` // Center point
 	Address  string   `json:"address" bson:"address"`   // Full address
-	
+
 	// Geofence Settings
-	Radius      int    `json:"radius" bson:"radius"`           // Radius in meters
-	RadiusUnit  string `json:"radius_unit" bson:"radius_unit"` // "meter" or "km"
-	
+	Radius     int    `json:"radius" bson:"radius"`           // Radius in meters
+	RadiusUnit string `json:"radius_unit" bson:"radius_unit"` // "meter" or "km"
+
 	// Coordinates
 	Latitude  float64 `json:"latitude" bson:"latitude"`
 	Longitude float64 `json:"longitude" bson:"longitude"`
-	
+
 	// Icon & Color for UI
 	Icon  string `json:"icon" bson:"icon"`   // Emoji or icon identifier
 	Color string `json:"color" bson:"color"` // Hex color for map marker
-	
+
 	// Assignment
-	AppliesTo      string               `json:"applies_to" bson:"applies_to"` // "all", "departments", "positions"
-	DepartmentIDs  []primitive.ObjectID `json:"department_ids,omitempty" bson:"department_ids,omitempty"`
-	PositionIDs    []primitive.ObjectID `json:"position_ids,omitempty" bson:"position_ids,omitempty"`
-	
+	AppliesTo     string               `json:"applies_to" bson:"applies_to"` // "all", "departments", "positions"
+	DepartmentIDs []primitive.ObjectID `json:"department_ids,omitempty" bson:"department_ids,omitempty"`
+	PositionIDs   []primitive.ObjectID `json:"position_ids,omitempty" bson:"position_ids,omitempty"`
+
 	// Status
 	IsActive bool `json:"is_active" bson:"is_active"`
-	
+
 	// Metadata
-	CreatedBy   primitive.ObjectID `json:"created_by" bson:"created_by"`
-	CreatedByName string           `json:"created_by_name" bson:"created_by_name"`
-	CreatedAt   time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt   time.Time          `json:"updated_at" bson:"updated_at"`
+	CreatedBy     primitive.ObjectID `json:"created_by" bson:"created_by"`
+	CreatedByName string             `json:"created_by_name" bson:"created_by_name"`
+	CreatedAt     time.Time          `json:"created_at" bson:"created_at"`
+	UpdatedAt     time.Time          `json:"updated_at" bson:"updated_at"`
 }
 
 // GeoPoint represents GeoJSON Point for MongoDB geospatial queries
@@ -52,17 +52,17 @@ type GeoPoint struct {
 
 // CreateGeofenceRequest represents request to create geofence
 type CreateGeofenceRequest struct {
-	Name          string               `json:"name" binding:"required"`
-	Description   string               `json:"description"`
-	Latitude      float64              `json:"latitude" binding:"required"`
-	Longitude     float64              `json:"longitude" binding:"required"`
-	Address       string               `json:"address"`
-	Radius        int                  `json:"radius" binding:"required,min=10,max=5000"` // 10m - 5km
-	Icon          string               `json:"icon"`
-	Color         string               `json:"color"`
-	AppliesTo     string               `json:"applies_to" binding:"required,oneof=all departments positions"`
-	DepartmentIDs []string             `json:"department_ids"`
-	PositionIDs   []string             `json:"position_ids"`
+	Name          string   `json:"name" binding:"required"`
+	Description   string   `json:"description"`
+	Latitude      float64  `json:"latitude" binding:"required"`
+	Longitude     float64  `json:"longitude" binding:"required"`
+	Address       string   `json:"address"`
+	Radius        int      `json:"radius" binding:"required,min=10,max=5000"` // 10m - 5km
+	Icon          string   `json:"icon"`
+	Color         string   `json:"color"`
+	AppliesTo     string   `json:"applies_to" binding:"required,oneof=all departments positions"`
+	DepartmentIDs []string `json:"department_ids"`
+	PositionIDs   []string `json:"position_ids"`
 }
 
 // UpdateGeofenceRequest represents request to update geofence
@@ -112,10 +112,10 @@ type CheckLocationRequest struct {
 
 // CheckLocationResponse represents response for location check
 type CheckLocationResponse struct {
-	IsWithinGeofence bool               `json:"is_within_geofence"`
-	Geofence         *GeofenceResponse  `json:"geofence,omitempty"`
-	Distance         float64            `json:"distance"` // Distance in meters
-	Message          string             `json:"message"`
+	IsWithinGeofence bool              `json:"is_within_geofence"`
+	Geofence         *GeofenceResponse `json:"geofence,omitempty"`
+	Distance         float64           `json:"distance"` // Distance in meters
+	Message          string            `json:"message"`
 }
 
 // ToResponse converts Geofence to GeofenceResponse

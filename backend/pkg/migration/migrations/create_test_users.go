@@ -43,7 +43,7 @@ func CreateTestUsers() (int, string, string, func(*mongo.Database) error, func(*
 				Options: options.Index().SetUnique(true),
 			},
 			{
-				Keys:    bson.D{{Key: "payroll_number", Value: 1}}, // ✅ New field name
+				Keys:    bson.D{{Key: "payroll_number", Value: 1}},       // ✅ New field name
 				Options: options.Index().SetUnique(true).SetSparse(true), // ✅ Sparse allows null
 			},
 			{

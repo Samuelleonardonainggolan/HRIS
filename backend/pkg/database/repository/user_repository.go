@@ -18,6 +18,7 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*models.User, error)
 	FindByPayrollNumber(ctx context.Context, payrollNumber string) (*models.User, error) // Changed from FindByNIK
 	FindAll(ctx context.Context) ([]models.User, error)
+	FindByIDs(ctx context.Context, ids []string) ([]models.User, error)
 	FindByDepartment(ctx context.Context, departmentID string) ([]models.User, error)
 	Update(ctx context.Context, id string, user *models.UpdateUserRequest) error
 	Delete(ctx context.Context, id string) error
@@ -99,6 +100,34 @@ func (r *userRepository) FindAll(ctx context.Context) ([]models.User, error) {
 	if err = cursor.All(ctx, &users); err != nil {
 		return nil, err
 	}
+	return users, nil
+}
+
+func (r *userRepository) FindByIDs(ctx context.Context, ids []string) ([]models.User, error) {
+	if len(ids) == 0 {
+		return []models.User{}, nil
+	}
+
+	objectIDs := make([]primitive.ObjectID, 0, len(ids))
+	for _, id := range ids {
+		oid, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return nil, errors.New("invalid user ID")
+		}
+		objectIDs = append(objectIDs, oid)
+	}
+
+	cursor, err := r.collection.Find(ctx, bson.M{"_id": bson.M{"$in": objectIDs}})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var users []models.User
+	if err = cursor.All(ctx, &users); err != nil {
+		return nil, err
+	}
+
 	return users, nil
 }
 

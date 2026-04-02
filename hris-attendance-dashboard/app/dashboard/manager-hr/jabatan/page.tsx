@@ -82,11 +82,11 @@ export default function DepartmentPositionsPage() {
         console.error("Failed to fetch employees for staff count:", e);
       }
 
-      const mapped: PositionRow[] = allPositions.map((p: any) => ({
+      const mapped: PositionRow[] = allPositions.map((p) => ({
         id: p.id,
-        name: p.name ?? p.position_name ?? "-",
-        subTitle: p.category ?? p.description ?? "", // opsional
-        staffCount: staffByPosition[p.id] ?? p.totalEmployees ?? 0,
+        name: p.name ?? "-",
+        subTitle: p.description ?? "",
+        staffCount: staffByPosition[p.id] ?? 0,
         status: p.isActive ? "Aktif" : "Nonaktif",
       }));
 

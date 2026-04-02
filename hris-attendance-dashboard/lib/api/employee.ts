@@ -2,7 +2,10 @@
 import { authService, User } from './auth';
 import { Department, Position, CreateEmployeeRequest } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.startsWith('/')
+    ? process.env.NEXT_PUBLIC_API_URL
+    : '/api/v1';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -20,7 +23,7 @@ class EmployeeService {
 
   async getAllEmployees(): Promise<User[]> {
     try {
-      const response = await fetch(`${API_URL}/employees`, {
+      const response = await fetch(`${API_BASE}/employees`, {
         method: 'GET',
         headers: authService.getAuthHeaders(),
       });
@@ -40,7 +43,7 @@ class EmployeeService {
 
   async getEmployeeByID(id: string): Promise<User> {
     try {
-      const response = await fetch(`${API_URL}/employees/${id}`, {
+      const response = await fetch(`${API_BASE}/employees/${id}`, {
         method: 'GET',
         headers: authService.getAuthHeaders(),
       });
@@ -68,7 +71,7 @@ class EmployeeService {
         role: employeeData.role || "staf",
       };
 
-      const response = await fetch(`${API_URL}/employees`, {
+      const response = await fetch(`${API_BASE}/employees`, {
         method: 'POST',
         headers: authService.getAuthHeaders(),
         body: JSON.stringify(payload),
@@ -95,7 +98,7 @@ class EmployeeService {
 
   async updateEmployee(id: string, employeeData: Partial<User>): Promise<User> {
     try {
-      const response = await fetch(`${API_URL}/employees/${id}`, {
+      const response = await fetch(`${API_BASE}/employees/${id}`, {
         method: 'PUT',
         headers: authService.getAuthHeaders(),
         body: JSON.stringify(employeeData),
@@ -116,7 +119,7 @@ class EmployeeService {
 
   async deleteEmployee(id: string): Promise<void> {
     try {
-      const response = await fetch(`${API_URL}/employees/${id}`, {
+      const response = await fetch(`${API_BASE}/employees/${id}`, {
         method: 'DELETE',
         headers: authService.getAuthHeaders(),
       });
@@ -142,7 +145,7 @@ class EmployeeService {
       const headers = authService.getAuthHeaders();
       delete headers['Content-Type'];
 
-      const response = await fetch(`${API_URL}/employees/import`, {
+      const response = await fetch(`${API_BASE}/employees/import`, {
         method: 'POST',
         headers: headers,
         body: formData,
@@ -163,7 +166,7 @@ class EmployeeService {
 
   async downloadTemplate(): Promise<Blob> {
     try {
-      const response = await fetch(`${API_URL}/employees/template`, {
+      const response = await fetch(`${API_BASE}/employees/template`, {
         method: 'GET',
         headers: authService.getAuthHeaders(),
       });
@@ -183,7 +186,7 @@ class EmployeeService {
 
   async getAllDepartments(): Promise<Department[]> {
     try {
-      const response = await fetch(`${API_URL}/departments`, {
+      const response = await fetch(`${API_BASE}/departments`, {
         method: 'GET',
         headers: authService.getAuthHeaders(),
       });
@@ -205,7 +208,7 @@ class EmployeeService {
 
   async getAllPositions(departmentId?: string): Promise<Position[]> {
     try {
-      let url = `${API_URL}/positions`;
+      let url = `${API_BASE}/positions`;
       if (departmentId) {
         url += `?department_id=${departmentId}`;
       }

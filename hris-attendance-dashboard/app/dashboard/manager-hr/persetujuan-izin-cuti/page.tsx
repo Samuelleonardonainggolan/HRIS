@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Filter, Download, Loader2, MoreVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { leaveRequestsApi, LeaveRequestStatus, LeaveRequestApprovalResponse } from "@/lib/api/leave-requests";
+import toast from "react-hot-toast";
 
 type RequestStatus = "Pending" | "Disetujui" | "Ditolak";
 
-type RequestType = "SAKIT" | "TAHUNAN" | "IZIN KHUSUS";
+type RequestType = string;
 
 interface LeaveApprovalItem {
   id: string;
@@ -36,18 +38,95 @@ interface LeaveApprovalItem {
 }
 
 function typeBadgeVariant(t: RequestType) {
-  // Sesuaikan dengan Badge variant yang Anda punya
-  // Saya pakai "secondary" sebagai default agar tidak error.
-  switch (t) {
+  const fallback: BadgeProps["variant"] = "secondary";
+  const key = t.toUpperCase();
+  switch (key) {
     case "SAKIT":
-      return "destructive" as any;
+      return "danger";
     case "TAHUNAN":
-      return "secondary" as any;
+      return "secondary";
     case "IZIN KHUSUS":
-      return "outline" as any;
+    case "CUTI KHUSUS":
+      return "warning";
     default:
-      return "secondary" as any;
+      return fallback;
   }
+}
+
+function mapStatus(status: LeaveRequestStatus): RequestStatus {
+  switch (status) {
+    case "APPROVED":
+      return "Disetujui";
+    case "REJECTED":
+      return "Ditolak";
+    default:
+      return "Pending";
+  }
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+function formatDateLabel(d: Date) {
+  return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function formatTimeLabel(d: Date) {
+  const t = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  return `Pukul ${t} WIB`;
+}
+
+function formatListDateTime(d: Date) {
+  const date = formatDateLabel(d);
+  const time = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  return `${date}, ${time}`;
+}
+
+function getFileNameFromUrl(url?: string) {
+  if (!url) return undefined;
+  try {
+    const u = new URL(url);
+    const pathname = u.pathname.split("/").filter(Boolean);
+    return pathname[pathname.length - 1];
+  } catch {
+    const parts = url.split("/").filter(Boolean);
+    return parts[parts.length - 1];
+  }
+}
+
+function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
+  const employeeName = x.employee?.full_name ?? "(Karyawan)";
+  const employeeId = x.employee?.payroll_number ?? x.pengajuan.user_id;
+  const department = x.employee?.department_name ?? "-";
+  const position = x.employee?.position_name ?? "-";
+  const start = new Date(x.pengajuan.tanggal_mulai);
+  const end = new Date(x.pengajuan.tanggal_selesai);
+  const attachmentName = getFileNameFromUrl(x.pengajuan.dokumen_url);
+
+  return {
+    id: x.pengajuan.id,
+    employeeName,
+    employeeId,
+    department,
+    position,
+    type: (x.pengajuan.nama_tipe || "IZIN KHUSUS").toUpperCase(),
+    startAt: formatListDateTime(start),
+    endAt: formatListDateTime(end),
+    startDateLabel: formatDateLabel(start),
+    startTimeLabel: formatTimeLabel(start),
+    endDateLabel: formatDateLabel(end),
+    endTimeLabel: formatTimeLabel(end),
+    reason: x.pengajuan.alasan,
+    attachmentName,
+    attachmentSize: undefined,
+    status: mapStatus(x.pengajuan.status_manager_hr),
+    avatarUrl: "",
+    avatarFallback: getInitials(employeeName),
+  };
 }
 
 function statusDotColor(s: RequestStatus) {
@@ -65,80 +144,47 @@ function statusDotColor(s: RequestStatus) {
 
 export default function PersetujuanIzinCutiPage() {
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isActing, setIsActing] = useState(false);
   const [searchEmployee, setSearchEmployee] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Dummy data (ganti nanti dengan API)
   const [items, setItems] = useState<LeaveApprovalItem[]>([]);
 
+  const activeStatus = "PENDING" as const;
+
   useEffect(() => {
-    // Simulasi fetch
+    let cancelled = false;
     const t = setTimeout(() => {
-      const mock: LeaveApprovalItem[] = [
-        {
-          id: "req-1",
-          employeeName: "Adinda Larasati",
-          employeeId: "SI-2024-089",
-          department: "Marketing",
-          position: "Marketing Coordinator",
-          type: "SAKIT",
-          startAt: "22 Okt 2023, 08:00",
-          endAt: "24 Okt 2023, 17:00",
-          startDateLabel: "22 Okt 2023",
-          startTimeLabel: "Pukul 08:00 WIB",
-          endDateLabel: "24 Okt 2023",
-          endTimeLabel: "Pukul 17:00 WIB",
-          reason:
-            "Saya merasa kurang enak badan sejak semalam. Berdasarkan pemeriksaan dokter, saya memerlukan istirahat total selama 3 hari karena gejala flu berat dan demam tinggi.",
-          attachmentName: "Surat_Dokter_Adinda_220ct.pdf",
-          attachmentSize: "1.2 MB",
-          status: "Pending",
-          avatarUrl: "",
-          avatarFallback: "AL",
-        },
-        {
-          id: "req-2",
-          employeeName: "Bagus Pranogo",
-          employeeId: "SI-2024-112",
-          department: "Engineering",
-          position: "Backend Engineer",
-          type: "TAHUNAN",
-          startAt: "25 Okt 2023, 09:00",
-          endAt: "27 Okt 2023, 17:00",
-          startDateLabel: "25 Okt 2023",
-          startTimeLabel: "Pukul 09:00 WIB",
-          endDateLabel: "27 Okt 2023",
-          endTimeLabel: "Pukul 17:00 WIB",
-          reason: "Mengambil cuti tahunan untuk keperluan keluarga.",
-          status: "Pending",
-          avatarFallback: "BP",
-        },
-        {
-          id: "req-3",
-          employeeName: "Citra Kirana",
-          employeeId: "SI-2024-045",
-          department: "Human Resources",
-          position: "HR Staff",
-          type: "IZIN KHUSUS",
-          startAt: "23 Okt 2023, 13:00",
-          endAt: "23 Okt 2023, 17:00",
-          startDateLabel: "23 Okt 2023",
-          startTimeLabel: "Pukul 13:00 WIB",
-          endDateLabel: "23 Okt 2023",
-          endTimeLabel: "Pukul 17:00 WIB",
-          reason: "Izin khusus untuk keperluan administrasi pribadi.",
-          status: "Pending",
-          avatarFallback: "CK",
-        },
-      ];
+      (async () => {
+        try {
+          setLoadError(null);
+          setIsLoading(true);
+          const res = await leaveRequestsApi.listForManagerHR({
+            status: activeStatus,
+            search: searchEmployee.trim() || undefined,
+          });
+          const mapped = res.map(mapResponseToItem);
+          if (cancelled) return;
+          setItems(mapped);
+          setSelectedId((prev) => {
+            if (prev && mapped.some((x) => x.id === prev)) return prev;
+            return mapped[0]?.id ?? null;
+          });
+        } catch (e) {
+          if (cancelled) return;
+          setLoadError(e instanceof Error ? e.message : "Gagal memuat pengajuan");
+        } finally {
+          if (!cancelled) setIsLoading(false);
+        }
+      })();
+    }, 250);
 
-      setItems(mock);
-      setSelectedId(mock[0]?.id ?? null);
-      setIsLoading(false);
-    }, 650);
-
-    return () => clearTimeout(t);
-  }, []);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [activeStatus, searchEmployee]);
 
   const filtered = useMemo(() => {
     const q = searchEmployee.toLowerCase().trim();
@@ -156,20 +202,44 @@ export default function PersetujuanIzinCutiPage() {
     setSelectedId(selected.id);
   }, [selected]);
 
-  const handleApprove = () => {
-    if (!selected) return;
-    setItems((prev) =>
-      prev.map((x) =>
-        x.id === selected.id ? { ...x, status: "Disetujui" } : x
-      )
-    );
+  const handleApprove = async () => {
+    if (!selected || isActing) return;
+    try {
+      setIsActing(true);
+      await leaveRequestsApi.approve(selected.id);
+      toast.success("Pengajuan disetujui");
+      const res = await leaveRequestsApi.listForManagerHR({
+        status: activeStatus,
+        search: searchEmployee.trim() || undefined,
+      });
+      const mapped = res.map(mapResponseToItem);
+      setItems(mapped);
+      setSelectedId(mapped[0]?.id ?? null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menyetujui pengajuan");
+    } finally {
+      setIsActing(false);
+    }
   };
 
-  const handleReject = () => {
-    if (!selected) return;
-    setItems((prev) =>
-      prev.map((x) => (x.id === selected.id ? { ...x, status: "Ditolak" } : x))
-    );
+  const handleReject = async () => {
+    if (!selected || isActing) return;
+    try {
+      setIsActing(true);
+      await leaveRequestsApi.reject(selected.id);
+      toast.success("Pengajuan ditolak");
+      const res = await leaveRequestsApi.listForManagerHR({
+        status: activeStatus,
+        search: searchEmployee.trim() || undefined,
+      });
+      const mapped = res.map(mapResponseToItem);
+      setItems(mapped);
+      setSelectedId(mapped[0]?.id ?? null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Gagal menolak pengajuan");
+    } finally {
+      setIsActing(false);
+    }
   };
 
   if (isLoading) {
@@ -178,6 +248,20 @@ export default function PersetujuanIzinCutiPage() {
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-indigo-600" />
           <p className="mt-2 text-sm text-gray-500">Memuat pengajuan...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="text-center">
+          <p className="text-sm font-semibold text-gray-900">Gagal memuat data</p>
+          <p className="mt-1 text-sm text-gray-500">{loadError}</p>
+          <Button className="mt-4" onClick={() => window.location.reload()}>
+            Muat Ulang
+          </Button>
         </div>
       </div>
     );
@@ -438,14 +522,14 @@ export default function PersetujuanIzinCutiPage() {
                     variant="outline"
                     className="border-red-200 text-red-600 hover:bg-red-50"
                     onClick={handleReject}
-                    disabled={selected.status !== "Pending"}
+                    disabled={selected.status !== "Pending" || isActing}
                   >
                     Tolak
                   </Button>
                   <Button
                     className="bg-blue-600 hover:bg-blue-700 text-white"
                     onClick={handleApprove}
-                    disabled={selected.status !== "Pending"}
+                    disabled={selected.status !== "Pending" || isActing}
                   >
                     Setuju
                   </Button>

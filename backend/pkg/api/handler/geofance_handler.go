@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"github.com/andikatampubolon10/hris-backend/internal/service"
+	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -59,7 +59,7 @@ func (h *GeofenceHandler) CreateGeofence(c *gin.Context) {
 
 	userName := getUserName(c)
 
-	fmt.Printf("📍 Creating geofence - UserID: %s, UserName: %s, Location: %s\n", 
+	fmt.Printf("📍 Creating geofence - UserID: %s, UserName: %s, Location: %s\n",
 		userIDStr, userName, req.Name)
 
 	// ✅ Call service with string ID
@@ -270,7 +270,7 @@ func (h *GeofenceHandler) CheckUserInGeofence(c *gin.Context) {
 		reqBody.UserID = c.GetString("userID")
 	}
 
-	fmt.Printf("📍 Checking location: lat=%f, lng=%f, userID=%s\n", 
+	fmt.Printf("📍 Checking location: lat=%f, lng=%f, userID=%s\n",
 		reqBody.Latitude, reqBody.Longitude, reqBody.UserID)
 
 	// ✅ Create CheckLocationRequest
@@ -291,7 +291,7 @@ func (h *GeofenceHandler) CheckUserInGeofence(c *gin.Context) {
 	}
 
 	if result.IsWithinGeofence {
-		fmt.Printf("✅ User inside geofence: %s (distance: %.2fm)\n", 
+		fmt.Printf("✅ User inside geofence: %s (distance: %.2fm)\n",
 			result.Geofence.Name, result.Distance)
 	} else {
 		fmt.Printf("📏 User outside all geofences (distance: %.2fm)\n", result.Distance)

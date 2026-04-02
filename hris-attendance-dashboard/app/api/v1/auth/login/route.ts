@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 
-const BACKEND_BASE_URL = process.env.BACKEND_BASE_URL || "http://localhost:8080";
+const BACKEND_ORIGIN = (() => {
+  try {
+    return new URL(process.env.BACKEND_BASE_URL || "http://localhost:8080").origin;
+  } catch {
+    return "http://localhost:8080";
+  }
+})();
 
 export async function POST(req: Request) {
   const body = await req.text();
 
   try {
-    const upstream = await fetch(`${BACKEND_BASE_URL}/api/v1/auth/login`, {
+    const upstream = await fetch(`${BACKEND_ORIGIN}/api/v1/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": req.headers.get("content-type") || "application/json",

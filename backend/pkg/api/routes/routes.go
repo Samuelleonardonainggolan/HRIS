@@ -19,6 +19,7 @@ func SetupRoutes(
 	userHandler *handler.UserHandler,
 	attendanceHandler *handler.AttendanceHandler,
 	geofenceHandler *handler.GeofenceHandler,
+	pengajuanIzinCutiHandler *handler.PengajuanIzinCutiHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -118,6 +119,16 @@ func SetupRoutes(
 
 			// Check location (All authenticated users)
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
+
+			// ==================== LEAVE REQUEST APPROVAL (Manager HR Only) ====================
+			leaveRequests := protected.Group("/leave-requests")
+			leaveRequests.Use(middleware.ManagerHROnly())
+			{
+				leaveRequests.GET("", pengajuanIzinCutiHandler.ListForManagerHR)
+				leaveRequests.GET("/:id", pengajuanIzinCutiHandler.GetForManagerHR)
+				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
+				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
+			}
 		}
 	}
 }

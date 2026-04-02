@@ -1,5 +1,15 @@
 // lib/api/auth.ts
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.startsWith('/')
+    ? process.env.NEXT_PUBLIC_API_URL
+    : '/api/v1';
+
+function resolveApiUrl(path: string) {
+  if (API_BASE.startsWith('http')) return `${API_BASE}${path}`;
+  const origin =
+    typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+  return `${origin}${API_BASE}${path}`;
+}
 
 export interface LoginRequest {
   email: string;
@@ -66,7 +76,7 @@ class AuthService {
 
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(resolveApiUrl('/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,7 +140,7 @@ class AuthService {
 
     if (token) {
       try {
-        await fetch(`${API_URL}/logout`, {
+        await fetch(resolveApiUrl('/logout'), {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -159,7 +169,7 @@ class AuthService {
     }
 
     try {
-      const response = await fetch(`${API_URL}/auth/refresh`, {
+      const response = await fetch(resolveApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

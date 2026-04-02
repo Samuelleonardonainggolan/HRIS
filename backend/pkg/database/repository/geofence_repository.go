@@ -38,7 +38,7 @@ func (r *geofenceRepository) Create(ctx context.Context, geofence *models.Geofen
 	geofence.ID = primitive.NewObjectID()
 	geofence.CreatedAt = time.Now()
 	geofence.UpdatedAt = time.Now()
-	
+
 	_, err := r.collection.InsertOne(ctx, geofence)
 	return err
 }
@@ -136,7 +136,7 @@ func (r *geofenceRepository) Update(ctx context.Context, id string, req *models.
 
 	// Build update document
 	setFields := update["$set"].(bson.M)
-	
+
 	if req.Name != "" {
 		setFields["name"] = req.Name
 	}

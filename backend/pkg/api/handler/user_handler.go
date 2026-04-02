@@ -117,7 +117,7 @@ func (h *UserHandler) ImportEmployees(c *gin.Context) {
 		if len(sheetList) > 0 {
 			rows, err = f.GetRows(sheetList[0])
 		}
-		
+
 		if err != nil {
 			c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "Failed to read rows"))
 			return
@@ -168,10 +168,10 @@ func (h *UserHandler) ImportEmployees(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse("Employees imported successfully", gin.H{
-		"created":  created,
-		"failed":   len(failures),
-		"errors":   failures,
-		"total":    len(employees),
+		"created": created,
+		"failed":  len(failures),
+		"errors":  failures,
+		"total":   len(employees),
 	}))
 }
 
@@ -229,7 +229,7 @@ func (h *UserHandler) DownloadEmployeeTemplate(c *gin.Context) {
 
 	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 	c.Header("Content-Disposition", "attachment; filename=employee_template.xlsx")
-	
+
 	if err := f.Write(c.Writer); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", "Failed to generate template"))
 	}

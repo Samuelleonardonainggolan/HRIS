@@ -1,7 +1,10 @@
 import { authService } from "./auth";
 import { Department } from "@/types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.startsWith("/")
+    ? process.env.NEXT_PUBLIC_API_URL
+    : "/api/v1";
 
 export interface CreateDepartmentRequest {
   code?: string;
@@ -21,7 +24,7 @@ export interface UpdateDepartmentRequest {
 
 class DepartmentApi {
   async getAll(): Promise<Department[]> {
-    const res = await fetch(`${API_URL}/departments`, {
+    const res = await fetch(`${API_BASE}/departments`, {
       method: "GET",
       headers: authService.getAuthHeaders(),
     });
@@ -55,7 +58,7 @@ class DepartmentApi {
   }
 
   async getById(id: string): Promise<Department> {
-    const res = await fetch(`${API_URL}/departments/${id}`, {
+    const res = await fetch(`${API_BASE}/departments/${id}`, {
       method: "GET",
       headers: authService.getAuthHeaders(),
     });
@@ -78,7 +81,7 @@ class DepartmentApi {
   }
 
   async create(req: CreateDepartmentRequest): Promise<Department> {
-    const res = await fetch(`${API_URL}/departments`, {
+    const res = await fetch(`${API_BASE}/departments`, {
       method: "POST",
       headers: authService.getAuthHeaders(),
       body: JSON.stringify(req),
@@ -102,7 +105,7 @@ class DepartmentApi {
   }
 
   async update(id: string, req: UpdateDepartmentRequest): Promise<Department> {
-    const res = await fetch(`${API_URL}/departments/${id}`, {
+    const res = await fetch(`${API_BASE}/departments/${id}`, {
       method: "PUT",
       headers: authService.getAuthHeaders(),
       body: JSON.stringify(req),
@@ -126,7 +129,7 @@ class DepartmentApi {
   }
 
   async delete(id: string): Promise<void> {
-    const res = await fetch(`${API_URL}/departments/${id}`, {
+    const res = await fetch(`${API_BASE}/departments/${id}`, {
       method: "DELETE",
       headers: authService.getAuthHeaders(),
     });

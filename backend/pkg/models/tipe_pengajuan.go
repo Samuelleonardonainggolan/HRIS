@@ -5,12 +5,12 @@ import "go.mongodb.org/mongo-driver/bson/primitive"
 
 // TipePengajuan represents tipe pengajuan (mis: Cuti Tahunan, Izin Sakit)
 type TipePengajuan struct {
-	ID                primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	NamaTipe          string             `json:"nama_tipe" bson:"nama_tipe"`
-	KategoriPengajuanID string           `json:"kategori_pengajuan_id" bson:"kategori_pengajuan_id"`
-	NamaKategori      string             `json:"nama_kategori" bson:"nama_kategori"`
-	PotongKuota       bool               `json:"potong_kuota" bson:"potong_kuota"`
-	WajibLampiran     bool               `json:"wajib_lampiran" bson:"wajib_lampiran"`
+	ID                  primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	NamaTipe            string             `json:"nama_tipe" bson:"nama_tipe"`
+	KategoriPengajuanID string             `json:"kategori_pengajuan_id" bson:"kategori_pengajuan_id"`
+	NamaKategori        string             `json:"nama_kategori" bson:"nama_kategori"`
+	PotongKuota         bool               `json:"potong_kuota" bson:"potong_kuota"`
+	WajibLampiran       bool               `json:"wajib_lampiran" bson:"wajib_lampiran"`
 }
 
 // CreateTipePengajuanRequest represents request to create tipe pengajuan
