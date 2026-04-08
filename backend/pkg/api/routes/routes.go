@@ -23,7 +23,7 @@ func SetupRoutes(
 	pengajuanHandler *handler.PengajuanHandler,
 	jamKerjaHandler *handler.JamKerjaHandler,
 ) {
-	// CORS Middleware
+	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "false")
@@ -38,13 +38,13 @@ func SetupRoutes(
 		c.Next()
 	})
 
-	// Health check (public)
+	// ==================== HEALTH CHECK ====================
 	router.GET("/health", healthHandler.HealthCheck)
 
-	// API v1
+	// ==================== API V1 ====================
 	v1 := router.Group("/api/v1")
 	{
-		// ==================== PUBLIC ROUTES ====================
+		// -------------------- PUBLIC ROUTES --------------------
 		auth := v1.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
@@ -52,42 +52,42 @@ func SetupRoutes(
 			auth.POST("/refresh", authHandler.RefreshToken)
 		}
 
-		// ==================== PROTECTED ROUTES ====================
+		// -------------------- PROTECTED ROUTES --------------------
 		protected := v1.Group("")
 		protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 		{
-			// Logout
+			// LOGOUT
 			protected.POST("/logout", authHandler.Logout)
 
-			// ==================== PROFILE ====================
+			// PROFILE MANAGEMENT
 			protected.GET("/profile", authHandler.GetProfile)
 			protected.PUT("/profile", authHandler.UpdateProfile)
 			protected.POST("/profile/change-password", authHandler.ChangePassword)
 
-			// ==================== FACE RECOGNITION ====================
+			// FACE RECOGNITION
 			protected.GET("/internal/face/health", faceHandler.Health)
 			protected.POST("/admin/users/:id/register-face", middleware.ManagerHROnly(), faceHandler.RegisterFace)
 			protected.POST("/face/extract-embedding", faceHandler.ExtractEmbedding)
 			protected.POST("/face/register", faceHandler.RegisterFace)
 
-			// ==================== ATTENDANCE ====================
+			// ATTENDANCE
 			attendance := protected.Group("/attendance")
 			{
 				attendance.POST("/process", attendanceHandler.ProcessAttendance)
 				attendance.GET("/today", attendanceHandler.GetTodayAttendance)
 				attendance.GET("/monthly", attendanceHandler.GetMonthlyAttendance)
+				attendance.GET("/schedule-info", attendanceHandler.GetScheduleInfo) // Informasi jadwal kerja
 			}
 
-			// ==================== PENGAJUAN IZIN / CUTI ====================
-			// ✅ Route baru — sebelumnya menyebabkan 404 di Flutter
+			// PENGAJUAN IZIN / CUTI
 			pengajuan := protected.Group("/pengajuan")
 			{
-				pengajuan.GET("/tipe", pengajuanHandler.GetTipePengajuan) // GET /api/v1/pengajuan/tipe
-				pengajuan.GET("", pengajuanHandler.GetMyPengajuan)        // GET /api/v1/pengajuan
-				pengajuan.POST("", pengajuanHandler.CreatePengajuan)      // POST /api/v1/pengajuan
+				pengajuan.GET("/tipe", pengajuanHandler.GetTipePengajuan)
+				pengajuan.GET("", pengajuanHandler.GetMyPengajuan)
+				pengajuan.POST("", pengajuanHandler.CreatePengajuan)
 			}
 
-			// ==================== DEPARTMENTS (Manager HR Only) ====================
+			// DEPARTMENTS (Manager HR Only)
 			departments := protected.Group("/departments")
 			departments.Use(middleware.ManagerHROnly())
 			{
@@ -95,21 +95,18 @@ func SetupRoutes(
 				departments.GET("", departmentHandler.GetAllDepartments)
 				departments.GET("/:id", departmentHandler.GetDepartmentByID)
 				departments.PUT("/:id", departmentHandler.UpdateDepartment)
-				departments.PATCH("/:id", departmentHandler.UpdateDepartment)
 				departments.DELETE("/:id", departmentHandler.DeleteDepartment)
 			}
 
-			// ==================== POSITIONS (Admin Only) ====================
+			// POSITIONS (Admin Only)
 			positions := protected.Group("/positions")
 			positions.Use(middleware.AdminOnly())
 			{
 				positions.GET("", positionHandler.GetAllPositions)
 				positions.GET("/:id", positionHandler.GetPositionByID)
-				positions.PUT("/:id", positionHandler.UpdatePosition)
-				positions.PATCH("/:id", positionHandler.UpdatePosition)
 			}
 
-			// ==================== EMPLOYEES (Admin Only) ====================
+			// EMPLOYEES (Admin Only)
 			employees := protected.Group("/employees")
 			employees.Use(middleware.AdminOnly())
 			{
@@ -122,31 +119,43 @@ func SetupRoutes(
 				employees.DELETE("/:id", userHandler.DeleteEmployee)
 			}
 
-			// ==================== JAM KERJA ====================
+			// JAM KERJA (Work Schedule)
 			jamKerja := protected.Group("/jam-kerja")
 			{
+				// Get all work schedules (Admin/HR)
 				jamKerja.GET("", jamKerjaHandler.GetAllJamKerja)
+
+				// Get work schedule by user ID
 				jamKerja.GET("/user/:userId", jamKerjaHandler.GetJamKerjaByUserID)
+
+				// Create work schedule (Manager/HR only)
 				jamKerja.POST("", middleware.ManagerHROnly(), jamKerjaHandler.CreateJamKerja)
+
+				// Update work schedule by user ID (Manager/HR only)
 				jamKerja.PUT("/user/:userId", middleware.ManagerHROnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
+
+				// Get available employees without work schedule (Manager/HR only)
 				jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
 			}
 
-			// ==================== GEOFENCING ====================
+			// GEOFENCING
 			geofences := protected.Group("/geofences")
 			{
+				// Management routes (Manager/HR only)
 				geofences.POST("", middleware.ManagerHROnly(), geofenceHandler.CreateGeofence)
 				geofences.PUT("/:id", middleware.ManagerHROnly(), geofenceHandler.UpdateGeofence)
 				geofences.DELETE("/:id", middleware.ManagerHROnly(), geofenceHandler.DeleteGeofence)
 
+				// Public routes (all authenticated users)
 				geofences.GET("", geofenceHandler.GetAllGeofences)
 				geofences.GET("/active", geofenceHandler.GetActiveGeofences)
 				geofences.GET("/:id", geofenceHandler.GetGeofenceByID)
 			}
 
+			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
 
-			// ==================== LEAVE REQUEST APPROVAL (Manager HR Only) ====================
+			// LEAVE REQUEST APPROVAL (Manager HR Only)
 			leaveRequests := protected.Group("/leave-requests")
 			leaveRequests.Use(middleware.ManagerHROnly())
 			{
@@ -155,7 +164,6 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
-
 		}
 	}
 }

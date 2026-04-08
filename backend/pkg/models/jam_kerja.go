@@ -19,15 +19,15 @@ type JamKerja struct {
 }
 
 type JamKerjaListRowResponse struct {
-	ID         string `json:"id"` // user_id (dipakai di frontend sebagai id)
-	Name       string `json:"name"`
-	NIK        string `json:"nik"`
-	Department string `json:"department"`
-	Position   string `json:"position"`
+	ID         string   `json:"id"` // user_id (dipakai di frontend sebagai id)
+	Name       string   `json:"name"`
+	NIK        string   `json:"nik"`
+	Department string   `json:"department"`
+	Position   string   `json:"position"`
 	HariKerja  []string `json:"hari_kerja"`
-	WorkDays   string `json:"workDays"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
-	StartTime  string `json:"startTime"` // "08:00"
-	EndTime    string `json:"endTime"`   // "17:00"
+	WorkDays   string   `json:"workDays"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
+	StartTime  string   `json:"startTime"` // "08:00"
+	EndTime    string   `json:"endTime"`   // "17:00"
 }
 
 type JamKerjaDetailResponse struct {
@@ -58,9 +58,9 @@ type CreateJamKerjaRequest struct {
 }
 
 type AvailableEmployeeResponse struct {
-	ID            string `json:"id"`
-	FullName      string `json:"full_name"`
-	NIK           string `json:"nik"`
-	Department    string `json:"department_name"`
-	Position      string `json:"position_name"`
+	ID         string `json:"id"`
+	FullName   string `json:"full_name"`
+	NIK        string `json:"nik"`
+	Department string `json:"department_name"`
+	Position   string `json:"position_name"`
 }

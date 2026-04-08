@@ -1,4 +1,4 @@
-// cmd/server/main.go
+// cmd/server/main.go (FINAL VERSION - GABUNGAN)
 package main
 
 import (
@@ -37,7 +37,7 @@ func main() {
 	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
 	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
-	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database)
+	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
 
 	log.Println("📦 Repositories initialized")
 
@@ -57,11 +57,14 @@ func main() {
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	positionService := service.NewPositionService(positionRepo)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
-	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, faceClient)
+
+	// ✅ AttendanceService dengan jamKerjaRepo (dari kode pertama)
+	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, faceClient)
+
 	pengajuanService := service.NewPengajuanService(mongodb.Database)
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo)
-	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo)
+	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 
 	log.Println("⚙️  Services initialized")
 
@@ -76,7 +79,7 @@ func main() {
 	geofenceHandler := handler.NewGeofenceHandler(geofenceService)
 	pengajuanIzinCutiHandler := handler.NewPengajuanIzinCutiHandler(pengajuanIzinCutiService)
 	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
-	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService)
+	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
 
 	log.Println("🎯 Handlers initialized")
 
@@ -101,7 +104,7 @@ func main() {
 		geofenceHandler,
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
-		jamKerjaHandler,
+		jamKerjaHandler, // ✅ Dari kode kedua
 	)
 
 	log.Println("🛣️  Routes configured")
@@ -127,10 +130,21 @@ func main() {
 	log.Println("   Attendance:")
 	log.Println("     POST   /api/v1/attendance/process")
 	log.Println("     GET    /api/v1/attendance/today")
+	log.Println("     GET    /api/v1/attendance/monthly")       // ✅ Dari kode pertama
+	log.Println("     GET    /api/v1/attendance/schedule-info") // ✅ Dari kode pertama (via routes)
+	log.Println("   Jam Kerja (Work Schedule):")                // ✅ Dari kode kedua
+	log.Println("     GET    /api/v1/jam-kerja")
+	log.Println("     GET    /api/v1/jam-kerja/user/:userId")
+	log.Println("     POST   /api/v1/jam-kerja")
+	log.Println("     PUT    /api/v1/jam-kerja/user/:userId")
 	log.Println("   Geofencing:")
 	log.Println("     GET    /api/v1/geofences")
 	log.Println("     POST   /api/v1/geofences")
 	log.Println("     POST   /api/v1/geofences/check")
+	log.Println("   Pengajuan Izin/Cuti:")
+	log.Println("     GET    /api/v1/pengajuan")
+	log.Println("     GET    /api/v1/pengajuan/tipe")
+	log.Println("     POST   /api/v1/pengajuan")
 	log.Println("================================================")
 
 	if err := router.Run(":" + port); err != nil {

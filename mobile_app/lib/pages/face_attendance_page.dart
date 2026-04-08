@@ -22,14 +22,19 @@ class FaceAttendancePage extends StatefulWidget {
 
 class _FaceAttendancePageState extends State<FaceAttendancePage>
     with SingleTickerProviderStateMixin {
+  // File and location
   File? _capturedImage;
   Position? _currentPosition;
+  
+  // Status
   String _locationStatus = 'Mendeteksi lokasi...';
   String _faceStatus = 'Menunggu pengambilan gambar';
   bool _isLoading = false;
   bool _isLocationValid = false;
   bool _isFaceVerified = false;
   bool _attendanceSuccess = false;
+  
+  // Verification data
   double _faceSimilarity = 0.0;
   String _userId = '';
   bool _isCameraPermissionGranted = false;
@@ -39,18 +44,18 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   bool _isFaceDetected = false;
   List<double>? _faceEmbedding;
   String? _errorMessage;
-
-  // ✅ Real-time clock
+  
+  // Real-time clock
   late Timer _clockTimer;
   String _currentTime = '';
   String _currentDate = '';
-
+  
+  // Animation
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
-
+  
+  // Constants
   final ImagePicker _imagePicker = ImagePicker();
-
-  // Koordinat Labersa Hotel (sesuai backend)
   final double _officeLat = 2.3561;
   final double _officeLng = 99.1431;
   final double _radiusMeters = 10000;
@@ -59,30 +64,33 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   @override
   void initState() {
     super.initState();
-
+    
     // Init locale untuk format tanggal Indonesia
     initializeDateFormatting('id', null);
-
+    
+    // Setup animation
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-
+    
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-
-    // ✅ Mulai timer real-time — update tiap detik
+    
+    // Start real-time clock
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) _updateClock();
     });
-
+    
+    // Load data and check permissions
     _loadUserId();
     _checkPermissions();
   }
 
-  // ✅ Update jam dan tanggal secara real-time
+  // ==================== CLOCK METHODS ====================
+  
   void _updateClock() {
     final now = DateTime.now();
     setState(() {
@@ -91,12 +99,14 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     });
   }
 
+  // ==================== USER & PERMISSION METHODS ====================
+  
   Future<void> _loadUserId() async {
     final userId = await ApiService.getUserId();
     setState(() {
       _userId = userId ?? '';
     });
-
+    
     if (_userId.isEmpty) {
       _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
       Future.delayed(const Duration(seconds: 2), () {
@@ -106,107 +116,15 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       print('✅ User ID loaded: $_userId');
     }
   }
-
+  
   Future<void> _checkPermissions() async {
     await _checkLocationPermission();
     await _checkCameraPermission();
   }
-
-  // ─── Accessory Warning ────────────────────────────────────────────────────
-
-  void _showAccessoryWarningDialog(String message) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded,
-                color: AppTheme.errorColor, size: 28),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Perhatian',
-                style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.errorColor),
-              ),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.errorColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.face_retouching_off,
-                  color: AppTheme.errorColor, size: 60),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.warningColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Pastikan wajah terlihat jelas tanpa halangan untuk absensi yang akurat.',
-                textAlign: TextAlign.center,
-                style:
-                    TextStyle(fontSize: 13, color: AppTheme.warningColor),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() {
-                _capturedImage = null;
-                _isFaceDetected = false;
-                _faceEmbedding = null;
-                _errorMessage = null;
-                _isFaceVerified = false;
-                _faceStatus = 'Menunggu pengambilan gambar';
-              });
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: AppTheme.primaryColor,
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Ambil Foto Ulang',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Location ─────────────────────────────────────────────────────────────
-
+  
   Future<void> _checkLocationPermission() async {
     setState(() => _locationStatus = 'Memeriksa izin lokasi...');
-
+    
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -219,7 +137,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         return;
       }
     }
-
+    
     if (permission == LocationPermission.deniedForever) {
       setState(() {
         _locationStatus = 'Izin lokasi ditolak permanen';
@@ -228,26 +146,28 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showSettingsDialog('Lokasi');
       return;
     }
-
+    
     setState(() => _isLocationPermissionGranted = true);
     _getCurrentLocation();
   }
-
+  
   Future<void> _checkCameraPermission() async {
     var status = await Permission.camera.status;
     if (status.isDenied) status = await Permission.camera.request();
     setState(() => _isCameraPermissionGranted = status.isGranted);
     if (status.isPermanentlyDenied) _showSettingsDialog('Kamera');
   }
-
+  
+  // ==================== LOCATION METHODS ====================
+  
   Future<void> _getCurrentLocation() async {
     if (!_isLocationPermissionGranted) {
       setState(() => _locationStatus = 'Izin lokasi tidak diberikan');
       return;
     }
-
+    
     setState(() => _locationStatus = 'Mendapatkan lokasi...');
-
+    
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -258,12 +178,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         _showLocationServiceDialog();
         return;
       }
-
+      
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 15),
       );
-
+      
       setState(() {
         _currentPosition = position;
         _checkOfficeRadius(position);
@@ -276,7 +196,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showErrorSnackBar('Gagal mendapatkan lokasi: $e');
     }
   }
-
+  
   void _checkOfficeRadius(Position position) {
     double distance = Geolocator.distanceBetween(
       position.latitude,
@@ -284,7 +204,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _officeLat,
       _officeLng,
     );
-
+    
     setState(() {
       _isLocationValid = distance <= _radiusMeters;
       _locationStatus = _isLocationValid
@@ -292,15 +212,15 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           : 'Di luar area kantor (${distance.toStringAsFixed(0)}m) ✗';
     });
   }
-
-  // ─── Camera & Face Verification ───────────────────────────────────────────
-
+  
+  // ==================== FACE VERIFICATION METHODS ====================
+  
   Future<void> _captureImage() async {
     if (_attendanceSuccess) {
       _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
       return;
     }
-
+    
     if (!_isCameraPermissionGranted) {
       await _checkCameraPermission();
       if (!_isCameraPermissionGranted) {
@@ -308,13 +228,13 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         return;
       }
     }
-
+    
     if (_userId.isEmpty) {
       _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-
+    
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -323,7 +243,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         imageQuality: 85,
         preferredCameraDevice: CameraDevice.front,
       );
-
+      
       if (image != null) {
         setState(() {
           _capturedImage = File(image.path);
@@ -333,21 +253,20 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           _verificationResult = null;
           _verificationMessage = null;
         });
-
+        
         try {
           final result = await _verifyFaceOnly(image.path);
-
+          
           setState(() {
             _verificationResult = result;
-            _faceSimilarity =
-                (result['similarity'] as num?)?.toDouble() ?? 0.0;
+            _faceSimilarity = (result['similarity'] as num?)?.toDouble() ?? 0.0;
             _isFaceVerified = result['matched'] == true;
             _faceStatus = _isFaceVerified
                 ? '✓ Wajah terverifikasi (${(_faceSimilarity * 100).toStringAsFixed(1)}%)'
                 : '✗ ${result['message'] ?? 'Wajah tidak cocok'}';
             _isLoading = false;
           });
-
+          
           if (!_isFaceVerified) {
             _showErrorSnackBar(result['message'] ?? 'Verifikasi gagal');
           }
@@ -357,7 +276,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
             _isLoading = false;
             _faceStatus = '✗ Gagal verifikasi wajah';
           });
-
+          
           _handleVerificationError(e.toString());
         }
       }
@@ -369,92 +288,22 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showErrorSnackBar('Gagal mengakses kamera: $e');
     }
   }
-
-  // ✅ Parsing error yang lebih akurat — rambut TIDAK ditandai sebagai topi
-  void _handleVerificationError(String errorMsg) {
-    // Ekstrak pesan bersih dari backend
-    String clean = errorMsg;
-    if (errorMsg.contains('"message":"')) {
-      final m = RegExp(r'"message":"([^"]+)"').firstMatch(errorMsg);
-      if (m != null) clean = m.group(1) ?? errorMsg;
-    } else if (errorMsg.contains('message:')) {
-      final parts = errorMsg.split('message:');
-      if (parts.length > 1) clean = parts[1].trim();
-    }
-
-    print('🧹 Clean error: $clean');
-
-    // Kacamata
-    if (clean.contains('kacamata') ||
-        clean.contains('glasses') ||
-        clean.contains('bingkai kacamata') ||
-        clean.contains('distorsi tekstur') ||
-        clean.contains('refleksi') ||
-        clean.contains('frame kacamata')) {
-      _showAccessoryWarningDialog(
-        'Terdeteksi kacamata.\nHarap lepas kacamata Anda (termasuk kacamata bening).',
-      );
-    }
-    // Masker
-    else if (clean.contains('masker') || clean.contains('mask')) {
-      _showAccessoryWarningDialog(
-        'Terdeteksi masker.\nHarap lepas masker untuk melanjutkan absensi.',
-      );
-    }
-    // Topi/aksesoris kepala — HANYA jika bukan rambut biasa
-    else if ((clean.contains('topi') ||
-            clean.contains('hat') ||
-            clean.contains('aksesoris kepala') ||
-            clean.contains('tepi tajam di kepala')) &&
-        !clean.contains('rambut')) {
-      _showAccessoryWarningDialog(
-        'Terdeteksi topi atau penutup kepala.\nHarap lepas topi/aksesoris kepala.',
-      );
-    }
-    // Multiple faces
-    else if (clean.contains('lebih dari 1 wajah') ||
-        clean.contains('multiple faces') ||
-        RegExp(r'\d wajah').hasMatch(clean)) {
-      _showAccessoryWarningDialog(
-        'Terdeteksi lebih dari satu wajah.\nPastikan hanya Anda sendiri yang terlihat dalam frame.',
-      );
-    }
-    // Tidak ada wajah
-    else if (clean.contains('tidak ada wajah') ||
-        clean.contains('no face') ||
-        clean.contains('Tidak ada wajah')) {
-      _showErrorSnackBar(
-          'Tidak ada wajah terdeteksi. Arahkan kamera ke wajah Anda.');
-    }
-    // Warna mencolok di kepala — bisa rambut berwarna, skip aja
-    else if (clean.contains('warna mencolok')) {
-      // Tidak tampilkan warning untuk warna rambut yang dianggap mencolok
-      _showErrorSnackBar(
-          'Gagal verifikasi wajah. Pastikan wajah terlihat jelas dan pencahayaan cukup.');
-    }
-    // Error lainnya
-    else {
-      _showErrorSnackBar('Gagal verifikasi: $clean');
-    }
-  }
-
+  
   Future<Map<String, dynamic>> _verifyFaceOnly(String imagePath) async {
     final token = await ApiService.getAccessToken();
     if (token == null) throw Exception('Token tidak ditemukan');
-
+    
     var request = http.MultipartRequest(
       'POST',
       Uri.parse('${ApiService.baseUrl}/attendance/process'),
     );
-
+    
     request.headers.addAll({'Authorization': 'Bearer $token'});
-    request.fields['record_type'] =
-        widget.type == 'clock_in' ? 'clock_in' : 'clock_out';
-    request.fields['latitude'] =
-        (_currentPosition?.latitude ?? 0).toString();
-    request.fields['longitude'] =
-        (_currentPosition?.longitude ?? 0).toString();
-
+    request.fields['record_type'] = widget.type == 'clock_in' ? 'clock_in' : 'clock_out';
+    request.fields['verify_only'] = 'true';
+    request.fields['latitude'] = (_currentPosition?.latitude ?? 0).toString();
+    request.fields['longitude'] = (_currentPosition?.longitude ?? 0).toString();
+    
     request.files.add(
       await http.MultipartFile.fromPath(
         'photo',
@@ -462,19 +311,29 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         filename: 'verify_${DateTime.now().millisecondsSinceEpoch}.jpg',
       ),
     );
-
-    print('📤 Verifikasi ke /attendance/process...');
-
+    
+    print('📤 Verifikasi wajah & lokasi (VERIFY ONLY - tidak simpan ke DB)...');
+    
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-
+    
     print('Status: ${response.statusCode}');
     print('Body: ${response.body}');
-
+    
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body);
       final data = json['data'] as Map<String, dynamic>? ?? json;
-
+      
+      if (data.containsKey('attendance') && data['attendance'] != null) {
+        print('❌ ERROR: Backend seharusnya TIDAK return attendance saat verify_only=true!');
+        throw Exception('Data attendance tidak seharusnya ada di verifikasi. User harus klik tombol konfirmasi dulu!');
+      }
+      
+      print('✅ [VERIFY_ONLY] Verifikasi berhasil - menunggu user klik tombol konfirmasi');
+      print('   Face Similarity: ${(data['face_similarity'] as num?)?.toDouble() ?? 0.0}');
+      print('   Location Valid: ${data['location_valid']}');
+      print('   Distance: ${(data['distance_m'] as num?)?.toDouble() ?? 0.0}m');
+      
       return {
         'success': true,
         'matched': true,
@@ -484,69 +343,65 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     } else if (response.statusCode == 400) {
       final error = jsonDecode(response.body);
       final errorMsg = error['message']?.toString() ?? '';
-      final similarity =
-          (error['data']?['face_similarity'] as num?)?.toDouble() ?? 0.0;
-
-      // Sudah clock-out
-      if (widget.type == 'clock_out' &&
-          errorMsg.contains('already clocked out')) {
-        return {
-          'success': true,
-          'matched': true,
-          'similarity': similarity > 0 ? similarity : 0.9,
-          'message': 'Anda sudah melakukan clock out hari ini',
-        };
-      }
-      // Belum clock-in
-      if (widget.type == 'clock_out' &&
-          errorMsg.contains('no clock in record')) {
-        return {
-          'success': false,
-          'matched': false,
-          'similarity': 0.0,
-          'message': 'Anda belum melakukan clock in hari ini',
-        };
-      }
-      // Sudah clock-in
-      if (errorMsg.contains('already clocked in')) {
-        return {
-          'success': true,
-          'matched': true,
-          'similarity': similarity > 0 ? similarity : 0.9,
-          'message': 'Wajah terverifikasi (sudah pernah absen)',
-        };
-      }
-      // Face mismatch
-      if (errorMsg.contains('face does not match') ||
-          errorMsg.contains('tidak cocok') ||
-          errorMsg.contains('Wajah tidak cocok')) {
-        return {
-          'success': false,
-          'matched': false,
-          'similarity': similarity,
-          'message': errorMsg,
-        };
-      }
-      // No face
-      if (errorMsg.contains('no face') ||
-          errorMsg.contains('tidak ada wajah')) {
-        return {
-          'success': false,
-          'matched': false,
-          'similarity': 0.0,
-          'message': 'Tidak ada wajah terdeteksi',
-        };
-      }
-
       throw Exception(errorMsg);
     } else {
       final error = jsonDecode(response.body);
       throw Exception(error['message'] ?? 'Verifikasi gagal');
     }
   }
-
-  // ─── Confirm Attendance ───────────────────────────────────────────────────
-
+  
+  void _handleVerificationError(String errorMsg) {
+    String clean = errorMsg;
+    if (errorMsg.contains('"message":"')) {
+      final m = RegExp(r'"message":"([^"]+)"').firstMatch(errorMsg);
+      if (m != null) clean = m.group(1) ?? errorMsg;
+    } else if (errorMsg.contains('message:')) {
+      final parts = errorMsg.split('message:');
+      if (parts.length > 1) clean = parts[1].trim();
+    }
+    
+    print('🧹 Clean error: $clean');
+    
+    if (clean.contains('kacamata') ||
+        clean.contains('glasses') ||
+        clean.contains('bingkai kacamata') ||
+        clean.contains('distorsi tekstur') ||
+        clean.contains('refleksi') ||
+        clean.contains('frame kacamata')) {
+      _showAccessoryWarningDialog(
+        'Terdeteksi kacamata.\nHarap lepas kacamata Anda (termasuk kacamata bening).',
+      );
+    } else if (clean.contains('masker') || clean.contains('mask')) {
+      _showAccessoryWarningDialog(
+        'Terdeteksi masker.\nHarap lepas masker untuk melanjutkan absensi.',
+      );
+    } else if ((clean.contains('topi') ||
+            clean.contains('hat') ||
+            clean.contains('aksesoris kepala') ||
+            clean.contains('tepi tajam di kepala')) &&
+        !clean.contains('rambut')) {
+      _showAccessoryWarningDialog(
+        'Terdeteksi topi atau penutup kepala.\nHarap lepas topi/aksesoris kepala.',
+      );
+    } else if (clean.contains('lebih dari 1 wajah') ||
+        clean.contains('multiple faces') ||
+        RegExp(r'\d wajah').hasMatch(clean)) {
+      _showAccessoryWarningDialog(
+        'Terdeteksi lebih dari satu wajah.\nPastikan hanya Anda sendiri yang terlihat dalam frame.',
+      );
+    } else if (clean.contains('tidak ada wajah') ||
+        clean.contains('no face') ||
+        clean.contains('Tidak ada wajah')) {
+      _showErrorSnackBar(
+        'Tidak ada wajah terdeteksi. Arahkan kamera ke wajah Anda.',
+      );
+    } else {
+      _showErrorSnackBar('Gagal verifikasi: $clean');
+    }
+  }
+  
+  // ==================== ATTENDANCE METHODS ====================
+  
   Future<void> _confirmAttendance() async {
     if (_attendanceSuccess) {
       _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
@@ -569,19 +424,22 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-
+    
     setState(() => _isLoading = true);
-
+    
     try {
+      print('💾 Mengirim data absensi ke database (tersimpan sekarang)...');
+      
       final result = await ApiService.processAttendance(
         recordType: widget.type == 'clock_in' ? 'clock_in' : 'clock_out',
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         photoPath: _capturedImage!.path,
       );
-
+      
       if (result.success) {
         setState(() => _attendanceSuccess = true);
+        print('✅ Absensi berhasil disimpan ke DATABASE');
         _showSuccessDialog(
           title: widget.type == 'clock_in'
               ? 'Absen Masuk Berhasil!'
@@ -589,7 +447,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           similarity: result.faceSimilarity,
         );
       } else {
-        throw Exception(result.message);
+        print('❌ Error: ${result.message}');
+        _showErrorSnackBar(result.message);
       }
     } catch (e) {
       final msg = e.toString();
@@ -598,20 +457,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) Navigator.pushReplacementNamed(context, '/login');
         });
-      } else if (msg.contains('already clocked in')) {
-        _showInfoSnackBar('Anda sudah melakukan clock in hari ini');
-        setState(() => _attendanceSuccess = true);
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context, true);
-        });
-      } else if (msg.contains('no clock in record')) {
-        _showErrorSnackBar('Anda belum melakukan clock in hari ini');
-      } else if (msg.contains('already clocked out')) {
-        _showInfoSnackBar('Anda sudah melakukan clock out hari ini');
-        setState(() => _attendanceSuccess = true);
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context, true);
-        });
       } else {
         _showErrorSnackBar('Gagal melakukan absensi: $msg');
       }
@@ -619,9 +464,105 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // ─── Dialogs & Snackbars ──────────────────────────────────────────────────
-
+  
+  // ==================== DIALOG METHODS ====================
+  
+  void _showAccessoryWarningDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: AppTheme.errorColor,
+              size: 28,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Perhatian',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.errorColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.face_retouching_off,
+                color: AppTheme.errorColor,
+                size: 60,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.warningColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'Pastikan wajah terlihat jelas tanpa halangan untuk absensi yang akurat.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppTheme.warningColor),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() {
+                _capturedImage = null;
+                _isFaceDetected = false;
+                _faceEmbedding = null;
+                _errorMessage = null;
+                _isFaceVerified = false;
+                _faceStatus = 'Menunggu pengambilan gambar';
+              });
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.primaryColor,
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Ambil Foto Ulang',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
   void _showSuccessDialog({required String title, required double similarity}) {
     showDialog(
       context: context,
@@ -631,8 +572,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
             ? 'Selamat bekerja!'
             : 'Selamat beristirahat!';
         return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
           title: Column(
             children: [
               Container(
@@ -641,27 +583,36 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   color: AppTheme.successColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.check_circle,
-                    color: AppTheme.successColor, size: 50),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: AppTheme.successColor,
+                  size: 50,
+                ),
               ),
               const SizedBox(height: 16),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(subtitle,
-                  style:
-                      TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+              Text(
+                subtitle,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(50),
@@ -669,30 +620,37 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                 child: Text(
                   'Similarity ${(similarity * 100).toStringAsFixed(1)}%',
                   style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.primaryColor),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.primaryColor,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.access_time,
-                      size: 16, color: Colors.grey.shade600),
+                  Icon(
+                    Icons.access_time,
+                    size: 16,
+                    color: Colors.grey.shade600,
+                  ),
                   const SizedBox(width: 8),
-                  // ✅ Tampilkan waktu saat ini (sudah real-time dari state)
-                  Text(_currentTime,
-                      style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary)),
+                  Text(
+                    _currentTime,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 4),
-              Text(_currentDate,
-                  style:
-                      TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              Text(
+                _currentDate,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              ),
             ],
           ),
           actions: [
@@ -705,59 +663,34 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                 foregroundColor: AppTheme.primaryColor,
                 minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              child: const Text('OK',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'OK',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         );
       },
     );
   }
-
-  void _showInfoSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Row(children: [
-        const Icon(Icons.info, color: Colors.white, size: 20),
-        const SizedBox(width: 12),
-        Expanded(child: Text(message)),
-      ]),
-      backgroundColor: const Color(0xFF135BEC),
-      behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(16),
-      duration: const Duration(seconds: 3),
-    ));
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      backgroundColor: AppTheme.errorColor,
-      behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.all(16),
-      duration: const Duration(seconds: 3),
-    ));
-  }
-
+  
   void _showPermissionDialog(String permission) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Izin $permission Diperlukan'),
         content: Text(
-            'Aplikasi membutuhkan izin $permission untuk melanjutkan absensi.'),
+          'Aplikasi membutuhkan izin $permission untuk melanjutkan absensi.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -780,20 +713,21 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-
+  
   void _showSettingsDialog(String permission) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Izin $permission'),
         content: Text(
-            'Izin $permission telah ditolak permanen. Silakan aktifkan di pengaturan.'),
+          'Izin $permission telah ditolak permanen. Silakan aktifkan di pengaturan.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -805,20 +739,21 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-
+  
   void _showLocationServiceDialog() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Layanan Lokasi'),
-        content:
-            const Text('Harap aktifkan layanan lokasi untuk melanjutkan absensi.'),
+        content: const Text(
+          'Harap aktifkan layanan lokasi untuk melanjutkan absensi.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Batal')),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -830,27 +765,61 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-
+  
+  void _showInfoSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.info, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: const Color(0xFF135BEC),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+  
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppTheme.errorColor,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+  
+  // ==================== LIFECYCLE METHODS ====================
+  
   @override
   void dispose() {
-    _clockTimer.cancel(); // ✅ Hentikan timer saat widget dihancurkan
+    _clockTimer.cancel();
     _animationController.dispose();
     super.dispose();
   }
-
-  // ─── Build ────────────────────────────────────────────────────────────────
-
+  
+  // ==================== BUILD METHOD ====================
+  
   @override
   Widget build(BuildContext context) {
     final bool canConfirm = _isLocationValid &&
         _isFaceVerified &&
         !_isLoading &&
         !_attendanceSuccess;
-
+    
     final Color headerColor = widget.type == 'clock_in'
         ? AppTheme.successColor
         : AppTheme.errorColor;
-
+    
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -863,7 +832,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         title: Text(
           widget.type == 'clock_in' ? 'Absen Masuk' : 'Absen Pulang',
           style: const TextStyle(
-              color: Color(0xFF0F172A), fontWeight: FontWeight.bold),
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.bold,
+          ),
         ),
         centerTitle: true,
       ),
@@ -874,7 +845,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header dengan jam real-time ───────────────────────────
+              // Header dengan jam real-time
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -896,9 +867,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                 child: Column(
                   children: [
                     Icon(
-                      widget.type == 'clock_in'
-                          ? Icons.login
-                          : Icons.logout,
+                      widget.type == 'clock_in' ? Icons.login : Icons.logout,
                       color: Colors.white,
                       size: 40,
                     ),
@@ -908,23 +877,25 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           ? 'Absen Masuk'
                           : 'Absen Pulang',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold),
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 4),
-                    // ✅ Tanggal real-time
                     Text(
                       _currentDate,
                       style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 13),
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 6),
-                    // ✅ Jam real-time berubah tiap detik
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 8),
+                        horizontal: 20,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(30),
@@ -943,10 +914,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-
+              
               const SizedBox(height: 24),
-
-              // ── Lokasi ────────────────────────────────────────────────
+              
+              // Verifikasi Lokasi
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -954,9 +925,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2))
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
                   ],
                 ),
                 child: Column(
@@ -964,14 +936,20 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.location_on,
-                            color: Color(0xFF135BEC), size: 20),
+                        Icon(
+                          Icons.location_on,
+                          color: Color(0xFF135BEC),
+                          size: 20,
+                        ),
                         SizedBox(width: 8),
-                        Text('Verifikasi Lokasi',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A))),
+                        Text(
+                          'Verifikasi Lokasi',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -987,9 +965,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
-                            _isLocationValid
-                                ? Icons.check
-                                : Icons.close,
+                            _isLocationValid ? Icons.check : Icons.close,
                             color: _isLocationValid
                                 ? AppTheme.successColor
                                 : AppTheme.errorColor,
@@ -999,41 +975,44 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 _locationStatus,
                                 style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: _isLocationValid
-                                        ? AppTheme.successColor
-                                        : AppTheme.errorColor),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: _isLocationValid
+                                      ? AppTheme.successColor
+                                      : AppTheme.errorColor,
+                                ),
                               ),
                               if (_currentPosition != null) ...[
                                 const SizedBox(height: 4),
                                 Text(
                                   'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}',
                                   style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600),
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
                                 ),
                                 Text(
                                   'Long: ${_currentPosition!.longitude.toStringAsFixed(6)}',
                                   style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600),
+                                    fontSize: 11,
+                                    color: Colors.grey.shade600,
+                                  ),
                                 ),
                               ],
                             ],
                           ),
                         ),
-                        if (!_isLocationValid &&
-                            _isLocationPermissionGranted)
+                        if (!_isLocationValid && _isLocationPermissionGranted)
                           IconButton(
-                            icon: const Icon(Icons.refresh,
-                                color: Color(0xFF135BEC)),
+                            icon: const Icon(
+                              Icons.refresh,
+                              color: Color(0xFF135BEC),
+                            ),
                             onPressed: _getCurrentLocation,
                           ),
                       ],
@@ -1041,10 +1020,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-
+              
               const SizedBox(height: 16),
-
-              // ── Face Recognition ──────────────────────────────────────
+              
+              // Verifikasi Wajah
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
@@ -1052,9 +1031,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black.withOpacity(0.02),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2))
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
                   ],
                 ),
                 child: Column(
@@ -1062,18 +1042,20 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.face,
-                            color: Color(0xFF135BEC), size: 20),
+                        Icon(Icons.face, color: Color(0xFF135BEC), size: 20),
                         SizedBox(width: 8),
-                        Text('Verifikasi Wajah',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF0F172A))),
+                        Text(
+                          'Verifikasi Wajah',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
-
+                    
                     GestureDetector(
                       onTap: _isLoading ? null : _captureImage,
                       child: Container(
@@ -1085,22 +1067,22 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           border: Border.all(
                             color: _capturedImage != null
                                 ? (_isFaceVerified
-                                    ? AppTheme.successColor
-                                    : AppTheme.errorColor)
+                                      ? AppTheme.successColor
+                                      : AppTheme.errorColor)
                                 : Colors.grey.shade300,
                             width: 2,
                           ),
                         ),
                         child: _capturedImage != null
                             ? ClipRRect(
-                                borderRadius:
-                                    BorderRadius.circular(14),
-                                child: Image.file(_capturedImage!,
-                                    fit: BoxFit.cover),
+                                borderRadius: BorderRadius.circular(14),
+                                child: Image.file(
+                                  _capturedImage!,
+                                  fit: BoxFit.cover,
+                                ),
                               )
                             : Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   ScaleTransition(
                                     scale: _pulseAnimation,
@@ -1109,19 +1091,15 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                       height: 70,
                                       decoration: BoxDecoration(
                                         color: _isCameraPermissionGranted
-                                            ? const Color(0xFF135BEC)
-                                                .withOpacity(0.1)
-                                            : Colors.grey
-                                                .withOpacity(0.1),
+                                            ? const Color(0xFF135BEC).withOpacity(0.1)
+                                            : Colors.grey.withOpacity(0.1),
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
                                         Icons.camera_alt,
-                                        color:
-                                            _isCameraPermissionGranted
-                                                ? const Color(
-                                                    0xFF135BEC)
-                                                : Colors.grey,
+                                        color: _isCameraPermissionGranted
+                                            ? const Color(0xFF135BEC)
+                                            : Colors.grey,
                                         size: 35,
                                       ),
                                     ),
@@ -1132,25 +1110,25 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                         ? 'Tap untuk mengambil foto'
                                         : 'Izin kamera diperlukan',
                                     style: TextStyle(
-                                        fontSize: 14,
-                                        color:
-                                            _isCameraPermissionGranted
-                                                ? const Color(
-                                                    0xFF64748B)
-                                                : Colors.grey),
+                                      fontSize: 14,
+                                      color: _isCameraPermissionGranted
+                                          ? const Color(0xFF64748B)
+                                          : Colors.grey,
+                                    ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     'Pastikan wajah terlihat jelas',
                                     style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade500),
+                                      fontSize: 11,
+                                      color: Colors.grey.shade500,
+                                    ),
                                   ),
                                 ],
                               ),
                       ),
                     ),
-
+                    
                     if (_capturedImage != null) ...[
                       const SizedBox(height: 16),
                       Container(
@@ -1174,35 +1152,36 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                             const SizedBox(width: 12),
                             Expanded(
                               child: Column(
-                                crossAxisAlignment:
-                                    CrossAxisAlignment.start,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     _faceStatus,
                                     style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: _isFaceVerified
-                                            ? AppTheme.successColor
-                                            : AppTheme.errorColor),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      color: _isFaceVerified
+                                          ? AppTheme.successColor
+                                          : AppTheme.errorColor,
+                                    ),
                                   ),
                                   if (_faceSimilarity > 0)
                                     Text(
                                       'Similarity: ${(_faceSimilarity * 100).toStringAsFixed(1)}%',
                                       style: TextStyle(
-                                          fontSize: 12,
-                                          color:
-                                              Colors.grey.shade600),
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
                                     ),
                                 ],
                               ),
                             ),
-                            // Tombol retake
                             if (!_isLoading && !_attendanceSuccess)
                               IconButton(
-                                icon: const Icon(Icons.refresh,
-                                    color: Color(0xFF135BEC),
-                                    size: 20),
+                                icon: const Icon(
+                                  Icons.refresh,
+                                  color: Color(0xFF135BEC),
+                                  size: 20,
+                                ),
                                 onPressed: _captureImage,
                                 tooltip: 'Ambil ulang',
                               ),
@@ -1210,23 +1189,24 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                         ),
                       ),
                     ],
-
+                    
                     if (_isLoading) ...[
                       const SizedBox(height: 16),
                       const Center(
                         child: CircularProgressIndicator(
                           valueColor: AlwaysStoppedAnimation<Color>(
-                              Color(0xFF135BEC)),
+                            Color(0xFF135BEC),
+                          ),
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-
+              
               const SizedBox(height: 16),
-
-              // ── Info ──────────────────────────────────────────────────
+              
+              // Petunjuk Absensi
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -1236,8 +1216,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline,
-                        color: Color(0xFF135BEC), size: 20),
+                    const Icon(
+                      Icons.info_outline,
+                      color: Color(0xFF135BEC),
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -1246,19 +1229,25 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           const Text(
                             'Petunjuk Absensi',
                             style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF135BEC)),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF135BEC),
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '1. Pastikan Anda dalam area kantor\n'
-                            '2. Ambil foto selfie tanpa kacamata/masker\n'
-                            '3. Klik Konfirmasi jika wajah terverifikasi',
+                            !_isFaceVerified
+                                ? '1. Pastikan Anda dalam area kantor\n'
+                                  '2. Ambil foto selfie tanpa kacamata/masker\n'
+                                  '3. Tunggu verifikasi wajah selesai'
+                                : '✅ Verifikasi wajah berhasil!\n'
+                                  'Klik tombol di bawah untuk\n'
+                                  'mengkonfirmasi & simpan ke database',
                             style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade700,
-                                height: 1.4),
+                              fontSize: 11,
+                              color: Colors.grey.shade700,
+                              height: 1.4,
+                            ),
                           ),
                         ],
                       ),
@@ -1266,10 +1255,10 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-
+              
               const SizedBox(height: 24),
-
-              // ── Tombol Konfirmasi ─────────────────────────────────────
+              
+              // Tombol Konfirmasi
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -1280,50 +1269,65 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                     foregroundColor: Colors.white,
                     disabledBackgroundColor: Colors.grey.shade300,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                     elevation: 4,
                   ),
                   icon: Icon(
-                      widget.type == 'clock_in'
-                          ? Icons.login
-                          : Icons.logout,
-                      size: 20),
+                    widget.type == 'clock_in' ? Icons.login : Icons.logout,
+                    size: 20,
+                  ),
                   label: Text(
                     widget.type == 'clock_in'
                         ? (_attendanceSuccess
-                            ? 'Sudah Absen Masuk'
-                            : 'Konfirmasi Absen Masuk')
+                              ? '✅ Sudah Absen Masuk'
+                              : (_isFaceVerified
+                                  ? 'Konfirmasi Absen Masuk'
+                                  : 'Tunggu Verifikasi Wajah'))
                         : (_attendanceSuccess
-                            ? 'Sudah Absen Pulang'
-                            : 'Konfirmasi Absen Pulang'),
+                              ? '✅ Sudah Absen Pulang'
+                              : (_isFaceVerified
+                                  ? 'Konfirmasi Absen Pulang'
+                                  : 'Tunggu Verifikasi Wajah')),
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-
+              
               if (_attendanceSuccess) ...[
                 const SizedBox(height: 12),
                 Center(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.successColor.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(50),
+                      border: Border.all(
+                        color: AppTheme.successColor.withOpacity(0.3),
+                      ),
                     ),
-                    child: Row(
+                    child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.check_circle,
-                            color: AppTheme.successColor, size: 16),
-                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.check_circle,
+                          color: AppTheme.successColor,
+                          size: 16,
+                        ),
+                        SizedBox(width: 8),
                         Text(
-                          'Absensi hari ini sudah tercatat',
+                          'Data sudah tersimpan di database',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.successColor,
-                              fontWeight: FontWeight.w600),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.successColor,
+                          ),
                         ),
                       ],
                     ),

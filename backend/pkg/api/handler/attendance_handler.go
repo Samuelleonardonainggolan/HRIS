@@ -10,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// wib adalah timezone WIB (UTC+7) yang digunakan di seluruh handler ini.
 var wib = time.FixedZone("WIB", 7*60*60)
 
 type AttendanceHandler struct {
@@ -25,9 +24,33 @@ func NewAttendanceHandler(attendanceService service.AttendanceService, faceServi
 	}
 }
 
-// ProcessAttendance - Unified endpoint for clock in/out with face verification
+// ✅ BARU: Get work schedule info untuk dashboard
+// func (h *AttendanceHandler) GetWorkScheduleInfo(c *gin.Context) {
+// 	userID, exists := c.Get("userID")
+// 	if !exists {
+// 		c.JSON(http.StatusUnauthorized, gin.H{
+// 			"status":  "error",
+// 			"message": "Unauthorized",
+// 		})
+// 		return
+// 	}
+
+// 	info, err := h.attendanceService.GetWorkScheduleInfo(c.Request.Context(), userID.(string))
+// 	if err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{
+// 			"status":  "error",
+// 			"message": err.Error(),
+// 		})
+// 		return
+// 	}
+
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"status": "success",
+// 		"data":   info,
+// 	})
+// }
+
 func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
-	// Get user ID from context
 	userID, exists := c.Get("userID")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -37,10 +60,10 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		return
 	}
 
-	// Get form data
 	recordType := c.PostForm("record_type")
 	latitudeStr := c.PostForm("latitude")
 	longitudeStr := c.PostForm("longitude")
+	verifyOnlyStr := c.PostForm("verify_only") // ✅ BARU: parameter untuk verifikasi saja atau submit
 
 	if recordType == "" || latitudeStr == "" || longitudeStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -50,7 +73,6 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		return
 	}
 
-	// Parse coordinates
 	latitude, err := strconv.ParseFloat(latitudeStr, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -69,7 +91,6 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		return
 	}
 
-	// Get photo from request
 	file, err := c.FormFile("photo")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -79,7 +100,6 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		return
 	}
 
-	// Open file
 	src, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -90,7 +110,6 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Read file bytes
 	photoBytes := make([]byte, file.Size)
 	_, err = src.Read(photoBytes)
 	if err != nil {
@@ -101,7 +120,9 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		return
 	}
 
-	// Process attendance with face verification
+	// ✅ PERBAIKAN: Extract verify_only parameter
+	verifyOnly := verifyOnlyStr == "true"
+
 	result, err := h.attendanceService.ProcessAttendanceWithFace(
 		c.Request.Context(),
 		userID.(string),
@@ -110,6 +131,7 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		latitude,
 		longitude,
 		recordType,
+		verifyOnly, // ✅ Kirim flag untuk kontrol verifikasi vs submit
 	)
 
 	if err != nil {
@@ -125,9 +147,15 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 			"status":  "error",
 			"message": result.Message,
 			"data": gin.H{
-				"face_similarity": result.FaceSimilarity,
-				"location_valid":  result.LocationValid,
-				"distance_m":      result.Distance,
+				"face_similarity":      result.FaceSimilarity,
+				"location_valid":       result.LocationValid,
+				"distance_m":           result.Distance,
+				"is_clock_in_allowed":  result.IsClockInAllowed,
+				"is_clock_out_allowed": result.IsClockOutAllowed,
+				"clock_in_window":      result.ClockInWindow,
+				"clock_out_window":     result.ClockOutWindow,
+				"work_schedule_found":  result.WorkScheduleFound,
+				"next_window_open":     result.NextWindowOpen,
 			},
 		})
 		return
@@ -139,7 +167,6 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 	})
 }
 
-// GetTodayAttendance - Get today's attendance record
 func (h *AttendanceHandler) GetTodayAttendance(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -163,9 +190,6 @@ func (h *AttendanceHandler) GetTodayAttendance(c *gin.Context) {
 		return
 	}
 
-	// ✅ FIX: Format waktu dalam WIB (UTC+7), bukan UTC.
-	// MongoDB menyimpan waktu sebagai UTC. Konversi ke WIB sebelum format
-	// agar jam yang tampil di Flutter sesuai waktu setempat.
 	clockIn := "--:--"
 	if attendance.ClockInTime != nil {
 		clockIn = attendance.ClockInTime.In(wib).Format("15:04")
@@ -190,7 +214,6 @@ func (h *AttendanceHandler) GetTodayAttendance(c *gin.Context) {
 	})
 }
 
-// GetMonthlyAttendance - Get monthly attendance records
 func (h *AttendanceHandler) GetMonthlyAttendance(c *gin.Context) {
 	userID, exists := c.Get("userID")
 	if !exists {
@@ -226,22 +249,32 @@ func (h *AttendanceHandler) GetMonthlyAttendance(c *gin.Context) {
 		return
 	}
 
-	// ✅ FIX: Konversi semua timestamp record ke WIB sebelum dikirim ke Flutter.
-	// Repository sudah mem-format waktu sebagai string "HH:mm" tapi tanpa konversi
-	// timezone — diperbaiki di sini dengan mem-rebuild records menggunakan WIB.
-	for i, rec := range summary.Records {
-		// Re-parse tanggal dan format ulang dalam WIB.
-		// Karena AttendanceRepository sudah mem-format waktu sebagai string,
-		// kita perlu meng-override di level ini. Cara paling bersih adalah
-		// mengambil ulang raw records dari service — namun karena MonthlyAttendanceResponse
-		// sudah berisi string, kita cukup pastikan repository sudah benar.
-		// Di sini kita hanya perlu memastikan field date sudah dalam WIB.
-		_ = rec
-		_ = i
+	c.JSON(http.StatusOK, gin.H{
+		"status": "success",
+		"data":   summary,
+	})
+}
+func (h *AttendanceHandler) GetScheduleInfo(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Unauthorized",
+		})
+		return
+	}
+
+	info, err := h.attendanceService.GetScheduleInfo(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
-		"data":   summary,
+		"data":   info,
 	})
 }

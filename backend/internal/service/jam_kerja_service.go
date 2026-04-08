@@ -53,8 +53,7 @@ const (
 	WorkDaysShift      WorkDaysLabel = "Shift"
 )
 
-
-var hariOrder = []string{"Senin","Selasa","Rabu","Kamis","Jumat","Sabtu","Minggu"}
+var hariOrder = []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"}
 
 func formatHariKerja(hari []string) string {
 	set := map[string]bool{}
@@ -84,17 +83,17 @@ var validHari = map[string]bool{
 var hhmmRe = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
 
 func parseHHMMToToday(v string) (time.Time, error) {
-  if !hhmmRe.MatchString(v) {
-    return time.Time{}, errors.New("format waktu harus HH:mm")
-  }
+	if !hhmmRe.MatchString(v) {
+		return time.Time{}, errors.New("format waktu harus HH:mm")
+	}
 
-  now := time.Now().UTC()
-  y, m, d := now.Date()
+	now := time.Now().UTC()
+	y, m, d := now.Date()
 
-  h := int((v[0]-'0')*10 + (v[1] - '0'))
-  min := int((v[3]-'0')*10 + (v[4] - '0'))
+	h := int((v[0]-'0')*10 + (v[1] - '0'))
+	min := int((v[3]-'0')*10 + (v[4] - '0'))
 
-  return time.Date(y, m, d, h, min, 0, 0, time.UTC), nil
+	return time.Date(y, m, d, h, min, 0, 0, time.UTC), nil
 }
 
 func defaultJamKerja() *models.JamKerja {
@@ -172,7 +171,7 @@ func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaLi
 			NIK:        u.PayrollNumber,
 			Department: u.DepartmentName,
 			Position:   u.PositionName,
-			HariKerja: jk.HariKerja,  
+			HariKerja:  jk.HariKerja,
 			WorkDays:   formatHariKerja(jk.HariKerja),
 			StartTime:  jk.WaktuMulai.Format("15:04"),
 			EndTime:    jk.WaktuSelesai.Format("15:04"),

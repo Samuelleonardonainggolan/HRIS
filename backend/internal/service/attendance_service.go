@@ -14,9 +14,6 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// wib adalah timezone WIB (UTC+7).
-// Seluruh logika bisnis (status Late, overtime, dll.) harus menggunakan
-// waktu WIB agar sesuai dengan jam kerja di Indonesia.
 var wib = time.FixedZone("WIB", 7*60*60)
 
 type AttendanceService interface {
@@ -24,13 +21,36 @@ type AttendanceService interface {
 	ClockOut(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
 	GetTodayAttendance(ctx context.Context, userID string) (*models.Attendance, error)
 	GetMonthlyAttendance(ctx context.Context, userID string, month, year int) (*models.MonthlyAttendanceResponse, error)
-	ProcessAttendanceWithFace(ctx context.Context, userID string, photo []byte, filename string, latitude, longitude float64, recordType string) (*AttendanceProcessResult, error)
+	ProcessAttendanceWithFace(ctx context.Context, userID string, photo []byte, filename string, latitude, longitude float64, recordType string, verifyOnly bool) (*AttendanceProcessResult, error)
+	ValidateClockInWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
+	ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
+	GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error)
+	GetWorkScheduleInfo(ctx context.Context, userID string) (*WorkScheduleInfo, error)
+}
+
+type WorkScheduleInfo struct {
+	UserID        string         `json:"user_id"`
+	HariKerja     []string       `json:"hari_kerja"`
+	WaktuMulai    string         `json:"waktu_mulai"`   // HH:mm
+	WaktuSelesai  string         `json:"waktu_selesai"` // HH:mm
+	Aktif         bool           `json:"aktif"`
+	TodaySchedule *TodaySchedule `json:"today_schedule,omitempty"`
+}
+
+type TodaySchedule struct {
+	IsWorkDay      bool   `json:"is_work_day"`
+	ClockInWindow  string `json:"clock_in_window"`  // HH:mm - HH:mm
+	ClockOutWindow string `json:"clock_out_window"` // HH:mm onwards
+	CanClockIn     bool   `json:"can_clock_in"`
+	CanClockOut    bool   `json:"can_clock_out"`
+	Message        string `json:"message"`
 }
 
 type attendanceService struct {
 	attendanceRepo    repository.AttendanceRepository
 	userRepo          repository.UserRepository
 	faceEmbeddingRepo repository.FaceEmbeddingRepository
+	jamKerjaRepo      repository.JamKerjaRepository
 	faceClient        *faceclient.Client
 	officeLat         float64
 	officeLng         float64
@@ -38,29 +58,198 @@ type attendanceService struct {
 }
 
 type AttendanceProcessResult struct {
-	Success        bool               `json:"success"`
-	Message        string             `json:"message"`
-	FaceSimilarity float64            `json:"face_similarity"`
-	LocationValid  bool               `json:"location_valid"`
-	Distance       float64            `json:"distance_m"`
-	Attendance     *models.Attendance `json:"attendance,omitempty"`
+	Success           bool               `json:"success"`
+	Message           string             `json:"message"`
+	FaceSimilarity    float64            `json:"face_similarity"`
+	LocationValid     bool               `json:"location_valid"`
+	Distance          float64            `json:"distance_m"`
+	Attendance        *models.Attendance `json:"attendance,omitempty"`
+	IsClockInAllowed  bool               `json:"is_clock_in_allowed,omitempty"`
+	IsClockOutAllowed bool               `json:"is_clock_out_allowed,omitempty"`
+	ClockInWindow     string             `json:"clock_in_window,omitempty"`
+	ClockOutWindow    string             `json:"clock_out_window,omitempty"`
+	NextWindowOpen    string             `json:"next_window_open,omitempty"`
+	WorkScheduleFound bool               `json:"work_schedule_found,omitempty"`
 }
 
 func NewAttendanceService(
 	attendanceRepo repository.AttendanceRepository,
 	userRepo repository.UserRepository,
 	faceEmbeddingRepo repository.FaceEmbeddingRepository,
+	jamKerjaRepo repository.JamKerjaRepository,
 	faceClient *faceclient.Client,
 ) AttendanceService {
 	return &attendanceService{
 		attendanceRepo:    attendanceRepo,
 		userRepo:          userRepo,
 		faceEmbeddingRepo: faceEmbeddingRepo,
+		jamKerjaRepo:      jamKerjaRepo,
 		faceClient:        faceClient,
 		officeLat:         2.3561,
 		officeLng:         99.1431,
 		radiusMeters:      10000,
 	}
+}
+
+// ✅ Get work schedule info untuk dashboard
+func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID string) (*WorkScheduleInfo, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID format")
+	}
+
+	// ✅ Cari jam kerja berdasarkan user ID
+	jamKerja, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if jamKerja == nil {
+		jamKerja = s.getDefaultJamKerja(userObjID)
+	}
+
+	// ✅ Format waktu dari time.Time ke string "HH:mm"
+	waktuMulaiStr := jamKerja.WaktuMulai.Format("15:04")
+	waktuSelesaiStr := jamKerja.WaktuSelesai.Format("15:04")
+
+	info := &WorkScheduleInfo{
+		UserID:       userID,
+		HariKerja:    jamKerja.HariKerja,
+		WaktuMulai:   waktuMulaiStr,
+		WaktuSelesai: waktuSelesaiStr,
+		Aktif:        jamKerja.Aktif,
+	}
+
+	// Ambil info hari ini
+	nowWIB := time.Now().In(wib)
+	dayName := s.getDayName(nowWIB.Weekday())
+
+	isWorkDay := false
+	for _, day := range jamKerja.HariKerja {
+		if day == dayName {
+			isWorkDay = true
+			break
+		}
+	}
+
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
+	clockInWindowClose := startTimeToday
+
+	canClockIn := isWorkDay && !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(clockInWindowClose)
+	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday)
+
+	message := ""
+	if !isWorkDay {
+		message = "Hari ini bukan hari kerja"
+	} else if !canClockIn {
+		if nowWIB.Before(clockInWindowOpen) {
+			message = "Clock in dibuka pada " + clockInWindowOpen.Format("15:04") + " WIB"
+		} else {
+			message = "Clock in sudah ditutup. Buka kembali besok jam " + clockInWindowOpen.Format("15:04") + " WIB"
+		}
+	}
+
+	info.TodaySchedule = &TodaySchedule{
+		IsWorkDay:      isWorkDay,
+		ClockInWindow:  clockInWindowOpen.Format("15:04") + " - " + clockInWindowClose.Format("15:04"),
+		ClockOutWindow: endTimeToday.Format("15:04") + " WIB onwards",
+		CanClockIn:     canClockIn,
+		CanClockOut:    canClockOut,
+		Message:        message,
+	}
+
+	return info, nil
+}
+
+// ✅ Validasi window clock in
+func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return false, nil, errors.New("invalid user ID format")
+	}
+
+	// ✅ Cari jam kerja berdasarkan user ID
+	jamKerja, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if jamKerja == nil {
+		jamKerja = s.getDefaultJamKerja(userObjID)
+	}
+
+	if !jamKerja.Aktif {
+		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
+	}
+
+	nowWIB := time.Now().In(wib)
+	dayName := s.getDayName(nowWIB.Weekday())
+
+	isWorkDay := false
+	for _, day := range jamKerja.HariKerja {
+		if day == dayName {
+			isWorkDay = true
+			break
+		}
+	}
+
+	if !isWorkDay {
+		return false, jamKerja, errors.New("hari ini bukan hari kerja")
+	}
+
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
+
+	isInWindow := !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(endTimeToday)
+
+	return isInWindow, jamKerja, nil
+}
+
+// ✅ Validasi window clock out
+func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return false, nil, errors.New("invalid user ID format")
+	}
+
+	// ✅ Cari jam kerja berdasarkan user ID
+	jamKerja, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, nil, err
+	}
+
+	if jamKerja == nil {
+		jamKerja = s.getDefaultJamKerja(userObjID)
+	}
+
+	if !jamKerja.Aktif {
+		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
+	}
+
+	nowWIB := time.Now().In(wib)
+	dayName := s.getDayName(nowWIB.Weekday())
+
+	isWorkDay := false
+	for _, day := range jamKerja.HariKerja {
+		if day == dayName {
+			isWorkDay = true
+			break
+		}
+	}
+
+	if !isWorkDay {
+		return false, jamKerja, errors.New("hari ini bukan hari kerja")
+	}
+
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+
+	isInWindow := !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
+
+	return isInWindow, jamKerja, nil
 }
 
 func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
@@ -69,15 +258,33 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		return nil, errors.New("invalid user ID format")
 	}
 
-	// Check if already clocked in today
+	// Cek sudah clock in hari ini
 	existing, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
 	if existing != nil && existing.ClockInTime != nil {
-		return nil, errors.New("already clocked in today")
+		return nil, errors.New("sudah melakukan clock in hari ini")
 	}
 
-	// ✅ FIX: Gunakan waktu WIB untuk logika bisnis (status Late/On Time).
-	// time.Now() mengembalikan waktu lokal server. Jika server berjalan dalam UTC,
-	// kita harus eksplisit konversi ke WIB agar jam kerja (08:00) dievaluasi benar.
+	// ✅ Validasi window clock in
+	isInWindow, jamKerja, err := s.ValidateClockInWindow(ctx, userID)
+	if err != nil {
+		return nil, errors.New("tidak dapat clock in: " + err.Error())
+	}
+
+	if !isInWindow {
+		nowWIB := time.Now().In(wib)
+		startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
+		windowOpen := startTimeToday.Add(-15 * time.Minute)
+		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+
+		message := ""
+		if nowWIB.Before(windowOpen) {
+			message = "jendela clock in belum dibuka (buka pada " + windowOpen.Format("15:04") + " WIB)"
+		} else if nowWIB.After(endTimeToday) {
+			message = "jendela clock in sudah tutup (buka kembali besok jam " + windowOpen.Format("15:04") + " WIB)"
+		}
+		return nil, errors.New(message)
+	}
+
 	now := time.Now().In(wib)
 
 	location := models.GeoLocation{
@@ -85,18 +292,22 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		Longitude: longitude,
 	}
 
-	// Hitung status berdasarkan jam WIB (jam kerja mulai 08:00 WIB)
+	// Tentukan status berdasarkan waktu saat submit dengan toleransi keterlambatan 1 menit.
+	startTimeToday := s.extractTimeForToday(now, jamKerja.WaktuMulai)
+	lateThreshold := startTimeToday.Add(1 * time.Minute)
+
 	status := models.StatusOnTime
-	standardStart := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, wib)
-	if now.After(standardStart.Add(15 * time.Minute)) {
+	if now.After(lateThreshold) {
 		status = models.StatusLate
 	}
 
-	attendanceDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, wib)
+	fmt.Printf("⏰ Clock In Status Determination:\n  Start Time: %s\n  Late Threshold(+1m): %s\n  Submit Time: %s\n  Status: %s\n",
+		startTimeToday.Format("15:04:05"), lateThreshold.Format("15:04:05"), now.Format("15:04:05"), status)
+
 	attendance := &models.Attendance{
 		ID:              primitive.NewObjectID(),
 		UserID:          userObjID,
-		Date:            attendanceDate.UTC(), // simpan sebagai tanggal hari ini dalam UTC
+		Date:            now,
 		ClockInTime:     &now,
 		ClockInPhoto:    filename,
 		ClockInLocation: location,
@@ -104,8 +315,8 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		WorkHours:       0,
 		OvertimeHours:   0,
 		FaceSimilarity:  faceSimilarity,
-		CreatedAt:       now.UTC(),
-		UpdatedAt:       now.UTC(),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 
 	err = s.attendanceRepo.Create(ctx, attendance)
@@ -116,27 +327,115 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	return attendance, nil
 }
 
+func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID format")
+	}
+
+	// ✅ Cari jam kerja berdasarkan user ID
+	jamKerja, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if jamKerja == nil {
+		jamKerja = s.getDefaultJamKerja(userObjID)
+	}
+
+	// ✅ Format waktu dari time.Time ke string "HH:mm"
+	waktuMulaiStr := jamKerja.WaktuMulai.Format("15:04")
+	waktuSelesaiStr := jamKerja.WaktuSelesai.Format("15:04")
+
+	info := &ScheduleInfoResponse{
+		UserID:       userID,
+		HariKerja:    jamKerja.HariKerja,
+		WaktuMulai:   waktuMulaiStr,
+		WaktuSelesai: waktuSelesaiStr,
+		Aktif:        jamKerja.Aktif,
+	}
+
+	nowWIB := time.Now().In(wib)
+	dayName := s.getDayName(nowWIB.Weekday())
+
+	isWorkDay := false
+	for _, day := range jamKerja.HariKerja {
+		if day == dayName {
+			isWorkDay = true
+			break
+		}
+	}
+
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
+
+	// ✅ Clock out window: dari waktu_selesai hingga +30 menit
+	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+
+	canClockIn := isWorkDay && !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(endTimeToday)
+	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
+
+	message := ""
+	if !isWorkDay {
+		message = "Hari ini bukan hari kerja"
+	} else if !canClockIn && !canClockOut {
+		if nowWIB.Before(clockInWindowOpen) {
+			message = "Clock in dibuka pada " + clockInWindowOpen.Format("15:04") + " WIB"
+		} else if nowWIB.After(endTimeToday) && nowWIB.After(clockOutWindowClose) {
+			message = "CLOCK IN"
+		}
+	}
+
+	info.TodaySchedule = &TodayScheduleInfoResponse{
+		IsWorkDay:      isWorkDay,
+		ClockInWindow:  clockInWindowOpen.Format("15:04") + " - " + endTimeToday.Format("15:04"),
+		ClockOutWindow: endTimeToday.Format("15:04") + " - " + clockOutWindowClose.Format("15:04"),
+		CanClockIn:     canClockIn,
+		CanClockOut:    canClockOut,
+		Message:        message,
+	}
+
+	return info, nil
+}
+
 func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, errors.New("invalid user ID format")
 	}
 
-	// Find today's attendance
-	attendance, err := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	// Cek sudah clock out hari ini
+	existing, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	if existing != nil && existing.ClockOutTime != nil {
+		return nil, errors.New("sudah melakukan clock out hari ini")
+	}
+
+	// ✅ Validasi window clock out
+	isInWindow, jamKerja, err := s.ValidateClockOutWindow(ctx, userID)
 	if err != nil {
-		return nil, errors.New("no clock in record found for today")
+		return nil, errors.New("tidak dapat clock out: " + err.Error())
 	}
 
-	if attendance.ClockInTime == nil {
-		return nil, errors.New("no clock in record found for today")
+	if !isInWindow {
+		nowWIB := time.Now().In(wib)
+		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+		clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+
+		message := ""
+		if nowWIB.Before(endTimeToday) {
+			message = "jendela clock out belum dibuka (buka pada " + endTimeToday.Format("15:04") + " WIB)"
+		} else if nowWIB.After(clockOutWindowClose) {
+			message = "jendela clock out sudah tutup (buka kembali besok jam " + endTimeToday.Format("15:04") + " WIB)"
+		}
+		return nil, errors.New(message)
 	}
 
-	if attendance.ClockOutTime != nil {
-		return nil, errors.New("already clocked out today")
+	// Cek sudah ada clock in
+	if existing == nil || existing.ClockInTime == nil {
+		return nil, errors.New("belum melakukan clock in hari ini")
 	}
 
-	// ✅ FIX: Gunakan waktu WIB untuk konsistensi
 	now := time.Now().In(wib)
 
 	location := models.GeoLocation{
@@ -145,7 +444,7 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 	}
 
 	// Calculate work hours
-	workDuration := now.Sub(*attendance.ClockInTime)
+	workDuration := now.Sub(*existing.ClockInTime)
 	workHours := workDuration.Hours()
 
 	// Calculate overtime (lebih dari 9 jam)
@@ -154,34 +453,34 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 		overtimeHours = workHours - 9.0
 	}
 
-	// Update status
-	status := attendance.Status
+	// Update status jika ada overtime
+	status := existing.Status
 	if overtimeHours > 0 {
 		status = models.StatusOvertime
 	}
 
-	attendance.WorkHours = workHours
-	attendance.OvertimeHours = overtimeHours
-	attendance.Status = status
-	attendance.ClockOutTime = &now
-	attendance.ClockOutPhoto = filename
-	attendance.ClockOutLocation = location
-	attendance.FaceSimilarity = faceSimilarity
-	attendance.UpdatedAt = now
+	existing.WorkHours = workHours
+	existing.OvertimeHours = overtimeHours
+	existing.Status = status
+	existing.ClockOutTime = &now
+	existing.ClockOutPhoto = filename
+	existing.ClockOutLocation = location
+	existing.FaceSimilarity = faceSimilarity
+	existing.UpdatedAt = now
 
 	// Update in database
-	err = s.attendanceRepo.UpdateClockOut(ctx, attendance.ID, now, filename, location)
+	err = s.attendanceRepo.UpdateClockOut(ctx, existing.ID, now, filename, location)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update work hours
-	err = s.attendanceRepo.UpdateWorkHours(ctx, attendance.ID, attendance.WorkHours, attendance.OvertimeHours, attendance.Status)
+	err = s.attendanceRepo.UpdateWorkHours(ctx, existing.ID, existing.WorkHours, existing.OvertimeHours, existing.Status)
 	if err != nil {
 		return nil, err
 	}
 
-	return attendance, nil
+	return existing, nil
 }
 
 func (s *attendanceService) GetTodayAttendance(ctx context.Context, userID string) (*models.Attendance, error) {
@@ -209,9 +508,10 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	filename string,
 	latitude, longitude float64,
 	recordType string,
+	verifyOnly bool,
 ) (*AttendanceProcessResult, error) {
 
-	// 1. Validate location menggunakan Haversine
+	// 1. Validate location
 	distance := s.calculateDistance(latitude, longitude, s.officeLat, s.officeLng)
 	locationValid := distance <= s.radiusMeters
 
@@ -224,7 +524,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	// 2. Get user's face embedding from database
+	// 2. Get user's face embedding
 	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
 	if err != nil || faceEmbedding == nil {
 		return &AttendanceProcessResult{
@@ -244,7 +544,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	// 3. Extract embedding dari foto saat ini menggunakan Face Client
+	// 3. Extract embedding dari foto
 	currentEmbedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
 	if err != nil {
 		return &AttendanceProcessResult{
@@ -264,7 +564,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	// 4. Calculate similarity antara embedding tersimpan dan saat ini
+	// 4. Calculate similarity
 	similarity := s.cosineSimilarity(currentEmbedding, faceEmbedding.FaceEmbedding)
 
 	const threshold = 0.60
@@ -280,7 +580,22 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	// 5. Process attendance (clock_in atau clock_out)
+	// ✅ Jika verifyOnly=true, HANYA return hasil verifikasi TANPA simpan database
+	if verifyOnly {
+		fmt.Printf("✅ [VERIFY ONLY] Verifikasi wajah & lokasi berhasil untuk user %s - Menunggu konfirmasi dari user\n", userID)
+		return &AttendanceProcessResult{
+			Success:        true,
+			Message:        "Verifikasi berhasil - Silakan klik tombol konfirmasi untuk menyimpan ke database",
+			FaceSimilarity: similarity,
+			LocationValid:  locationValid,
+			Distance:       distance,
+		}, nil
+	}
+
+	// ✅ Jika verifyOnly=false, lakukan verifikasi + SIMPAN ke database
+	fmt.Printf("💾 [SUBMIT] Menyimpan absensi %s untuk user %s ke database\n", recordType, userID)
+
+	// 5. Process attendance dan simpan ke database
 	var attendance *models.Attendance
 	if recordType == "clock_in" {
 		attendance, err = s.ClockIn(ctx, userID, latitude, longitude, photo, filename, similarity)
@@ -310,6 +625,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		actionMsg = "Clock Out"
 	}
 
+	fmt.Printf("✅ [SUCCESS] %s berhasil disimpan ke database - Status: %s\n", actionMsg, attendance.Status)
 	return &AttendanceProcessResult{
 		Success:        true,
 		Message:        actionMsg + " berhasil dicatat",
@@ -320,10 +636,50 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}, nil
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helper Methods ───────────────────────────────────────────────────────────
+
+func (s *attendanceService) extractTimeForToday(baseTime time.Time, scheduleTime time.Time) time.Time {
+	return time.Date(
+		baseTime.Year(), baseTime.Month(), baseTime.Day(),
+		scheduleTime.Hour(), scheduleTime.Minute(), scheduleTime.Second(),
+		0, wib,
+	)
+}
+
+func (s *attendanceService) getDayName(wd time.Weekday) string {
+	days := map[time.Weekday]string{
+		time.Monday:    "Senin",
+		time.Tuesday:   "Selasa",
+		time.Wednesday: "Rabu",
+		time.Thursday:  "Kamis",
+		time.Friday:    "Jumat",
+		time.Saturday:  "Sabtu",
+		time.Sunday:    "Minggu",
+	}
+	return days[wd]
+}
+
+// ✅ Perbaikan: getDefaultJamKerja sekarang menerima parameter userID
+func (s *attendanceService) getDefaultJamKerja(userID primitive.ObjectID) *models.JamKerja {
+	now := time.Now().In(wib)
+	// Set default waktu: 08:00 - 17:00
+	waktuMulai := time.Date(now.Year(), now.Month(), now.Day(), 8, 0, 0, 0, wib)
+	waktuSelesai := time.Date(now.Year(), now.Month(), now.Day(), 17, 0, 0, 0, wib)
+
+	return &models.JamKerja{
+		ID:           primitive.NewObjectID(),
+		UserID:       userID,
+		HariKerja:    []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"},
+		WaktuMulai:   waktuMulai,
+		WaktuSelesai: waktuSelesai,
+		Aktif:        true,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+}
 
 func (s *attendanceService) calculateDistance(lat1, lng1, lat2, lng2 float64) float64 {
-	const R = 6371000 // Earth radius in meters
+	const R = 6371000
 	φ1 := lat1 * math.Pi / 180
 	φ2 := lat2 * math.Pi / 180
 	Δφ := (lat2 - lat1) * math.Pi / 180
@@ -368,4 +724,22 @@ func formatDistance(d float64) string {
 
 func formatFloat(f float64) string {
 	return fmt.Sprintf("%.1f", f)
+}
+
+type ScheduleInfoResponse struct {
+	UserID        string                     `json:"user_id"`
+	HariKerja     []string                   `json:"hari_kerja"`
+	WaktuMulai    string                     `json:"waktu_mulai"`
+	WaktuSelesai  string                     `json:"waktu_selesai"`
+	Aktif         bool                       `json:"aktif"`
+	TodaySchedule *TodayScheduleInfoResponse `json:"today_schedule,omitempty"`
+}
+
+type TodayScheduleInfoResponse struct {
+	IsWorkDay      bool   `json:"is_work_day"`
+	ClockInWindow  string `json:"clock_in_window"`
+	ClockOutWindow string `json:"clock_out_window"`
+	CanClockIn     bool   `json:"can_clock_in"`
+	CanClockOut    bool   `json:"can_clock_out"`
+	Message        string `json:"message"`
 }

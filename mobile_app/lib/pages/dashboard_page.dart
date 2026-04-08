@@ -21,7 +21,11 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   late Animation<double> _fadeAnimation;
   File? _profileImage;
 
-  // ✅ State dari API
+  // ✅ State untuk jadwal kerja
+  WorkScheduleInfoResponse? _workScheduleInfo;
+  bool _isLoadingSchedule = true;
+
+  // State dari API
   bool isClockedIn = false;
   bool hasClockedOut = false;
   String clockInTime = "--:--";
@@ -30,27 +34,25 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   bool _isLoadingAttendance = true;
   TodayAttendanceDetail? _todayAttendance;
 
-  // ✅ Real-time clock — Timer.periodic update tiap detik (HH:mm:ss)
+  // Real-time clock
   late Timer _clockTimer;
 
-  // ✅ Break state
+  // Break state
   bool isOnBreak = false;
   DateTime? _breakStartTime;
   Timer? _breakTimer;
   String breakDuration = "00:00:00";
 
-  // ✅ Quick stats dari API
+  // Quick stats
   int _workDays = 0;
   int _leaveRemaining = 0;
   double _overtimeHours = 0;
   bool _isLoadingStats = true;
 
-  // Timeline activities dari API
   List<Map<String, dynamic>> _activities = [];
 
-  // User profile for header
   User? _user;
-  String? _breakEndTimeStr;  // waktu selesai istirahat
+  String? _breakEndTimeStr;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -67,18 +69,18 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
     _animationController.forward();
 
-    // ✅ Real-time clock HH:mm:ss — Timer.periodic update tiap detik
     _tickClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) _tickClock();
     });
 
-    _loadTodayAttendance(); // ✅ Load dari API
-    _loadMonthlyStats();   // ✅ Load stats bulanan
-    _loadUser();           // ✅ Load user untuk header
+    // ✅ Load semua data
+    _loadWorkScheduleInfo();
+    _loadTodayAttendance();
+    _loadMonthlyStats();
+    _loadUser();
   }
 
-  // ✅ Update currentTime HH:mm:ss tiap detik
   void _tickClock() {
     final now = DateTime.now();
     setState(() {
@@ -87,11 +89,30 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     });
   }
 
-  // ✅ Break timer — update durasi tiap detik
+  // ✅ BARU: Load work schedule info
+  Future<void> _loadWorkScheduleInfo() async {
+    setState(() => _isLoadingSchedule = true);
+    try {
+      final info = await ApiService.getWorkScheduleInfo();
+      if (mounted) {
+        setState(() {
+          _workScheduleInfo = info;
+          _isLoadingSchedule = false;
+        });
+      }
+    } catch (e) {
+      print('[Dashboard] Load work schedule error: $e');
+      if (mounted) setState(() => _isLoadingSchedule = false);
+    }
+  }
+
   void _startBreakTimer() {
     _breakStartTime = DateTime.now();
     _breakTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || !isOnBreak) { _breakTimer?.cancel(); return; }
+      if (!mounted || !isOnBreak) {
+        _breakTimer?.cancel();
+        return;
+      }
       final e = DateTime.now().difference(_breakStartTime!);
       setState(() {
         breakDuration =
@@ -104,23 +125,28 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _breakTimer?.cancel();
     _breakTimer = null;
     final now = DateTime.now();
-    _breakEndTimeStr = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+    _breakEndTimeStr =
+        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
     _breakStartTime = null;
-    setState(() { breakDuration = "00:00:00"; _buildActivities(); });
+    setState(() {
+      breakDuration = "00:00:00";
+      _buildActivities();
+    });
   }
 
-  // ✅ Load stats bulanan (hari kerja, sisa cuti, lembur)
   Future<void> _loadMonthlyStats() async {
     setState(() => _isLoadingStats = true);
     try {
       final now = DateTime.now();
       final summary = await ApiService.getMonthlyAttendance(
-        month: now.month, year: now.year);
+        month: now.month,
+        year: now.year,
+      );
       if (mounted) {
         setState(() {
-          _workDays      = summary.totalDays;
+          _workDays = summary.totalDays;
           _overtimeHours = summary.overtimeHours;
-          _leaveRemaining = 12; // TODO: sambungkan ke endpoint leave balance jika tersedia
+          _leaveRemaining = 12;
           _isLoadingStats = false;
         });
       }
@@ -129,7 +155,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     }
   }
 
-
   Future<void> _loadUser() async {
     try {
       final u = await ApiService.getProfile();
@@ -137,7 +162,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     } catch (_) {}
   }
 
-  // ✅ Load absensi hari ini dari backend
   Future<void> _loadTodayAttendance() async {
     setState(() => _isLoadingAttendance = true);
     try {
@@ -148,8 +172,12 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           if (attendance != null) {
             isClockedIn = attendance.hasClockedIn && !attendance.hasClockedOut;
             hasClockedOut = attendance.hasClockedOut;
-            clockInTime = attendance.hasClockedIn ? attendance.clockInTime : "--:--";
-            clockOutTime = attendance.hasClockedOut ? (attendance.clockOutTime ?? "--:--") : "--:--";
+            clockInTime = attendance.hasClockedIn
+                ? attendance.clockInTime
+                : "--:--";
+            clockOutTime = attendance.hasClockedOut
+                ? (attendance.clockOutTime ?? "--:--")
+                : "--:--";
           } else {
             isClockedIn = false;
             hasClockedOut = false;
@@ -168,7 +196,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     }
   }
 
-  // ✅ Build timeline activities dari data real
   void _buildActivities() {
     _activities = [];
 
@@ -192,13 +219,12 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       });
     }
 
-    // ✅ Break mulai
     if (isOnBreak || _breakEndTimeStr != null) {
       final breakStartStr = _breakEndTimeStr != null && _breakStartTime == null
           ? '--:--'
           : (_breakStartTime != null
-              ? "${_breakStartTime!.hour.toString().padLeft(2, '0')}:${_breakStartTime!.minute.toString().padLeft(2, '0')}"
-              : '--:--');
+                ? "${_breakStartTime!.hour.toString().padLeft(2, '0')}:${_breakStartTime!.minute.toString().padLeft(2, '0')}"
+                : '--:--');
       _activities.add({
         'icon': Icons.coffee_rounded,
         'title': 'Istirahat Mulai',
@@ -206,7 +232,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         'status': isOnBreak ? 'Break' : 'Selesai',
         'color': const Color(0xFFF59E0B),
       });
-      // Break selesai
       if (!isOnBreak && _breakEndTimeStr != null) {
         _activities.add({
           'icon': Icons.free_breakfast_rounded,
@@ -237,21 +262,21 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     }
   }
 
-  // ✅ Navigasi ke face attendance, lalu reload data setelah kembali
   Future<void> _navigateToFaceAttendance(String type) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => FaceAttendancePage(type: type)),
     );
 
-    // ✅ Jika berhasil (result == true), reload data dari API
     if (result == true) {
       await _loadTodayAttendance();
       await _loadMonthlyStats();
       if (mounted) {
         _showSuccessSnackBar(
           type == 'clock_in' ? "✓ Clock In Berhasil" : "✓ Clock Out Berhasil",
-          type == 'clock_in' ? const Color(0xFF2ECC71) : const Color(0xFFEF4444),
+          type == 'clock_in'
+              ? const Color(0xFF2ECC71)
+              : const Color(0xFFEF4444),
         );
       }
     }
@@ -264,8 +289,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   @override
   void dispose() {
-    _clockTimer.cancel();    // ✅ Hentikan clock timer
-    _breakTimer?.cancel();   // ✅ Hentikan break timer jika aktif
+    _clockTimer.cancel();
+    _breakTimer?.cancel();
     _animationController.dispose();
     super.dispose();
   }
@@ -281,7 +306,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           child: LayoutBuilder(
             builder: (context, constraints) {
               double horizontalPadding = constraints.maxWidth > 600 ? 40 : 20;
-              double maxWidth = constraints.maxWidth > 600 ? 600 : double.infinity;
+              double maxWidth = constraints.maxWidth > 600
+                  ? 600
+                  : double.infinity;
 
               return Center(
                 child: Container(
@@ -293,10 +320,16 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                         _buildHeader(),
                         Expanded(
                           child: RefreshIndicator(
-                            onRefresh: _loadTodayAttendance,
+                            onRefresh: () async {
+                              await _loadWorkScheduleInfo();
+                              await _loadTodayAttendance();
+                              await _loadMonthlyStats();
+                            },
                             child: SingleChildScrollView(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                              padding: EdgeInsets.symmetric(
+                                horizontal: horizontalPadding,
+                              ),
                               child: Column(
                                 children: [
                                   const SizedBox(height: 16),
@@ -305,6 +338,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                                   _buildQuickStats(),
                                   const SizedBox(height: 24),
                                   _buildTodaysActivity(),
+                                  const SizedBox(height: 16),
+                                  _buildWorkScheduleCard(), // ✅ BARU
                                   const SizedBox(height: 20),
                                   _buildLiveLocationCard(),
                                   const SizedBox(height: 80),
@@ -325,66 +360,32 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4))],
-      ),
-      child: Row(children: [
-        Stack(children: [
-          Hero(
-            tag: 'profile',
-            child: Container(
-              height: 48, width: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)]),
-                boxShadow: [BoxShadow(color: const Color(0xFF135BEC).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
-              ),
-              child: Padding(padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                  child: ClipOval(
-                    child: _profileImage != null
-                        ? Image.file(_profileImage!, fit: BoxFit.cover)
-                        : Image.network(_avatarUrl(), fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Color(0xFF135BEC), size: 26)),
-                  ),
-                )),
-            ),
-          ),
-          Positioned(bottom: 1, right: 1,
-            child: Container(height: 12, width: 12,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF2ECC71), border: Border.all(color: Colors.white, width: 2)))),
-        ]),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_greeting(), style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-          Text(_user?.fullName ?? 'Profil Saya',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-            overflow: TextOverflow.ellipsis),
-        ])),
-        Stack(children: [
-          Container(height: 44, width: 44,
-            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), shape: BoxShape.circle),
-            child: IconButton(
-              icon: const Icon(Icons.notifications_none, color: Color(0xFF475569), size: 22),
-              onPressed: () {}, padding: EdgeInsets.zero)),
-          Positioned(top: 9, right: 9,
-            child: Container(height: 8, width: 8,
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEF4444)))),
-        ]),
-      ]),
-    );
-  }
-
   Widget _buildMainClockSection() {
-    // ✅ Tentukan state tombol
-    bool canClockIn = !isClockedIn && !hasClockedOut && !_isLoadingAttendance;
-    bool canClockOut = isClockedIn && !hasClockedOut && !_isLoadingAttendance;
+    // ✅ Determine button state berdasarkan work schedule
+    // Clock IN tetap bisa selama jam kerja (bukan hanya 15 menit)
+    bool canClockIn =
+        (_workScheduleInfo?.todaySchedule?.canClockIn ?? false) &&
+        !isClockedIn &&
+        !hasClockedOut &&
+        !_isLoadingAttendance;
+
+    bool canClockOut =
+        (_workScheduleInfo?.todaySchedule?.canClockOut ?? false) &&
+        isClockedIn &&
+        !hasClockedOut &&
+        !_isLoadingAttendance;
+
+    String clockInButtonLabel = canClockIn
+        ? "CLOCK IN"
+        : (_workScheduleInfo?.todaySchedule?.isWorkDay ?? false)
+        ? (_workScheduleInfo?.todaySchedule?.message ?? "CLOCK IN")
+        : "CLOCK IN";
+
+    String clockOutButtonLabel = canClockOut
+        ? "CLOCK OUT"
+        : (_workScheduleInfo?.todaySchedule?.isWorkDay ?? false)
+        ? "CLOCK OUT"
+        : "CLOCK OUT";
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -397,17 +398,18 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           colors: isClockedIn
               ? [const Color(0xFF059669), const Color(0xFF10B981)]
               : hasClockedOut
-                  ? [const Color(0xFF7C3AED), const Color(0xFF8B5CF6)]
-                  : [const Color(0xFF135BEC), const Color(0xFF3B7BF6)],
+              ? [const Color(0xFF7C3AED), const Color(0xFF8B5CF6)]
+              : [const Color(0xFF135BEC), const Color(0xFF3B7BF6)],
         ),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: (isClockedIn
+            color:
+                (isClockedIn
                         ? const Color(0xFF059669)
                         : hasClockedOut
-                            ? const Color(0xFF7C3AED)
-                            : const Color(0xFF135BEC))
+                        ? const Color(0xFF7C3AED)
+                        : const Color(0xFF135BEC))
                     .withOpacity(0.3),
             blurRadius: 25,
             offset: const Offset(0, 10),
@@ -423,7 +425,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -438,8 +443,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                             color: hasClockedOut
                                 ? Colors.white70
                                 : isClockedIn
-                                    ? Colors.white
-                                    : const Color(0xFFFCD34D),
+                                ? Colors.white
+                                : const Color(0xFFFCD34D),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -447,8 +452,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                           hasClockedOut
                               ? "SELESAI HARI INI"
                               : isClockedIn
-                                  ? "SEDANG BEKERJA"
-                                  : "BELUM ABSEN",
+                              ? "SEDANG BEKERJA"
+                              : "BELUM ABSEN",
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
@@ -481,10 +486,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          // ✅ Jam real-time HH:mm:ss WIB — selalu berjalan tiap detik
           Column(
             children: [
               Row(
@@ -493,7 +495,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    currentTime, // ✅ Selalu tampilkan jam live
+                    currentTime,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 44,
@@ -522,7 +524,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -536,7 +541,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   ),
                 ),
               ),
-              // ✅ Badge jam masuk & pulang terpisah (dari API)
               if (isClockedIn || hasClockedOut) ...[
                 const SizedBox(height: 8),
                 Wrap(
@@ -544,7 +548,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   spacing: 8,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(20),
@@ -552,16 +559,29 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.login, color: Colors.white, size: 14),
+                          const Icon(
+                            Icons.login,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                           const SizedBox(width: 6),
-                          Text("Masuk: $clockInTime WIB",
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                          Text(
+                            "Masuk: $clockInTime WIB",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     if (hasClockedOut && clockOutTime != "--:--")
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(20),
@@ -569,10 +589,20 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.logout, color: Colors.white, size: 14),
+                            const Icon(
+                              Icons.logout,
+                              color: Colors.white,
+                              size: 14,
+                            ),
                             const SizedBox(width: 6),
-                            Text("Pulang: $clockOutTime WIB",
-                                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                            Text(
+                              "Pulang: $clockOutTime WIB",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -581,38 +611,37 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ],
             ],
           ),
-
           const SizedBox(height: 8),
-
           Row(
             children: [
               Expanded(
                 child: _buildMainActionButton(
                   icon: Icons.login,
-                  label: "CLOCK IN",
+                  label: clockInButtonLabel,
                   color: Colors.white,
                   iconColor: const Color(0xFF2ECC71),
                   isEnabled: canClockIn,
-                  onTap: () => _navigateToFaceAttendance('clock_in'),
+                  onTap: canClockIn
+                      ? () => _navigateToFaceAttendance('clock_in')
+                      : null,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildMainActionButton(
                   icon: Icons.logout,
-                  label: "CLOCK OUT",
+                  label: clockOutButtonLabel,
                   color: Colors.white,
                   iconColor: const Color(0xFFEF4444),
                   isEnabled: canClockOut,
-                  onTap: () => _navigateToFaceAttendance('clock_out'),
+                  onTap: canClockOut
+                      ? () => _navigateToFaceAttendance('clock_out')
+                      : null,
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
-          // ✅ Break section — berjalan real-time (sama seperti versi awal)
           Material(
             color: Colors.transparent,
             child: InkWell(
@@ -635,7 +664,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               borderRadius: BorderRadius.circular(50),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: isClockedIn && !hasClockedOut
                       ? Colors.white.withOpacity(0.15)
@@ -643,7 +675,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   borderRadius: BorderRadius.circular(50),
                   border: Border.all(
                     color: Colors.white.withOpacity(
-                        isClockedIn && !hasClockedOut ? 0.2 : 0.1),
+                      isClockedIn && !hasClockedOut ? 0.2 : 0.1,
+                    ),
                   ),
                 ),
                 child: Row(
@@ -692,7 +725,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                           ],
                           if (isOnBreak) ...[
                             const SizedBox(height: 2),
-                            // ✅ Durasi istirahat real-time HH:mm:ss
                             Text(
                               breakDuration,
                               style: const TextStyle(
@@ -734,8 +766,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ),
             ),
           ),
-
-          // ✅ Info kerja jika sudah clock-out
           if (hasClockedOut && _todayAttendance != null) ...[
             const SizedBox(height: 12),
             Container(
@@ -784,10 +814,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         ),
         Text(
           label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.7),
-            fontSize: 10,
-          ),
+          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10),
         ),
       ],
     );
@@ -799,7 +826,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     required Color color,
     required Color iconColor,
     required bool isEnabled,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
   }) {
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
@@ -837,6 +864,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.5,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -847,11 +876,19 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   Widget _buildQuickStats() {
+    final todaySchedule = _workScheduleInfo?.todaySchedule;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: todaySchedule?.isWorkDay ?? false
+              ? const Color(0xFF135BEC).withOpacity(0.3)
+              : const Color(0xFF94A3B8).withOpacity(0.3),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -865,9 +902,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
                 child: SizedBox(
-                    height: 24,
-                    width: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
             )
           : Row(
@@ -896,21 +934,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ],
             ),
     );
-  }
-
-  Color _getStatusColor(String? status) {
-    switch (status) {
-      case 'On Time':
-        return const Color(0xFF059669);
-      case 'Late':
-        return const Color(0xFFF59E0B);
-      case 'Overtime':
-        return const Color(0xFF8B5CF6);
-      case 'Absent':
-        return const Color(0xFFEF4444);
-      default:
-        return const Color(0xFF94A3B8);
-    }
   }
 
   Widget _buildStatItem({
@@ -948,12 +971,20 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   Widget _buildTodaysActivity() {
+    final todaySchedule = _workScheduleInfo?.todaySchedule;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: todaySchedule?.isWorkDay ?? false
+              ? const Color(0xFF135BEC).withOpacity(0.3)
+              : const Color(0xFF94A3B8).withOpacity(0.3),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.02),
@@ -986,6 +1017,233 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           ),
           const SizedBox(height: 16),
           _buildActivityTimeline(),
+        ],
+      ),
+    );
+  }
+
+  // ✅ BARU: Build work schedule card
+  Widget _buildWorkScheduleCard() {
+    if (_isLoadingSchedule || _workScheduleInfo == null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: SizedBox(
+            height: 20,
+            width: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF135BEC)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final schedule = _workScheduleInfo!;
+    final todaySchedule = schedule.todaySchedule;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: todaySchedule?.isWorkDay ?? false
+              ? const Color(0xFF135BEC).withOpacity(0.3)
+              : const Color(0xFF94A3B8).withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF135BEC).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.schedule_rounded,
+                  color: const Color(0xFF135BEC),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Jadwal Kerja Anda',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    todaySchedule?.isWorkDay ?? false
+                        ? 'Hari kerja (${schedule.hariKerja.join(", ")})'
+                        : 'Bukan hari kerja',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: todaySchedule?.isWorkDay ?? false
+                          ? const Color(0xFF2ECC71)
+                          : const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Jadwal waktu
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.login_rounded,
+                      color: const Color(0xFF2ECC71),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Masuk',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          schedule.waktuMulai,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2ECC71),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                Container(width: 1, height: 40, color: Colors.grey.shade300),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.logout_rounded,
+                      color: const Color(0xFFEF4444),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pulang',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade600,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          schedule.waktuSelesai,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFEF4444),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Status message
+          if (todaySchedule?.message != null &&
+              todaySchedule!.message.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF3C7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: const Color(0xFFF59E0B),
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          todaySchedule.message,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFFF59E0B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '🕐 Clock In: ${todaySchedule.clockInWindow}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFF59E0B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          '🕑 Clock Out: ${todaySchedule.clockOutWindow}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFF59E0B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1087,13 +1345,20 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   Widget _buildLiveLocationCard() {
+    final todaySchedule = _workScheduleInfo?.todaySchedule;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(
+          color: todaySchedule?.isWorkDay ?? false
+              ? const Color(0xFF135BEC).withOpacity(0.3)
+              : const Color(0xFF94A3B8).withOpacity(0.3),
+          width: 1.5,
+        ),
       ),
       child: Row(
         children: [
@@ -1135,6 +1400,144 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
   }
 
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Stack(
+            children: [
+              Hero(
+                tag: 'profile',
+                child: Container(
+                  height: 48,
+                  width: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF135BEC).withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                      ),
+                      child: ClipOval(
+                        child: _profileImage != null
+                            ? Image.file(_profileImage!, fit: BoxFit.cover)
+                            : Image.network(
+                                _avatarUrl(),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person,
+                                  color: Color(0xFF135BEC),
+                                  size: 26,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 1,
+                right: 1,
+                child: Container(
+                  height: 12,
+                  width: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF2ECC71),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _greeting(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  _user?.fullName ?? 'Profil Saya',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Stack(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.notifications_none,
+                    color: Color(0xFF475569),
+                    size: 22,
+                  ),
+                  onPressed: () {},
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+              Positioned(
+                top: 9,
+                right: 9,
+                child: Container(
+                  height: 8,
+                  width: 8,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSuccessSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1145,7 +1548,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ],
@@ -1183,10 +1589,28 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   String _getCurrentDate() {
     final now = DateTime.now();
     final months = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
-    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    final days = [
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+      'Minggu',
+    ];
     return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 }

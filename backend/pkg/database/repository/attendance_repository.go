@@ -42,9 +42,8 @@ func NewAttendanceRepository(db *mongo.Database) AttendanceRepository {
 
 // Create implements AttendanceRepository.Create
 func (r *attendanceRepository) Create(ctx context.Context, attendance *models.Attendance) error {
-	attendance.Date = attendance.Date.UTC()
-	attendance.CreatedAt = time.Now().UTC()
-	attendance.UpdatedAt = time.Now().UTC()
+	attendance.CreatedAt = time.Now()
+	attendance.UpdatedAt = time.Now()
 	_, err := r.collection.InsertOne(ctx, attendance)
 	return err
 }

@@ -10,15 +10,14 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  // ✅ Ganti dengan IP yang sesuai environment Anda
-  static const String baseUrl = 'http://10.218.68.218:8080/api/v1';
+  static const String baseUrl = 'http://10.233.32.124:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
 
-  // ─── Token Management ───────────────────────────────────────────────────────
+  // ─── Token Management ─��─────────────────────────────────────────────────────
 
   static Future<void> saveTokens(
     String accessToken,
@@ -160,6 +159,33 @@ class ApiService {
 
   // ─── Attendance ─────────────────────────────────────────────────────────────
 
+  /// ✅ GET /api/v1/attendance/schedule-info
+  static Future<WorkScheduleInfoResponse> getWorkScheduleInfo() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/attendance/schedule-info'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getWorkScheduleInfo status: ${response.statusCode}');
+      print('[API] getWorkScheduleInfo body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return WorkScheduleInfoResponse.fromJson(data['data'] ?? {});
+      } else {
+        throw Exception('Gagal mengambil jadwal kerja');
+      }
+    } catch (e) {
+      print('[API] getWorkScheduleInfo error: $e');
+      rethrow;
+    }
+  }
+
   static Future<AttendanceProcessResult> processAttendance({
     required String recordType,
     required double latitude,
@@ -192,6 +218,8 @@ class ApiService {
       request.fields['record_type'] = recordType;
       request.fields['latitude'] = latitude.toString();
       request.fields['longitude'] = longitude.toString();
+      // ✅ PERBAIKN: Jangan kirim verify_only atau kirim false = ini adalah submission sesungguhnya
+      // request.fields['verify_only'] = 'false'; // TIDAK kirim = backend default = save to DB
 
       request.files.add(
         await http.MultipartFile.fromPath(
@@ -203,7 +231,7 @@ class ApiService {
       );
 
       print(
-        '[API] Sending: record_type=$recordType, lat=$latitude, lng=$longitude',
+        '[API] SUBMIT ATTENDANCE: record_type=$recordType, lat=$latitude, lng=$longitude, verify_only=NOT_SENT (akan disimpan ke DB)',
       );
 
       final streamedResponse = await request.send().timeout(
@@ -308,8 +336,6 @@ class ApiService {
 
   // ─── Pengajuan Izin/Cuti ────────────────────────────────────────────────────
 
-  /// GET /api/v1/pengajuan/tipe
-  /// Mengambil daftar tipe pengajuan (Izin Sakit, Cuti Tahunan, dll.)
   static Future<List<TipePengajuan>> getTipePengajuan() async {
     try {
       if (await isTokenExpired()) await refreshToken();
@@ -337,16 +363,13 @@ class ApiService {
     }
   }
 
-  /// POST /api/v1/pengajuan
-  /// Mengirimkan pengajuan izin/cuti baru
   static Future<void> submitPengajuan({
     required String tipePengajuanId,
-    required String tanggalMulai, // format "yyyy-MM-dd"
-    required String tanggalSelesai, // format "yyyy-MM-dd"
+    required String tanggalMulai,
+    required String tanggalSelesai,
     required int totalHari,
     required String alasan,
     String? dokumenUrl,
-    // Lembur-specific (opsional)
     String? startTime,
     String? endTime,
   }) async {
@@ -394,7 +417,6 @@ class ApiService {
     }
   }
 
-  /// GET /api/v1/pengajuan — ambil riwayat pengajuan user
   static Future<List<LeaveRequest>> getMyPengajuan() async {
     try {
       if (await isTokenExpired()) await refreshToken();
@@ -409,7 +431,6 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Backend bisa return data sebagai List, atau Map dengan key data/pengajuan.
         List<dynamic> list;
         if (data is List) {
           list = data;
@@ -440,16 +461,11 @@ class ApiService {
     }
   }
 
-  /// Ambil semua pengajuan user yang APPROVED dan memiliki overlap dengan bulan [month]/[year]
-  /// Filter dilakukan di client (bukan query param backend) karena
-  /// endpoint GET /pengajuan tidak mendukung filter status/bulan.
-  /// Jika gagal, kembalikan [] agar history page tetap tampil.
   static Future<List<LeaveRequest>> getApprovedPengajuanByMonth({
     required int month,
     required int year,
   }) async {
     try {
-      // Reuse getMyPengajuan — sudah handle berbagai format response backend
       final all = await getMyPengajuan();
 
       print(
@@ -463,7 +479,6 @@ class ApiService {
       }
 
       final firstDay = DateTime(year, month, 1);
-      // Hari terakhir bulan: hari pertama bulan berikutnya dikurangi 1 hari
       final lastDay = DateTime(
         year,
         month + 1,
@@ -473,7 +488,6 @@ class ApiService {
       final approved = all.where((p) {
         if (p.statusFinal != 'APPROVED') return false;
 
-        // Normalisasi tanggal ke midnight untuk perbandingan yang akurat
         final s = DateTime(
           p.startDate.year,
           p.startDate.month,
@@ -481,12 +495,6 @@ class ApiService {
         );
         final e = DateTime(p.endDate.year, p.endDate.month, p.endDate.day);
 
-        // Overlap: range pengajuan harus memiliki setidaknya satu hari yang berada di bulan yang ditampilkan
-        // Kondisi overlap: mulai <= lastDay DAN selesai >= firstDay
-        // Ini akan menangkap kasus:
-        // - pengajuan yang dimulai sebelum bulan ini dan berakhir di bulan ini
-        // - pengajuan yang dimulai di bulan ini dan berakhir setelah bulan ini
-        // - pengajuan yang sepenuhnya di dalam bulan ini
         final hasOverlap = !s.isAfter(lastDay) && !e.isBefore(firstDay);
 
         print(
@@ -504,34 +512,6 @@ class ApiService {
       print('[API] getApprovedPengajuanByMonth error: $e');
       return [];
     }
-  }
-
-  /// Konversi respons backend pengajuan_izin_cuti → format LeaveRequest Flutter
-  static Map<String, dynamic> _mapPengajuanToLeave(Map<String, dynamic> json) {
-    // Mapping status backend (PENDING/APPROVED/REJECTED) ke bahasa Indonesia
-    final rawStatus =
-        json['status_final'] ?? json['status_kepala_departemen'] ?? 'PENDING';
-    String status;
-    switch ((rawStatus as String).toUpperCase()) {
-      case 'APPROVED':
-        status = 'Disetujui';
-        break;
-      case 'REJECTED':
-        status = 'Ditolak';
-        break;
-      default:
-        status = 'Menunggu';
-    }
-
-    return {
-      'id': json['id'] ?? '',
-      'type': json['nama_tipe'] ?? json['tipe'] ?? 'Izin',
-      'start_date': json['tanggal_mulai'] ?? DateTime.now().toIso8601String(),
-      'end_date': json['tanggal_selesai'] ?? DateTime.now().toIso8601String(),
-      'reason': json['alasan'] ?? '',
-      'status': status,
-      'days': json['total_hari'] ?? 0,
-    };
   }
 
   // ─── Face Registration ──────────────────────────────────────────────────────
@@ -866,14 +846,65 @@ class ApiService {
       throw Exception('History error: $e');
     }
   }
+  static Future<AttendanceProcessResult> confirmAttendance({
+    required String recordType,
+    required double latitude,
+    required double longitude,
+    required String photoFilename,
+    required double faceSimilarity,
+  }) async {
+    try {
+      print('[API] Confirming attendance: $recordType');
+
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('Token tidak ditemukan. Silakan login ulang.');
+      }
+
+      final headers = await getHeaders();
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/attendance/confirm'),
+        headers: headers,
+        body: {
+          'record_type': recordType,
+          'latitude': latitude.toString(),
+          'longitude': longitude.toString(),
+          'photo_filename': photoFilename,
+          'face_similarity': faceSimilarity.toString(),
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      print('[API] Confirm attendance status: ${response.statusCode}');
+      print('[API] Confirm attendance body: ${response.body}');
+
+      final jsonResponse = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return AttendanceProcessResult.fromJson(jsonResponse);
+      } else if (response.statusCode == 401) {
+        await clearTokens();
+        throw Exception('Sesi telah berakhir. Silakan login ulang.');
+      } else {
+        throw Exception(jsonResponse['message'] ?? 'Gagal mengkonfirmasi absensi');
+      }
+    } catch (e) {
+      print('[API] Confirm attendance error: $e');
+      rethrow;
+    }
+  }
 }
 
-// ─── Model TipePengajuan (untuk dropdown di NewRequestPage) ──────────────────
+// ─── Model TipePengajuan ────────────────────────────────────────────────────
 
 class TipePengajuan {
   final String id;
   final String namaTipe;
-  final String namaKategori; // "Izin" atau "Cuti"
+  final String namaKategori;
   final bool potongKuota;
   final bool wajibLampiran;
 
@@ -897,4 +928,84 @@ class TipePengajuan {
 
   @override
   String toString() => namaTipe;
+}
+
+// ─── Work Schedule Models ───────────────────────────────────────────────────
+
+class WorkScheduleInfoResponse {
+  final String userId;
+  final List<String> hariKerja;
+  final String waktuMulai; // HH:mm
+  final String waktuSelesai; // HH:mm
+  final bool aktif;
+  final TodayScheduleInfo? todaySchedule;
+
+  WorkScheduleInfoResponse({
+    required this.userId,
+    required this.hariKerja,
+    required this.waktuMulai,
+    required this.waktuSelesai,
+    required this.aktif,
+    this.todaySchedule,
+  });
+
+  factory WorkScheduleInfoResponse.fromJson(Map<String, dynamic> json) {
+    return WorkScheduleInfoResponse(
+      userId: json['user_id']?.toString() ?? '',
+      hariKerja: List<String>.from(json['hari_kerja'] ?? []),
+      waktuMulai: json['waktu_mulai']?.toString() ?? '08:00',
+      waktuSelesai: json['waktu_selesai']?.toString() ?? '17:00',
+      aktif: json['aktif'] == true,
+      todaySchedule: json['today_schedule'] != null
+          ? TodayScheduleInfo.fromJson(json['today_schedule'])
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'user_id': userId,
+    'hari_kerja': hariKerja,
+    'waktu_mulai': waktuMulai,
+    'waktu_selesai': waktuSelesai,
+    'aktif': aktif,
+    'today_schedule': todaySchedule?.toJson(),
+  };
+}
+
+class TodayScheduleInfo {
+  final bool isWorkDay;
+  final String clockInWindow;   // "HH:mm - HH:mm"
+  final String clockOutWindow;  // "HH:mm - HH:mm" ✅ DIUBAH
+  final bool canClockIn;
+  final bool canClockOut;
+  final String message;
+
+  TodayScheduleInfo({
+    required this.isWorkDay,
+    required this.clockInWindow,
+    required this.clockOutWindow,
+    required this.canClockIn,
+    required this.canClockOut,
+    required this.message,
+  });
+
+  factory TodayScheduleInfo.fromJson(Map<String, dynamic> json) {
+    return TodayScheduleInfo(
+      isWorkDay: json['is_work_day'] == true,
+      clockInWindow: json['clock_in_window']?.toString() ?? '',
+      clockOutWindow: json['clock_out_window']?.toString() ?? '',
+      canClockIn: json['can_clock_in'] == true,
+      canClockOut: json['can_clock_out'] == true,
+      message: json['message']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'is_work_day': isWorkDay,
+    'clock_in_window': clockInWindow,
+    'clock_out_window': clockOutWindow,
+    'can_clock_in': canClockIn,
+    'can_clock_out': canClockOut,
+    'message': message,
+  };
 }
