@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/andikatampubolon10/hris-backend/internal/service"
@@ -38,4 +39,36 @@ func (h *PositionHandler) GetPositionByID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse("Position retrieved successfully", position))
+}
+
+func (h *PositionHandler) UpdatePosition(c *gin.Context) {
+	id := c.Param("id")
+
+	var req models.UpdatePositionRequest
+	raw, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+	if err := json.Unmarshal(raw, &req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	if req.IsActive == nil {
+		var alt struct {
+			IsActive *bool `json:"isActive"`
+		}
+		if err := json.Unmarshal(raw, &alt); err == nil && alt.IsActive != nil {
+			req.IsActive = alt.IsActive
+		}
+	}
+
+	position, err := h.positionService.UpdatePosition(c.Request.Context(), id, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to update position", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Position updated successfully", position))
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Edit2, Trash2, Users } from "lucide-react";
+import { Search, Plus, Edit2, Ban, CheckCircle, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -81,7 +81,7 @@ export default function DepartmentsPage() {
   };
 
   const handleOpenPositions = (departmentId: string) => {
-    router.push(`/dashboard/manager-hr/jabatan`);
+    router.push(`/dashboard/manager-hr/jabatan?departmentId=${encodeURIComponent(departmentId)}`);
   };
 
   const handleEdit = (e: React.MouseEvent, id: string) => {
@@ -89,16 +89,31 @@ export default function DepartmentsPage() {
     router.push(`/dashboard/manager-hr/departemen/tambah-departemen?edit=${id}`);
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation(); // ✅ supaya klik Hapus tidak redirect
-    if (!confirm("Apakah Anda yakin ingin menghapus departemen ini?")) return;
+  const handleToggleActive = async (
+    e: React.MouseEvent,
+    dept: Department
+  ) => {
+    e.stopPropagation();
+    const willActivate = dept.status === "Nonaktif";
+    const confirmText = willActivate
+      ? "Apakah Anda yakin ingin mengaktifkan departemen ini?"
+      : "Apakah Anda yakin ingin menonaktifkan departemen ini?";
+    if (!confirm(confirmText)) return;
     try {
-      await departmentApi.delete(id);
-      toast.success("Departemen berhasil dihapus");
+      await departmentApi.update(dept.id, { is_active: willActivate });
+      toast.success(
+        willActivate
+          ? "Departemen berhasil diaktifkan"
+          : "Departemen berhasil dinonaktifkan"
+      );
       await loadDepartments();
     } catch (err) {
       console.error(err);
-      toast.error("Gagal menghapus departemen");
+      toast.error(
+        willActivate
+          ? "Gagal mengaktifkan departemen"
+          : "Gagal menonaktifkan departemen"
+      );
     }
   };
 
@@ -220,11 +235,20 @@ export default function DepartmentsPage() {
                           <Edit2 className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={(e) => handleDelete(e, dept.id)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Hapus"
+                          onClick={(e) => handleToggleActive(e, dept)}
+                          className={[
+                            "p-2 rounded-lg transition-colors",
+                            dept.status === "Aktif"
+                              ? "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                              : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50",
+                          ].join(" ")}
+                          title={dept.status === "Aktif" ? "Nonaktifkan" : "Aktifkan"}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          {dept.status === "Aktif" ? (
+                            <Ban className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
                         </button>
                       </div>
                     </td>

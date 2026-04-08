@@ -121,6 +121,19 @@ func (r *departmentRepository) Update(ctx context.Context, id string, req *model
 	if req.Icon != "" {
 		update["$set"].(bson.M)["icon"] = req.Icon
 	}
+	if req.ManagerID != "" {
+		managerOID, err := primitive.ObjectIDFromHex(req.ManagerID)
+		if err != nil {
+			return errors.New("invalid manager ID")
+		}
+		update["$set"].(bson.M)["manager_id"] = managerOID
+		if req.ManagerName != "" {
+			update["$set"].(bson.M)["manager_name"] = req.ManagerName
+		}
+	}
+	if req.IsActive != nil {
+		update["$set"].(bson.M)["is_active"] = *req.IsActive
+	}
 
 	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
 	if err != nil {

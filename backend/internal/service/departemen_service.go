@@ -158,6 +158,21 @@ func (s *departmentService) UpdateDepartment(ctx context.Context, id string, req
 		}
 	}
 
+	if req.ManagerID != "" {
+		if _, err := primitive.ObjectIDFromHex(req.ManagerID); err != nil {
+			return nil, errors.New("manager ID tidak valid")
+		}
+
+		manager, err := s.userRepo.FindByID(ctx, req.ManagerID)
+		if err != nil || manager == nil {
+			return nil, errors.New("manager tidak ditemukan")
+		}
+		if !manager.IsActive {
+			return nil, errors.New("manager tidak aktif")
+		}
+		req.ManagerName = manager.FullName
+	}
+
 	// Update department
 	err = s.departmentRepo.Update(ctx, id, &req)
 	if err != nil {

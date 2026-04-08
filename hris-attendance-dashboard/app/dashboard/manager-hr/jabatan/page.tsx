@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { Search, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Search, Plus, ChevronLeft, ChevronRight, Ban, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,8 +32,8 @@ interface PositionRow {
 
 export default function DepartmentPositionsPage() {
   const router = useRouter();
-  const params = useParams<{ id: string }>();
-  const departmentId = params?.id;
+  const searchParams = useSearchParams();
+  const departmentId = searchParams.get("departmentId") || "";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [department, setDepartment] = useState<DepartmentDetail | null>(null);
@@ -46,7 +46,11 @@ export default function DepartmentPositionsPage() {
   const pageSize = 4;
 
   useEffect(() => {
-    if (!departmentId) return;
+    if (!departmentId) {
+      setError("Departemen belum dipilih. Kembali ke halaman Departemen dan klik salah satu departemen.");
+      setLoading(false);
+      return;
+    }
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [departmentId]);
@@ -132,11 +136,27 @@ export default function DepartmentPositionsPage() {
     try {
       // TODO: ganti sesuai API Anda
       // await positionApi.delete(id);
-      toast.success("Posisi berhasil dihapus");
+      toast.success(`Posisi ${id} berhasil dihapus`);
       await loadData();
     } catch (e) {
       console.error(e);
       toast.error("Gagal menghapus posisi");
+    }
+  };
+
+  const handleToggleActive = async (pos: PositionRow) => {
+    const willActivate = pos.status === "Nonaktif";
+    const confirmText = willActivate
+      ? "Apakah Anda yakin ingin mengaktifkan jabatan ini?"
+      : "Apakah Anda yakin ingin menonaktifkan jabatan ini?";
+    if (!confirm(confirmText)) return;
+    try {
+      await employeeService.updatePosition(pos.id, { is_active: willActivate });
+      toast.success(willActivate ? "Jabatan berhasil diaktifkan" : "Jabatan berhasil dinonaktifkan");
+      await loadData();
+    } catch (e) {
+      console.error(e);
+      toast.error(willActivate ? "Gagal mengaktifkan jabatan" : "Gagal menonaktifkan jabatan");
     }
   };
 
@@ -260,6 +280,25 @@ export default function DepartmentPositionsPage() {
                           className="rounded-lg px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors"
                         >
                           Edit
+                        </button>
+                        <button
+                          onClick={() => handleToggleActive(pos)}
+                          className={[
+                            "rounded-lg px-3 py-2 text-sm transition-colors",
+                            pos.status === "Aktif"
+                              ? "text-amber-700 hover:bg-amber-50"
+                              : "text-emerald-700 hover:bg-emerald-50",
+                          ].join(" ")}
+                          title={pos.status === "Aktif" ? "Nonaktifkan" : "Aktifkan"}
+                        >
+                          <span className="inline-flex items-center gap-2">
+                            {pos.status === "Aktif" ? (
+                              <Ban className="h-4 w-4" />
+                            ) : (
+                              <CheckCircle className="h-4 w-4" />
+                            )}
+                            {pos.status === "Aktif" ? "Nonaktifkan" : "Aktifkan"}
+                          </span>
                         </button>
                         <button
                           onClick={() => handleDeletePosition(pos.id)}

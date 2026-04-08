@@ -20,6 +20,7 @@ export interface UpdateDepartmentRequest {
   description?: string;
   icon?: string;
   manager_id?: string;
+  is_active?: boolean;
 }
 
 class DepartmentApi {

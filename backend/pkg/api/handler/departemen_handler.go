@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/andikatampubolon10/hris-backend/internal/service"
@@ -66,9 +67,24 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 	id := c.Param("id")
 
 	var req models.UpdateDepartmentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	raw, err := c.GetRawData()
+	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
 		return
+	}
+
+	if err := json.Unmarshal(raw, &req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	if req.IsActive == nil {
+		var alt struct {
+			IsActive *bool `json:"isActive"`
+		}
+		if err := json.Unmarshal(raw, &alt); err == nil && alt.IsActive != nil {
+			req.IsActive = alt.IsActive
+		}
 	}
 
 	department, err := h.departmentService.UpdateDepartment(c.Request.Context(), id, req)

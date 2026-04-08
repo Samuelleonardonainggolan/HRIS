@@ -38,6 +38,8 @@ type UpdateDepartmentRequest struct {
 	Description string `json:"description,omitempty" bson:"description,omitempty"`
 	Icon        string `json:"icon,omitempty" bson:"icon,omitempty"`
 	ManagerID   string `json:"manager_id,omitempty"`
+	ManagerName string `json:"-" bson:"manager_name,omitempty"`
+	IsActive    *bool  `json:"is_active,omitempty" bson:"is_active,omitempty"`
 }
 
 // DepartmentResponse represents department response

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -15,6 +16,7 @@ type PositionRepository interface {
 	FindByID(ctx context.Context, id string) (*models.Position, error)
 	FindAll(ctx context.Context) ([]models.Position, error)
 	FindByDepartment(ctx context.Context, departmentID string) ([]models.Position, error)
+	Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error
 }
 
 type positionRepository struct {
@@ -77,4 +79,55 @@ func (r *positionRepository) FindByDepartment(ctx context.Context, departmentID 
 		return nil, err
 	}
 	return positions, nil
+}
+
+func (r *positionRepository) Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid position ID")
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+	}
+
+	if req.Code != "" {
+		update["$set"].(bson.M)["code"] = req.Code
+	}
+	if req.Name != "" {
+		update["$set"].(bson.M)["name"] = req.Name
+	}
+	if req.DepartmentID != "" {
+		deptOID, err := primitive.ObjectIDFromHex(req.DepartmentID)
+		if err != nil {
+			return errors.New("invalid department ID")
+		}
+		update["$set"].(bson.M)["department_id"] = deptOID
+	}
+	if req.Level != 0 {
+		update["$set"].(bson.M)["level"] = req.Level
+	}
+	if req.Description != "" {
+		update["$set"].(bson.M)["description"] = req.Description
+	}
+	if req.Requirements != "" {
+		update["$set"].(bson.M)["requirements"] = req.Requirements
+	}
+	if req.SalaryRange != nil {
+		update["$set"].(bson.M)["salary_range"] = *req.SalaryRange
+	}
+	if req.IsActive != nil {
+		update["$set"].(bson.M)["is_active"] = *req.IsActive
+	}
+
+	result, err := r.collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("position not found")
+	}
+	return nil
 }

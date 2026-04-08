@@ -95,6 +95,7 @@ func SetupRoutes(
 				departments.GET("", departmentHandler.GetAllDepartments)
 				departments.GET("/:id", departmentHandler.GetDepartmentByID)
 				departments.PUT("/:id", departmentHandler.UpdateDepartment)
+				departments.PATCH("/:id", departmentHandler.UpdateDepartment)
 				departments.DELETE("/:id", departmentHandler.DeleteDepartment)
 			}
 
@@ -104,6 +105,8 @@ func SetupRoutes(
 			{
 				positions.GET("", positionHandler.GetAllPositions)
 				positions.GET("/:id", positionHandler.GetPositionByID)
+				positions.PUT("/:id", positionHandler.UpdatePosition)
+				positions.PATCH("/:id", positionHandler.UpdatePosition)
 			}
 
 			// ==================== EMPLOYEES (Admin Only) ====================
@@ -122,11 +125,11 @@ func SetupRoutes(
 			// ==================== JAM KERJA ====================
 			jamKerja := protected.Group("/jam-kerja")
 			{
-			jamKerja.GET("", jamKerjaHandler.GetAllJamKerja)
-			jamKerja.GET("/user/:userId", jamKerjaHandler.GetJamKerjaByUserID)
-			jamKerja.POST("", middleware.ManagerHROnly(), jamKerjaHandler.CreateJamKerja)
-			jamKerja.PUT("/user/:userId", middleware.ManagerHROnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
-			jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
+				jamKerja.GET("", jamKerjaHandler.GetAllJamKerja)
+				jamKerja.GET("/user/:userId", jamKerjaHandler.GetJamKerjaByUserID)
+				jamKerja.POST("", middleware.ManagerHROnly(), jamKerjaHandler.CreateJamKerja)
+				jamKerja.PUT("/user/:userId", middleware.ManagerHROnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
+				jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
 			}
 
 			// ==================== GEOFENCING ====================
@@ -152,7 +155,6 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
-
 
 		}
 	}

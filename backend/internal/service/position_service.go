@@ -10,6 +10,7 @@ import (
 type PositionService interface {
 	GetAllPositions(ctx context.Context, departmentID string) ([]models.PositionResponse, error)
 	GetPositionByID(ctx context.Context, id string) (*models.PositionResponse, error)
+	UpdatePosition(ctx context.Context, id string, req models.UpdatePositionRequest) (*models.PositionResponse, error)
 }
 
 type positionService struct {
@@ -47,4 +48,22 @@ func (s *positionService) GetPositionByID(ctx context.Context, id string) (*mode
 	}
 	response := position.ToResponse()
 	return &response, nil
+}
+
+func (s *positionService) UpdatePosition(ctx context.Context, id string, req models.UpdatePositionRequest) (*models.PositionResponse, error) {
+	_, err := s.positionRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.positionRepo.Update(ctx, id, &req); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.positionRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	resp := updated.ToResponse()
+	return &resp, nil
 }
