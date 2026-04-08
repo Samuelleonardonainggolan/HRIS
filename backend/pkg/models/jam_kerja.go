@@ -24,6 +24,7 @@ type JamKerjaListRowResponse struct {
 	NIK        string `json:"nik"`
 	Department string `json:"department"`
 	Position   string `json:"position"`
+	HariKerja  []string `json:"hari_kerja"`
 	WorkDays   string `json:"workDays"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
 	StartTime  string `json:"startTime"` // "08:00"
 	EndTime    string `json:"endTime"`   // "17:00"

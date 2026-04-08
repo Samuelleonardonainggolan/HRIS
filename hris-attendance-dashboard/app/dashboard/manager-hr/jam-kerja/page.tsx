@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 
-type WorkDays = "Senin - Jumat" | "Senin - Sabtu" | "Shift";
+type WorkDays = string;
 
 interface WorkScheduleRow {
   id: string; // user_id
@@ -28,18 +28,45 @@ interface WorkScheduleRow {
   nik: string;
   department: string;
   position: string;
-  workDays: WorkDays;
+
+  // ✅ dari backend
+  hari_kerja?: string[];
+
+  // fallback (kalau masih ada)
+  workDays?: WorkDays;
+
   startTime: string; // "08:00"
   endTime: string; // "17:00"
 }
 
-function workDaysBadgeVariant(v: WorkDays) {
-  if (v === "Senin - Sabtu") return "success" as any;
-  if (v === "Shift") return "secondary" as any;
-  return "secondary" as any;
+const hariOrder = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
+
+function sortHariKerja(hari: string[] | undefined) {
+  if (!hari) return [];
+  const set = new Set(hari);
+  return hariOrder.filter((h) => set.has(h));
 }
 
-const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
+function hariBadgeVariant(hari: string) {
+  switch (hari) {
+    case "Senin":
+      return "bg-blue-50 text-blue-700 border-blue-200";
+    case "Selasa":
+      return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    case "Rabu":
+      return "bg-violet-50 text-violet-700 border-violet-200";
+    case "Kamis":
+      return "bg-amber-50 text-amber-800 border-amber-200";
+    case "Jumat":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "Sabtu":
+      return "bg-teal-50 text-teal-700 border-teal-200";
+    case "Minggu":
+      return "bg-rose-50 text-rose-700 border-rose-200";
+    default:
+      return "bg-gray-50 text-gray-700 border-gray-200";
+  }
+}
 
 export default function ManajemenJamKerjaPage() {
   const router = useRouter();
@@ -54,20 +81,6 @@ export default function ManajemenJamKerjaPage() {
   // pagination
   const [page, setPage] = useState(1);
   const pageSize = 4;
-
-  // ====== MODAL TAMBAH ======
-  const [openAdd, setOpenAdd] = useState(false);
-  const [addUserId, setAddUserId] = useState("");
-  const [addHari, setAddHari] = useState<string[]>([
-    "Senin",
-    "Selasa",
-    "Rabu",
-    "Kamis",
-    "Jumat",
-  ]);
-  const [addMulai, setAddMulai] = useState("09:00");
-  const [addSelesai, setAddSelesai] = useState("18:00");
-  const [adding, setAdding] = useState(false);
 
   const load = async () => {
     try {
@@ -99,7 +112,6 @@ export default function ManajemenJamKerjaPage() {
     }
   };
 
-  // ✅ Fetch dari backend
   useEffect(() => {
     let cancelled = false;
 
@@ -115,7 +127,6 @@ export default function ManajemenJamKerjaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ option departemen dinamis
   const departmentOptions = useMemo(() => {
     const uniq = Array.from(new Set(rows.map((r) => r.department).filter(Boolean)));
     uniq.sort();
@@ -150,51 +161,6 @@ export default function ManajemenJamKerjaPage() {
     router.push(`/dashboard/manager-hr/jam-kerja/${employeeId}`);
   };
 
-  const toggleHari = (h: string) => {
-    setAddHari((prev) => (prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]));
-  };
-
-  const handleCreate = async () => {
-    setAdding(true);
-    try {
-      const token = localStorage.getItem("access_token");
-
-      const res = await fetch("/api/v1/jam-kerja", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          user_id: addUserId,
-          hari_kerja: addHari,
-          waktu_mulai: addMulai,
-          waktu_selesai: addSelesai,
-          aktif: true,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(json?.error || json?.message || "Gagal menambah jam kerja");
-      }
-
-      setOpenAdd(false);
-      setAddUserId("");
-      setAddHari(["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]);
-      setAddMulai("09:00");
-      setAddSelesai("18:00");
-
-      await load();
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message || "Gagal menambah jam kerja");
-    } finally {
-      setAdding(false);
-    }
-  };
-
   return (
     <div className="p-6">
       {/* Header */}
@@ -219,7 +185,7 @@ export default function ManajemenJamKerjaPage() {
                     setSearchQuery(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="Cari karyawan berdasarkan nama atau NIK..."
+                  placeholder="Cari karyawan berdasarkan nama atau No Payroll..."
                   className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
                              focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
@@ -300,67 +266,89 @@ export default function ManajemenJamKerjaPage() {
                     </td>
                   </tr>
                 ) : (
-                  paged.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                      {/* Karyawan */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                            {r.name
-                              .split(/\s+/)
-                              .filter(Boolean)
-                              .map((p) => p[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="font-semibold text-gray-900">{r.name}</div>
-                            <div className="text-xs text-gray-500">NIK: {r.nik}</div>
-                          </div>
-                        </div>
-                      </td>
+                  paged.map((r) => {
+                    const hari = sortHariKerja(r.hari_kerja);
 
-                      {/* Dept & Posisi */}
-                      <td className="px-6 py-4">
-                        <div className="text-sm font-semibold text-gray-900">{r.department}</div>
-                        <div className="text-xs text-gray-500">{r.position}</div>
-                      </td>
-
-                      {/* Hari kerja */}
-                      <td className="px-6 py-4">
-                        <Badge variant={workDaysBadgeVariant(r.workDays)}>{r.workDays}</Badge>
-                      </td>
-
-                      {/* Jam kerja */}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-10">
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900">{r.startTime}</div>
-                            <div className="text-[11px] font-semibold text-gray-400 uppercase">
-                              Mulai
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                        {/* Karyawan */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
+                              {r.name
+                                .split(/\s+/)
+                                .filter(Boolean)
+                                .map((p) => p[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-gray-900">{r.name}</div>
+                              <div className="text-xs text-gray-500">NO PAY: {r.nik}</div>
                             </div>
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-gray-900">{r.endTime}</div>
-                            <div className="text-[11px] font-semibold text-gray-400 uppercase">
-                              Selesai
+                        </td>
+
+                        {/* Dept & Posisi */}
+                        <td className="px-6 py-4">
+                          <div className="text-sm font-semibold text-gray-900">{r.department}</div>
+                          <div className="text-xs text-gray-500">{r.position}</div>
+                        </td>
+
+                        {/* Hari kerja (badge per hari) */}
+                        <td className="px-6 py-4">
+                          {hari.length === 0 ? (
+                            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                              -
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {hari.map((h) => (
+                                <span
+                                  key={h}
+                                  className={[
+                                    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                    hariBadgeVariant(h),
+                                  ].join(" ")}
+                                >
+                                  {h}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Jam kerja */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-10">
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">{r.startTime}</div>
+                              <div className="text-[11px] font-semibold text-gray-400 uppercase">
+                                Mulai
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-gray-900">{r.endTime}</div>
+                              <div className="text-[11px] font-semibold text-gray-400 uppercase">
+                                Selesai
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Aksi */}
-                      <td className="px-6 py-4 text-right">
-                        <Button
-                          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
-                          onClick={() => handleOpenSetSchedule(r.id)}
-                        >
-                          Atur Jam Kerja
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
+                        {/* Aksi */}
+                        <td className="px-6 py-4 text-right">
+                          <Button
+                            className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+                            onClick={() => handleOpenSetSchedule(r.id)}
+                          >
+                            Atur Jam Kerja
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -409,8 +397,6 @@ export default function ManajemenJamKerjaPage() {
           </div>
         </CardContent>
       </Card>
-
-      
     </div>
   );
 }

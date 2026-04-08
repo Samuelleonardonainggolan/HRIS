@@ -5,6 +5,7 @@ import { ChevronLeft, Save } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { authService } from "@/lib/api/auth";
 
 const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
 
@@ -30,21 +31,25 @@ export default function AturJamKerjaPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
 
   useEffect(() => {
-    const fetchDetail = async () => {
-      try {
+  const fetchDetail = async () => {
+        try {
         setLoading(true);
         const res = await fetch(`/api/v1/jam-kerja/user/${userId}`, {
-          headers: { "Content-Type": "application/json" },
+            headers: authService.getAuthHeaders(),
         });
         const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || json?.message || "Gagal memuat jam kerja");
         setDetail(json.data);
-      } finally {
+        } catch (e: any) {
+        console.error(e);
+        setDetail(null);
+        } finally {
         setLoading(false);
-      }
+        }
     };
 
     if (userId) fetchDetail();
-  }, [userId]);
+    }, [userId]);
 
   const toggleHari = (h: string) => {
     if (!detail) return;
@@ -59,16 +64,16 @@ export default function AturJamKerjaPage() {
     if (!detail) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/v1/jam-kerja/user/${userId}`, {
+        const res = await fetch(`/api/v1/jam-kerja/user/${userId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: authService.getAuthHeaders(),
         body: JSON.stringify({
-          hari_kerja: detail.hari_kerja,
-          waktu_mulai: detail.waktu_mulai,
-          waktu_selesai: detail.waktu_selesai,
-          aktif: detail.aktif,
+            hari_kerja: detail.hari_kerja,
+            waktu_mulai: detail.waktu_mulai,
+            waktu_selesai: detail.waktu_selesai,
+            aktif: detail.aktif,
         }),
-      });
+        });
 
       if (!res.ok) {
         const j = await res.json().catch(() => null);
