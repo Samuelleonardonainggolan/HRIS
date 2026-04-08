@@ -37,6 +37,7 @@ func main() {
 	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
 	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
+	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database)
 
 	log.Println("📦 Repositories initialized")
 
@@ -60,6 +61,7 @@ func main() {
 	pengajuanService := service.NewPengajuanService(mongodb.Database)
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo)
+	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo)
 
 	log.Println("⚙️  Services initialized")
 
@@ -74,6 +76,7 @@ func main() {
 	geofenceHandler := handler.NewGeofenceHandler(geofenceService)
 	pengajuanIzinCutiHandler := handler.NewPengajuanIzinCutiHandler(pengajuanIzinCutiService)
 	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
+	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService)
 
 	log.Println("🎯 Handlers initialized")
 
@@ -98,6 +101,7 @@ func main() {
 		geofenceHandler,
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
+		jamKerjaHandler,
 	)
 
 	log.Println("🛣️  Routes configured")

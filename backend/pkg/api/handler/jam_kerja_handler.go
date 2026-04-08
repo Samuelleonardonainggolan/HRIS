@@ -1,4 +1,4 @@
-// pkg/api/handler/work_schedule_handler.go
+// pkg/api/handler/jam_kerja_handler.go
 package handler
 
 import (
@@ -9,54 +9,84 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type WorkScheduleHandler struct {
-	workScheduleService service.WorkScheduleService
+type JamKerjaHandler struct {
+	jamKerjaService service.JamKerjaService
 }
 
-func NewWorkScheduleHandler(workScheduleService service.WorkScheduleService) *WorkScheduleHandler {
-	return &WorkScheduleHandler{workScheduleService: workScheduleService}
-}
-
-func (h *WorkScheduleHandler) ListForManagerDepartment(c *gin.Context) {
-	// sesuaikan dengan AuthMiddleware Anda:
-	// kalau middleware menyimpan "user" (struct) di context.
-	u, ok := c.Get("user")
-	if !ok {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "user tidak ditemukan"))
-		return
+func NewJamKerjaHandler(jamKerjaService service.JamKerjaService) *JamKerjaHandler {
+	return &JamKerjaHandler{
+		jamKerjaService: jamKerjaService,
 	}
-	user := u.(*models.User) // sesuaikan jika tipe berbeda
+}
 
-	data, err := h.workScheduleService.ListForManagerDepartment(c.Request.Context(), user.ID.Hex())
+// GET /api/v1/jam-kerja
+func (h *JamKerjaHandler) GetAllJamKerja(c *gin.Context) {
+	data, err := h.jamKerjaService.ListJamKerja(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to get work schedules", err.Error()))
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to get jam kerja", err.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, models.SuccessResponse("Work schedules retrieved successfully", data))
+	c.JSON(http.StatusOK, models.SuccessResponse("Jam kerja retrieved successfully", data))
 }
 
-func (h *WorkScheduleHandler) UpsertForManagerDepartment(c *gin.Context) {
-	targetUserID := c.Param("userId")
+// GET /api/v1/jam-kerja/user/:userId
+func (h *JamKerjaHandler) GetJamKerjaByUserID(c *gin.Context) {
+	userID := c.Param("userId")
 
-	var req models.UpsertWorkScheduleRequest
+	data, err := h.jamKerjaService.GetJamKerjaByUserID(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to get jam kerja", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Jam kerja retrieved successfully", data))
+}
+
+// PUT /api/v1/jam-kerja/user/:userId
+func (h *JamKerjaHandler) UpdateJamKerjaByUserID(c *gin.Context) {
+	userID := c.Param("userId")
+
+	var req models.UpdateJamKerjaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
 		return
 	}
 
-	u, ok := c.Get("user")
-	if !ok {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "user tidak ditemukan"))
-		return
-	}
-	user := u.(*models.User)
-
-	data, err := h.workScheduleService.UpsertForManagerDepartment(c.Request.Context(), user.ID.Hex(), targetUserID, req)
+	data, err := h.jamKerjaService.UpdateJamKerjaByUserID(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to update work schedule", err.Error()))
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to update jam kerja", err.Error()))
 		return
 	}
 
-	c.JSON(http.StatusOK, models.SuccessResponse("Work schedule updated successfully", data))
+	c.JSON(http.StatusOK, models.SuccessResponse("Jam kerja updated successfully", data))
+}
+
+// POST /api/v1/jam-kerja
+func (h *JamKerjaHandler) CreateJamKerja(c *gin.Context) {
+	var req models.CreateJamKerjaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	data, err := h.jamKerjaService.CreateJamKerja(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to create jam kerja", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.SuccessResponse("Jam kerja created successfully", data))
+}
+
+func (h *JamKerjaHandler) GetAvailableEmployees(c *gin.Context) {
+	q := c.Query("q")
+
+	data, err := h.jamKerjaService.SearchAvailableEmployees(c.Request.Context(), q)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Failed to get employees", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Employees retrieved successfully", data))
 }

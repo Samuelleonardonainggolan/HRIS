@@ -18,6 +18,31 @@ export interface CreateEmployeeResponse {
   temporary_password?: string;
 }
 
+export type Employee = {
+  id: string;
+  full_name: string;
+  payroll_number?: string;
+  nik?: string;
+  department_name?: string;
+  position_name?: string;
+  is_active?: boolean;
+};
+
+export const employeeApi = {
+  async getAll(): Promise<Employee[]> {
+    const res = await fetch("/api/v1/employees", {
+      headers: authService.getAuthHeaders(),
+    });
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(json?.error || json?.message || "Gagal memuat data karyawan");
+    }
+
+    return (json?.data || []) as Employee[];
+  },
+};
+
 class EmployeeService {
   // ==================== EMPLOYEES ====================
 

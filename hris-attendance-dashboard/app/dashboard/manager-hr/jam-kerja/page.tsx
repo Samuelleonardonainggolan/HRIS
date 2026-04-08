@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Search,
+  SlidersHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,28 +18,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useRouter } from "next/navigation";
 
 type WorkDays = "Senin - Jumat" | "Senin - Sabtu" | "Shift";
 
 interface WorkScheduleRow {
-  id: string;
+  id: string; // user_id
   name: string;
   nik: string;
   department: string;
   position: string;
   workDays: WorkDays;
   startTime: string; // "08:00"
-  endTime: string;   // "17:00"
+  endTime: string; // "17:00"
 }
 
 function workDaysBadgeVariant(v: WorkDays) {
-  // sesuaikan dengan Badge variant yang Anda punya
   if (v === "Senin - Sabtu") return "success" as any;
   if (v === "Shift") return "secondary" as any;
   return "secondary" as any;
 }
 
+const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
+
 export default function ManajemenJamKerjaPage() {
+  const router = useRouter();
+
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -45,66 +55,78 @@ export default function ManajemenJamKerjaPage() {
   const [page, setPage] = useState(1);
   const pageSize = 4;
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setRows([
-        {
-          id: "1",
-          name: "Andi Pratama",
-          nik: "2023010042",
-          department: "Teknologi Informasi",
-          position: "Senior Web Developer",
-          workDays: "Senin - Jumat",
-          startTime: "08:00",
-          endTime: "17:00",
-        },
-        {
-          id: "2",
-          name: "Siti Aminah",
-          nik: "2023010058",
-          department: "Sumber Daya Manusia",
-          position: "HR Specialist",
-          workDays: "Senin - Jumat",
-          startTime: "08:30",
-          endTime: "17:30",
-        },
-        {
-          id: "3",
-          name: "Budi Santoso",
-          nik: "2023020011",
-          department: "Pemasaran",
-          position: "Social Media Manager",
-          workDays: "Senin - Sabtu",
-          startTime: "09:00",
-          endTime: "18:00",
-        },
-        {
-          id: "4",
-          name: "Rina Septiani",
-          nik: "2023020089",
-          department: "Keuangan",
-          position: "Tax Accountant",
-          workDays: "Senin - Jumat",
-          startTime: "08:00",
-          endTime: "17:00",
-        },
-      ]);
-      setLoading(false);
-    }, 450);
+  // ====== MODAL TAMBAH ======
+  const [openAdd, setOpenAdd] = useState(false);
+  const [addUserId, setAddUserId] = useState("");
+  const [addHari, setAddHari] = useState<string[]>([
+    "Senin",
+    "Selasa",
+    "Rabu",
+    "Kamis",
+    "Jumat",
+  ]);
+  const [addMulai, setAddMulai] = useState("09:00");
+  const [addSelesai, setAddSelesai] = useState("18:00");
+  const [adding, setAdding] = useState(false);
 
-    return () => clearTimeout(t);
+  const load = async () => {
+    try {
+      setLoading(true);
+
+      const token = localStorage.getItem("access_token");
+
+      const res = await fetch("/api/v1/jam-kerja", {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        console.error("API error:", res.status, json);
+        throw new Error(json?.error || json?.message || "Gagal memuat data jam kerja");
+      }
+
+      const data = (json?.data || []) as WorkScheduleRow[];
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Fetch dari backend
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (cancelled) return;
+      await load();
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ option departemen dinamis
+  const departmentOptions = useMemo(() => {
+    const uniq = Array.from(new Set(rows.map((r) => r.department).filter(Boolean)));
+    uniq.sort();
+    return uniq;
+  }, [rows]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return rows.filter((r) => {
-      const matchText =
-        r.name.toLowerCase().includes(q) ||
-        r.nik.toLowerCase().includes(q);
-
-      const matchDept =
-        departmentFilter === "all" ? true : r.department === departmentFilter;
-
+      const matchText = r.name.toLowerCase().includes(q) || r.nik.toLowerCase().includes(q);
+      const matchDept = departmentFilter === "all" ? true : r.department === departmentFilter;
       return matchText && matchDept;
     });
   }, [rows, searchQuery, departmentFilter]);
@@ -125,10 +147,52 @@ export default function ManajemenJamKerjaPage() {
   const to = Math.min(page * pageSize, totalItems);
 
   const handleOpenSetSchedule = (employeeId: string) => {
-    // TODO: ganti route sesuai app Anda
-    // contoh:
-    // router.push(`/dashboard/manager-hr/jam-kerja/${employeeId}`)
-    console.log("Atur jam kerja:", employeeId);
+    router.push(`/dashboard/manager-hr/jam-kerja/${employeeId}`);
+  };
+
+  const toggleHari = (h: string) => {
+    setAddHari((prev) => (prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]));
+  };
+
+  const handleCreate = async () => {
+    setAdding(true);
+    try {
+      const token = localStorage.getItem("access_token");
+
+      const res = await fetch("/api/v1/jam-kerja", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          user_id: addUserId,
+          hari_kerja: addHari,
+          waktu_mulai: addMulai,
+          waktu_selesai: addSelesai,
+          aktif: true,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || "Gagal menambah jam kerja");
+      }
+
+      setOpenAdd(false);
+      setAddUserId("");
+      setAddHari(["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]);
+      setAddMulai("09:00");
+      setAddSelesai("18:00");
+
+      await load();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Gagal menambah jam kerja");
+    } finally {
+      setAdding(false);
+    }
   };
 
   return (
@@ -162,23 +226,38 @@ export default function ManajemenJamKerjaPage() {
               </div>
             </div>
 
-            {/* Filter button + department select */}
+            {/* Filter + tambah + departemen */}
             <div className="flex items-center gap-3">
               <Button variant="outline" className="rounded-xl gap-2">
                 <SlidersHorizontal className="h-4 w-4" />
                 Filter
               </Button>
 
-              <Select value={departmentFilter} onValueChange={(v) => { setDepartmentFilter(v); setPage(1); }}>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl gap-2"
+                onClick={() => router.push("/dashboard/manager-hr/jam-kerja/tambah-jam-kerja")}
+              >
+                <Plus className="h-4 w-4" />
+                Tambah
+              </Button>
+
+              <Select
+                value={departmentFilter}
+                onValueChange={(v) => {
+                  setDepartmentFilter(v);
+                  setPage(1);
+                }}
+              >
                 <SelectTrigger className="rounded-xl w-[200px]">
                   <SelectValue placeholder="Semua Departemen" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Departemen</SelectItem>
-                  <SelectItem value="Teknologi Informasi">Teknologi Informasi</SelectItem>
-                  <SelectItem value="Sumber Daya Manusia">Sumber Daya Manusia</SelectItem>
-                  <SelectItem value="Pemasaran">Pemasaran</SelectItem>
-                  <SelectItem value="Keuangan">Keuangan</SelectItem>
+                  {departmentOptions.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {d}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -289,7 +368,9 @@ export default function ManajemenJamKerjaPage() {
 
           {/* Footer + pagination */}
           <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-            <div>Menampilkan {from}-{to} dari {totalItems} karyawan</div>
+            <div>
+              Menampilkan {from}-{to} dari {totalItems} karyawan
+            </div>
 
             <div className="flex items-center gap-2">
               <button
@@ -328,6 +409,8 @@ export default function ManajemenJamKerjaPage() {
           </div>
         </CardContent>
       </Card>
+
+      
     </div>
   );
 }

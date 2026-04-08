@@ -21,6 +21,7 @@ func SetupRoutes(
 	geofenceHandler *handler.GeofenceHandler,
 	pengajuanIzinCutiHandler *handler.PengajuanIzinCutiHandler,
 	pengajuanHandler *handler.PengajuanHandler,
+	jamKerjaHandler *handler.JamKerjaHandler,
 ) {
 	// CORS Middleware
 	router.Use(func(c *gin.Context) {
@@ -118,6 +119,16 @@ func SetupRoutes(
 				employees.DELETE("/:id", userHandler.DeleteEmployee)
 			}
 
+			// ==================== JAM KERJA ====================
+			jamKerja := protected.Group("/jam-kerja")
+			{
+			jamKerja.GET("", jamKerjaHandler.GetAllJamKerja)
+			jamKerja.GET("/user/:userId", jamKerjaHandler.GetJamKerjaByUserID)
+			jamKerja.POST("", middleware.ManagerHROnly(), jamKerjaHandler.CreateJamKerja)
+			jamKerja.PUT("/user/:userId", middleware.ManagerHROnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
+			jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
+			}
+
 			// ==================== GEOFENCING ====================
 			geofences := protected.Group("/geofences")
 			{
@@ -142,13 +153,7 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
 
-			// ==================== WORK SCHEDULES (Manager Departemen Only) ====================
-			workSchedules := protected.Group("/work-schedules")
-			workSchedules.Use(middleware.ManagerDepartmentOnly()) // jika belum ada, sementara gunakan middleware.ManagerOnly()
-			{
-				workSchedules.GET("", workScheduleHandler.ListForManagerDepartment)
-				workSchedules.PUT("/:userId", workScheduleHandler.UpsertForManagerDepartment)
-			}
+
 		}
 	}
 }

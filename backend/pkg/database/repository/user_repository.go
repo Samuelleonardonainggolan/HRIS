@@ -5,11 +5,13 @@ import (
 	"context"
 	"errors"
 	"time"
+	"strings"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type UserRepository interface {
@@ -23,6 +25,8 @@ type UserRepository interface {
 	Update(ctx context.Context, id string, user *models.UpdateUserRequest) error
 	UpdatePassword(ctx context.Context, id string, hashedPassword string) error
 	Delete(ctx context.Context, id string) error
+	// pkg/database/repository/user_repository.go (interface)
+FindActiveExcludeIDsWithSearch(ctx context.Context, exclude []primitive.ObjectID, q string) ([]models.User, error)
 }
 
 type userRepository struct {
@@ -269,4 +273,39 @@ func (r *userRepository) Delete(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (r *userRepository) FindActiveExcludeIDsWithSearch(
+	ctx context.Context,
+	exclude []primitive.ObjectID,
+	q string,
+) ([]models.User, error) {
+	filter := bson.M{"is_active": true}
+
+	if len(exclude) > 0 {
+		filter["_id"] = bson.M{"$nin": exclude}
+	}
+
+	if strings.TrimSpace(q) != "" {
+		qq := strings.TrimSpace(q)
+		// search sederhana (case-insensitive) di full_name / payroll_number
+		filter["$or"] = []bson.M{
+			{"full_name": bson.M{"$regex": qq, "$options": "i"}},
+			{"payroll_number": bson.M{"$regex": qq, "$options": "i"}},
+			{"department_name": bson.M{"$regex": qq, "$options": "i"}},
+		}
+	}
+
+	opts := options.Find().SetSort(bson.D{{Key: "full_name", Value: 1}}).SetLimit(20)
+	cur, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+
+	var users []models.User
+	if err := cur.All(ctx, &users); err != nil {
+		return nil, err
+	}
+	return users, nil
 }
