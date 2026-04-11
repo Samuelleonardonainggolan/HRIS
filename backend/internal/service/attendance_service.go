@@ -109,15 +109,15 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	}
 
 	// ✅ Format waktu dari time.Time ke string "HH:mm"
-	waktuMulaiStr := jamKerja.WaktuMulai.Format("15:04")
-	waktuSelesaiStr := jamKerja.WaktuSelesai.Format("15:04")
+	waktuMulaiStr := jamKerja.StartTime.Format("15:04")
+	waktuSelesaiStr := jamKerja.EndTime.Format("15:04")
 
 	info := &WorkScheduleInfo{
 		UserID:       userID,
-		HariKerja:    jamKerja.HariKerja,
+		HariKerja:    jamKerja.DayOfWeek,
 		WaktuMulai:   waktuMulaiStr,
 		WaktuSelesai: waktuSelesaiStr,
-		Aktif:        jamKerja.Aktif,
+		Aktif:        jamKerja.IsActive,
 	}
 
 	// Ambil info hari ini
@@ -125,15 +125,15 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	dayName := s.getDayName(nowWIB.Weekday())
 
 	isWorkDay := false
-	for _, day := range jamKerja.HariKerja {
+	for _, day := range jamKerja.DayOfWeek {
 		if day == dayName {
 			isWorkDay = true
 			break
 		}
 	}
 
-	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
-	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 	clockInWindowClose := startTimeToday
 
@@ -180,7 +180,7 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
 
-	if !jamKerja.Aktif {
+	if !jamKerja.IsActive {
 		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
 	}
 
@@ -188,7 +188,7 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 	dayName := s.getDayName(nowWIB.Weekday())
 
 	isWorkDay := false
-	for _, day := range jamKerja.HariKerja {
+	for _, day := range jamKerja.DayOfWeek {
 		if day == dayName {
 			isWorkDay = true
 			break
@@ -199,8 +199,8 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 		return false, jamKerja, errors.New("hari ini bukan hari kerja")
 	}
 
-	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
-	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 
 	isInWindow := !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(endTimeToday)
@@ -225,7 +225,7 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
 
-	if !jamKerja.Aktif {
+	if !jamKerja.IsActive {
 		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
 	}
 
@@ -233,7 +233,7 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 	dayName := s.getDayName(nowWIB.Weekday())
 
 	isWorkDay := false
-	for _, day := range jamKerja.HariKerja {
+	for _, day := range jamKerja.DayOfWeek {
 		if day == dayName {
 			isWorkDay = true
 			break
@@ -244,7 +244,7 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 		return false, jamKerja, errors.New("hari ini bukan hari kerja")
 	}
 
-	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
 
 	isInWindow := !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
@@ -272,9 +272,9 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 
 	if !isInWindow {
 		nowWIB := time.Now().In(wib)
-		startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
+		startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 		windowOpen := startTimeToday.Add(-15 * time.Minute)
-		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 
 		message := ""
 		if nowWIB.Before(windowOpen) {
@@ -293,7 +293,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	}
 
 	// Tentukan status berdasarkan waktu saat submit dengan toleransi keterlambatan 1 menit.
-	startTimeToday := s.extractTimeForToday(now, jamKerja.WaktuMulai)
+	startTimeToday := s.extractTimeForToday(now, jamKerja.StartTime)
 	lateThreshold := startTimeToday.Add(1 * time.Minute)
 
 	status := models.StatusOnTime
@@ -344,30 +344,30 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	}
 
 	// ✅ Format waktu dari time.Time ke string "HH:mm"
-	waktuMulaiStr := jamKerja.WaktuMulai.Format("15:04")
-	waktuSelesaiStr := jamKerja.WaktuSelesai.Format("15:04")
+	waktuMulaiStr := jamKerja.StartTime.Format("15:04")
+	waktuSelesaiStr := jamKerja.EndTime.Format("15:04")
 
 	info := &ScheduleInfoResponse{
 		UserID:       userID,
-		HariKerja:    jamKerja.HariKerja,
+		HariKerja:    jamKerja.DayOfWeek,
 		WaktuMulai:   waktuMulaiStr,
 		WaktuSelesai: waktuSelesaiStr,
-		Aktif:        jamKerja.Aktif,
+		Aktif:        jamKerja.IsActive,
 	}
 
 	nowWIB := time.Now().In(wib)
 	dayName := s.getDayName(nowWIB.Weekday())
 
 	isWorkDay := false
-	for _, day := range jamKerja.HariKerja {
+	for _, day := range jamKerja.DayOfWeek {
 		if day == dayName {
 			isWorkDay = true
 			break
 		}
 	}
 
-	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuMulai)
-	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
+	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 
 	// ✅ Clock out window: dari waktu_selesai hingga +30 menit
@@ -419,7 +419,7 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 
 	if !isInWindow {
 		nowWIB := time.Now().In(wib)
-		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.WaktuSelesai)
+		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 		clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
 
 		message := ""
@@ -669,10 +669,10 @@ func (s *attendanceService) getDefaultJamKerja(userID primitive.ObjectID) *model
 	return &models.JamKerja{
 		ID:           primitive.NewObjectID(),
 		UserID:       userID,
-		HariKerja:    []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"},
-		WaktuMulai:   waktuMulai,
-		WaktuSelesai: waktuSelesai,
-		Aktif:        true,
+		DayOfWeek:    []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"},
+		StartTime:   waktuMulai,
+		EndTime:     waktuSelesai,
+		IsActive:     true,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

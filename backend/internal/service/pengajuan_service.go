@@ -13,7 +13,7 @@ import (
 
 // PengajuanService interface mendefinisikan semua operasi pengajuan.
 type PengajuanService interface {
-	GetAllTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error)
+	GetAllTipePengajuan(ctx context.Context) ([]models.RequestTypeResponse, error)
 	CreatePengajuan(ctx context.Context, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
 	GetPengajuanByUser(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error)
 }
@@ -32,12 +32,12 @@ type CreatePengajuanRequest struct {
 // pengajuanService adalah implementasi konkret dari PengajuanService.
 type pengajuanService struct {
 	tipePengajuanCol interface {
-		FindAll(ctx context.Context) ([]models.TipePengajuan, error)
+		FindAll(ctx context.Context) ([]models.RequestType, error)
 	}
 	pengajuanCol interface {
-		Create(ctx context.Context, p *models.PengajuanIzinCuti) error
-		FindByUserID(ctx context.Context, userID primitive.ObjectID) ([]models.PengajuanIzinCuti, error)
-		FindTipeByID(ctx context.Context, id primitive.ObjectID) (*models.TipePengajuan, error)
+		Create(ctx context.Context, p *models.LeaveRequest) error
+		FindByUserID(ctx context.Context, userID primitive.ObjectID) ([]models.LeaveRequest, error)
+		FindTipeByID(ctx context.Context, id primitive.ObjectID) (*models.RequestType, error)
 	}
 	db *mongo.Database
 }
@@ -55,8 +55,8 @@ type pengajuanServiceImpl struct {
 	db *mongo.Database
 }
 
-func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]models.TipePengajuanResponse, error) {
-	col := s.db.Collection("tipe_pengajuan")
+func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]models.RequestTypeResponse, error) {
+	col := s.db.Collection("request_type")
 
 	cursor, err := col.Find(ctx, map[string]interface{}{})
 	if err != nil {
@@ -64,12 +64,12 @@ func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]model
 	}
 	defer cursor.Close(ctx)
 
-	var tipes []models.TipePengajuan
+	var tipes []models.RequestType
 	if err = cursor.All(ctx, &tipes); err != nil {
 		return nil, err
 	}
 
-	result := make([]models.TipePengajuanResponse, 0, len(tipes))
+	result := make([]models.RequestTypeResponse, 0, len(tipes))
 	for _, t := range tipes {
 		result = append(result, t.ToResponse())
 	}
@@ -90,8 +90,8 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	}
 
 	// Ambil detail tipe pengajuan
-	var tipe models.TipePengajuan
-	err = s.db.Collection("tipe_pengajuan").FindOne(ctx, map[string]interface{}{"_id": tipeObjID}).Decode(&tipe)
+	var tipe models.RequestType
+	err = s.db.Collection("request_type").FindOne(ctx, map[string]interface{}{"_id": tipeObjID}).Decode(&tipe)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("tipe pengajuan tidak ditemukan")
@@ -126,21 +126,21 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	}
 
 	now := time.Now()
-	pengajuan := &models.PengajuanIzinCuti{
+	pengajuan := &models.LeaveRequest{
 		ID:                     primitive.NewObjectID(),
 		UserID:                 userObjID,
-		TipePengajuanID:        tipeObjID,
-		NamaTipe:               tipe.NamaTipe,
-		TanggalMulai:           tanggalMulai,
-		TanggalSelesai:         tanggalSelesai,
-		TotalHari:              req.TotalHari,
-		Alasan:                 req.Alasan,
-		DokumenURL:             req.DokumenURL,
+		RequestTypeID:        	tipeObjID,
+		TypeName:               tipe.TypeName,
+		StartDate:           	tanggalMulai,
+		EndDate:         		tanggalSelesai,
+		DaysTotal:              req.TotalHari,
+		Reason:                 req.Alasan,
+		DocumentURL:            req.DokumenURL,
 		StatusKepalaDepartemen: models.StatusPending,
 		KepalaDepartemenID:     approver.ID,
 		ManagerHRID:            approver.ID,
 		StatusManagerHR:        models.StatusPending,
-		StatusFinal:            models.StatusPending,
+		FinalStatus:            models.StatusPending,
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}
@@ -166,7 +166,7 @@ func (s *pengajuanServiceImpl) GetPengajuanByUser(ctx context.Context, userID st
 	}
 	defer cursor.Close(ctx)
 
-	var list []models.PengajuanIzinCuti
+	var list []models.LeaveRequest
 	if err = cursor.All(ctx, &list); err != nil {
 		return nil, err
 	}

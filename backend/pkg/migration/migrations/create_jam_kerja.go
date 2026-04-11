@@ -13,12 +13,12 @@ import (
 
 func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
 	version := 7
-	name := "create_jam_kerja"
-	description := "Create jam_kerja collection, indexes, and seed unique per user"
+	name := "create_working_hours"
+	description := "Create working_hours collection, indexes, and seed unique per user"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
-		collection := db.Collection("jam_kerja")
+		collection := db.Collection("working_hours") // ✅ renamed
 
 		// =========================
 		// 1) INDEXES
@@ -31,14 +31,14 @@ func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*m
 		}
 
 		idxActive := mongo.IndexModel{
-			Keys:    bson.D{{Key: "aktif", Value: 1}},
-			Options: options.Index().SetName("idx_aktif"),
+			Keys:    bson.D{{Key: "is_active", Value: 1}}, // ✅ renamed
+			Options: options.Index().SetName("idx_is_active"),
 		}
 
 		// optional untuk filter by hari kerja
 		idxHari := mongo.IndexModel{
-			Keys:    bson.D{{Key: "hari_kerja", Value: 1}},
-			Options: options.Index().SetName("idx_hari_kerja"),
+			Keys:    bson.D{{Key: "day_of_week", Value: 1}}, // ✅ renamed
+			Options: options.Index().SetName("idx_day_of_week"),
 		}
 
 		_, err := collection.Indexes().CreateMany(ctx, []mongo.IndexModel{
@@ -71,19 +71,13 @@ func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*m
 
 		now := time.Now()
 
-		// default: Senin-Jumat, 09:00-18:00 (tanpa tanggal spesifik)
+		// default: Senin-Jumat, 09:00-18:00
 		defaultHari := []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"}
 
-		// pakai tanggal "hari ini" untuk menyimpan jam, karena type date butuh full datetime
-		// nanti saat dipakai cukup ambil HH:mm
-		y, m, d := now.Date()
-		loc := now.Location()
-		if loc == nil {
-			loc = time.Local
-		}
-
-		defaultMulai := time.Date(y, m, d, 9, 0, 0, 0, loc)
-		defaultSelesai := time.Date(y, m, d, 18, 0, 0, 0, loc)
+		// simpan jam sebagai datetime (UTC) untuk konsistensi (ambil HH:mm saat response)
+		y, m, d := now.UTC().Date()
+		defaultMulai := time.Date(y, m, d, 9, 0, 0, 0, time.UTC)
+		defaultSelesai := time.Date(y, m, d, 18, 0, 0, 0, time.UTC)
 
 		var writes []mongo.WriteModel
 
@@ -97,13 +91,13 @@ func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*m
 
 			update := bson.M{
 				"$setOnInsert": bson.M{
-					"user_id":       u.ID,
-					"hari_kerja":    defaultHari,
-					"waktu_mulai":   defaultMulai,
-					"waktu_selesai": defaultSelesai,
-					"aktif":         true,
-					"created_at":    now,
-					"updated_at":    now,
+					"user_id":     u.ID,
+					"day_of_week": defaultHari,   // ✅ renamed
+					"start_time":  defaultMulai,  // ✅ renamed
+					"end_time":    defaultSelesai, // ✅ renamed
+					"is_active":   true,          // ✅ renamed
+					"created_at":  now,
+					"updated_at":  now,
 				},
 			}
 
@@ -132,7 +126,7 @@ func CreateJamKerja() (int, string, string, func(*mongo.Database) error, func(*m
 
 	down := func(db *mongo.Database) error {
 		ctx := context.Background()
-		return db.Collection("jam_kerja").Drop(ctx)
+		return db.Collection("working_hours").Drop(ctx) // ✅ renamed
 	}
 
 	return version, name, description, up, down

@@ -11,27 +11,27 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type KategoriPengajuan struct {
+type RequestCategory struct {
 	ID           primitive.ObjectID `bson:"_id,omitempty"`
-	NamaKategori string             `bson:"nama_kategori"`
+	CategoryName string             `bson:"category_name"`
 }
 
 func CreateKategoriPengajuan() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
 	version := 8
-	name := "create_kategori_pengajuan"
-	description := "Create kategori_pengajuan collection and seed initial categories"
+	name := "create_request_category"
+	description := "Create request_category collection and seed initial categories"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
-		collection := db.Collection("kategori_pengajuan")
+		collection := db.Collection("request_category") // ✅ renamed collection
 
 		// Create indexes
 		indexModels := []mongo.IndexModel{
 			{
-				Keys: bson.D{{Key: "nama_kategori", Value: 1}},
+				Keys: bson.D{{Key: "category_name", Value: 1}}, // ✅ renamed field
 				Options: options.Index().
 					SetUnique(true).
-					SetName("uniq_nama_kategori"),
+					SetName("uniq_category_name"),
 			},
 		}
 
@@ -40,24 +40,21 @@ func CreateKategoriPengajuan() (int, string, string, func(*mongo.Database) error
 			return fmt.Errorf("failed to create indexes: %w", err)
 		}
 
-		// Seed categories (sesuaikan dengan kebutuhan Anda)
+		// Seed categories
 		categories := []interface{}{
-			KategoriPengajuan{
+			RequestCategory{
 				ID:           primitive.NewObjectID(),
-				NamaKategori: "Izin",
+				CategoryName: "Izin",
 			},
-			KategoriPengajuan{
+			RequestCategory{
 				ID:           primitive.NewObjectID(),
-				NamaKategori: "Cuti",
+				CategoryName: "Cuti",
 			},
 		}
 
-		// InsertMany bisa gagal kalau migration dijalankan ulang.
-		// Namun migration manager Anda biasanya track applied version,
-		// jadi ini aman selama version unik.
 		_, err = collection.InsertMany(ctx, categories)
 		if err != nil {
-			return fmt.Errorf("failed to insert kategori_pengajuan seed: %w", err)
+			return fmt.Errorf("failed to insert request_category seed: %w", err)
 		}
 
 		return nil
@@ -65,7 +62,7 @@ func CreateKategoriPengajuan() (int, string, string, func(*mongo.Database) error
 
 	down := func(db *mongo.Database) error {
 		ctx := context.Background()
-		return db.Collection("kategori_pengajuan").Drop(ctx)
+		return db.Collection("request_category").Drop(ctx) // ✅ renamed
 	}
 
 	return version, name, description, up, down

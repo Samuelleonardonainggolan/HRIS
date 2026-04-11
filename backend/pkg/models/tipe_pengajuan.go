@@ -3,51 +3,51 @@ package models
 
 import "go.mongodb.org/mongo-driver/bson/primitive"
 
-// TipePengajuan represents tipe pengajuan (mis: Cuti Tahunan, Izin Sakit)
-type TipePengajuan struct {
-	ID                  primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	NamaTipe            string             `json:"nama_tipe" bson:"nama_tipe"`
-	KategoriPengajuanID string             `json:"kategori_pengajuan_id" bson:"kategori_pengajuan_id"`
-	NamaKategori        string             `json:"nama_kategori" bson:"nama_kategori"`
-	PotongKuota         bool               `json:"potong_kuota" bson:"potong_kuota"`
-	WajibLampiran       bool               `json:"wajib_lampiran" bson:"wajib_lampiran"`
+// RequestType represents request type (mis: Cuti Tahunan, Izin Sakit)
+type RequestType struct {
+	ID                primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	TypeName          string             `json:"type_name" bson:"type_name"`
+	RequestCategoryID string             `json:"request_category_id" bson:"request_category_id"`
+	CategoryName      string             `json:"category_name" bson:"category_name"`
+	QuotaDeduction    bool               `json:"quota_deduction" bson:"quota_deduction"`
+	AttachmentRequired bool              `json:"attachment_required" bson:"attachment_required"`
 }
 
-// CreateTipePengajuanRequest represents request to create tipe pengajuan
-type CreateTipePengajuanRequest struct {
-	NamaTipe            string `json:"nama_tipe" binding:"required"`
-	KategoriPengajuanID string `json:"kategori_pengajuan_id" binding:"required"`
-	PotongKuota         bool   `json:"potong_kuota"`
-	WajibLampiran       bool   `json:"wajib_lampiran"`
+// CreateRequestTypeRequest represents request to create request type
+type CreateRequestTypeRequest struct {
+	TypeName          string `json:"type_name" binding:"required"`
+	RequestCategoryID string `json:"request_category_id" binding:"required"`
+	QuotaDeduction    bool   `json:"quota_deduction"`
+	AttachmentRequired bool  `json:"attachment_required"`
 }
 
-// UpdateTipePengajuanRequest represents request to update tipe pengajuan
-type UpdateTipePengajuanRequest struct {
-	NamaTipe            string `json:"nama_tipe,omitempty"`
-	KategoriPengajuanID string `json:"kategori_pengajuan_id,omitempty"`
-	NamaKategori        string `json:"nama_kategori,omitempty"`
-	PotongKuota         *bool  `json:"potong_kuota,omitempty"`
-	WajibLampiran       *bool  `json:"wajib_lampiran,omitempty"`
+// UpdateRequestTypeRequest represents request to update request type
+type UpdateRequestTypeRequest struct {
+	TypeName          string `json:"type_name,omitempty"`
+	RequestCategoryID string `json:"request_category_id,omitempty"`
+	CategoryName      string `json:"category_name,omitempty"`
+	QuotaDeduction    *bool  `json:"quota_deduction,omitempty"`
+	AttachmentRequired *bool `json:"attachment_required,omitempty"`
 }
 
-// TipePengajuanResponse represents response for tipe pengajuan
-type TipePengajuanResponse struct {
-	ID                  string `json:"id"`
-	NamaTipe            string `json:"nama_tipe"`
-	KategoriPengajuanID string `json:"kategori_pengajuan_id"`
-	NamaKategori        string `json:"nama_kategori"`
-	PotongKuota         bool   `json:"potong_kuota"`
-	WajibLampiran       bool   `json:"wajib_lampiran"`
+// RequestTypeResponse represents response for request type
+type RequestTypeResponse struct {
+	ID                string `json:"id"`
+	TypeName          string `json:"type_name"`
+	RequestCategoryID string `json:"request_category_id"`
+	CategoryName      string `json:"category_name"`
+	QuotaDeduction    bool   `json:"quota_deduction"`
+	AttachmentRequired bool  `json:"attachment_required"`
 }
 
-// ToResponse converts TipePengajuan to response
-func (t *TipePengajuan) ToResponse() TipePengajuanResponse {
-	return TipePengajuanResponse{
-		ID:                  t.ID.Hex(),
-		NamaTipe:            t.NamaTipe,
-		KategoriPengajuanID: t.KategoriPengajuanID,
-		NamaKategori:        t.NamaKategori,
-		PotongKuota:         t.PotongKuota,
-		WajibLampiran:       t.WajibLampiran,
+// ToResponse converts RequestType to response
+func (t *RequestType) ToResponse() RequestTypeResponse {
+	return RequestTypeResponse{
+		ID:                 t.ID.Hex(),
+		TypeName:           t.TypeName,
+		RequestCategoryID:  t.RequestCategoryID,
+		CategoryName:       t.CategoryName,
+		QuotaDeduction:     t.QuotaDeduction,
+		AttachmentRequired: t.AttachmentRequired,
 	}
 }

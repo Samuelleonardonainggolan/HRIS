@@ -3,32 +3,33 @@ package models
 
 import "go.mongodb.org/mongo-driver/bson/primitive"
 
-// KategoriPengajuan represents kategori pengajuan (mis: Izin, Cuti)
-type KategoriPengajuan struct {
+// RequestCategory represents request category (mis: Izin, Cuti)
+// (sebelumnya: KategoriPengajuan)
+type RequestCategory struct {
 	ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	NamaKategori string             `json:"nama_kategori" bson:"nama_kategori"`
+	CategoryName string             `json:"category_name" bson:"category_name"`
 }
 
-// CreateKategoriPengajuanRequest represents request to create kategori pengajuan
-type CreateKategoriPengajuanRequest struct {
-	NamaKategori string `json:"nama_kategori" binding:"required"`
+// CreateRequestCategoryRequest represents request to create request category
+type CreateRequestCategoryRequest struct {
+	CategoryName string `json:"category_name" binding:"required"`
 }
 
-// UpdateKategoriPengajuanRequest represents request to update kategori pengajuan
-type UpdateKategoriPengajuanRequest struct {
-	NamaKategori string `json:"nama_kategori,omitempty"`
+// UpdateRequestCategoryRequest represents request to update request category
+type UpdateRequestCategoryRequest struct {
+	CategoryName string `json:"category_name,omitempty"`
 }
 
-// KategoriPengajuanResponse represents response for kategori pengajuan
-type KategoriPengajuanResponse struct {
+// RequestCategoryResponse represents response for request category
+type RequestCategoryResponse struct {
 	ID           string `json:"id"`
-	NamaKategori string `json:"nama_kategori"`
+	CategoryName string `json:"category_name"`
 }
 
-// ToResponse converts KategoriPengajuan to KategoriPengajuanResponse
-func (k *KategoriPengajuan) ToResponse() KategoriPengajuanResponse {
-	return KategoriPengajuanResponse{
+// ToResponse converts RequestCategory to RequestCategoryResponse
+func (k *RequestCategory) ToResponse() RequestCategoryResponse {
+	return RequestCategoryResponse{
 		ID:           k.ID.Hex(),
-		NamaKategori: k.NamaKategori,
+		CategoryName: k.CategoryName,
 	}
 }

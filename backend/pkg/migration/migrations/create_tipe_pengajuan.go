@@ -14,35 +14,35 @@ import (
 
 func CreateTipePengajuan() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
 	version := 9
-	name := "create_tipe_pengajuan"
-	description := "Create tipe_pengajuan collection and seed initial types"
+	name := "create_request_type"
+	description := "Create request_type collection and seed initial request types"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
-		collection := db.Collection("tipe_pengajuan")
+		collection := db.Collection("request_type") // ✅ renamed (sesuai gambar)
 
 		// Create indexes
 		indexModels := []mongo.IndexModel{
 			{
-				Keys: bson.D{{Key: "nama_tipe", Value: 1}},
+				Keys: bson.D{{Key: "type_name", Value: 1}}, // ✅ renamed
 				Options: options.Index().
 					SetUnique(true).
-					SetName("uniq_nama_tipe"),
+					SetName("uniq_type_name"),
 			},
 			{
-				Keys: bson.D{{Key: "kategori_pengajuan_id", Value: 1}},
+				Keys: bson.D{{Key: "request_category_id", Value: 1}}, // ✅ renamed
 				Options: options.Index().
-					SetName("idx_kategori_pengajuan_id"),
+					SetName("idx_request_category_id"),
 			},
 			{
-				Keys: bson.D{{Key: "potong_kuota", Value: 1}},
+				Keys: bson.D{{Key: "quota_deduction", Value: 1}}, // ✅ renamed
 				Options: options.Index().
-					SetName("idx_potong_kuota"),
+					SetName("idx_quota_deduction"),
 			},
 			{
-				Keys: bson.D{{Key: "wajib_lampiran", Value: 1}},
+				Keys: bson.D{{Key: "attachment_required", Value: 1}}, // ✅ renamed
 				Options: options.Index().
-					SetName("idx_wajib_lampiran"),
+					SetName("idx_attachment_required"),
 			},
 		}
 
@@ -51,85 +51,87 @@ func CreateTipePengajuan() (int, string, string, func(*mongo.Database) error, fu
 			return fmt.Errorf("failed to create indexes: %w", err)
 		}
 
-		// Fetch kategori_pengajuan: "Izin" dan "Cuti"
-		var izin models.KategoriPengajuan
-		err = db.Collection("kategori_pengajuan").FindOne(ctx, bson.M{"nama_kategori": "Izin"}).Decode(&izin)
+		// Fetch request_category: "Izin" dan "Cuti"
+		var izin models.RequestCategory
+		err = db.Collection("request_category"). // ✅ renamed collection
+							FindOne(ctx, bson.M{"category_name": "Izin"}).Decode(&izin)
 		if err != nil {
-			return fmt.Errorf("kategori_pengajuan 'Izin' not found. Make sure migration kategori_pengajuan ran: %w", err)
+			return fmt.Errorf("request_category 'Izin' not found. Make sure migration request_category ran: %w", err)
 		}
 
-		var cuti models.KategoriPengajuan
-		err = db.Collection("kategori_pengajuan").FindOne(ctx, bson.M{"nama_kategori": "Cuti"}).Decode(&cuti)
+		var cuti models.RequestCategory
+		err = db.Collection("request_category"). // ✅ renamed collection
+							FindOne(ctx, bson.M{"category_name": "Cuti"}).Decode(&cuti)
 		if err != nil {
-			return fmt.Errorf("kategori_pengajuan 'Cuti' not found. Make sure migration kategori_pengajuan ran: %w", err)
+			return fmt.Errorf("request_category 'Cuti' not found. Make sure migration request_category ran: %w", err)
 		}
 
-		// Seed tipe_pengajuan
+		// Seed request_type
 		types := []interface{}{
 			// IZIN
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Sakit",
-				KategoriPengajuanID: izin.ID.Hex(),
-				NamaKategori:        izin.NamaKategori,
-				PotongKuota:         false,
-				WajibLampiran:       true, // surat dokter (umumnya)
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Izin Sakit",
+				RequestCategoryID: izin.ID.Hex(),
+				CategoryName:      izin.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:true,
 			},
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Menikah",
-				KategoriPengajuanID: izin.ID.Hex(),
-				NamaKategori:        izin.NamaKategori,
-				PotongKuota:         false,
-				WajibLampiran:       false,
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Izin Menikah",
+				RequestCategoryID: izin.ID.Hex(),
+				CategoryName:      izin.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:false,
 			},
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Baptisan / Akikah",
-				KategoriPengajuanID: izin.ID.Hex(),
-				NamaKategori:        izin.NamaKategori,
-				PotongKuota:         false,
-				WajibLampiran:       false,
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Izin Baptisan / Akikah",
+				RequestCategoryID: izin.ID.Hex(),
+				CategoryName:      izin.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:false,
 			},
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Anak Manikah",
-				KategoriPengajuanID: izin.ID.Hex(),
-				NamaKategori:        izin.NamaKategori,
-				PotongKuota:         false,
-				WajibLampiran:       false,
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Izin Anak Manikah",
+				RequestCategoryID: izin.ID.Hex(),
+				CategoryName:      izin.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:false,
 			},
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Izin Dukacita Keluarga Kandung",
-				KategoriPengajuanID: izin.ID.Hex(),
-				NamaKategori:        izin.NamaKategori,
-				PotongKuota:         false,
-				WajibLampiran:       false,
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Izin Dukacita Keluarga Kandung",
+				RequestCategoryID: izin.ID.Hex(),
+				CategoryName:      izin.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:false,
 			},
 
 			// CUTI
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Cuti Tahunan",
-				KategoriPengajuanID: cuti.ID.Hex(),
-				NamaKategori:        cuti.NamaKategori,
-				PotongKuota:         true,
-				WajibLampiran:       false, // sesuai kebutuhan Anda: cuti bisa tanpa lampiran
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Cuti Tahunan",
+				RequestCategoryID: cuti.ID.Hex(),
+				CategoryName:      cuti.CategoryName,
+				QuotaDeduction:    true,
+				AttachmentRequired:false,
 			},
-			models.TipePengajuan{
-				ID:                  primitive.NewObjectID(),
-				NamaTipe:            "Cuti Khusus",
-				KategoriPengajuanID: cuti.ID.Hex(),
-				NamaKategori:        cuti.NamaKategori,
-				PotongKuota:         false, // bisa true/false tergantung rule
-				WajibLampiran:       true,  // contoh: cuti nikah/duka biasanya perlu dokumen
+			models.RequestType{
+				ID:                primitive.NewObjectID(),
+				TypeName:          "Cuti Khusus",
+				RequestCategoryID: cuti.ID.Hex(),
+				CategoryName:      cuti.CategoryName,
+				QuotaDeduction:    false,
+				AttachmentRequired:true,
 			},
 		}
 
 		_, err = collection.InsertMany(ctx, types)
 		if err != nil {
-			return fmt.Errorf("failed to insert tipe_pengajuan seed: %w", err)
+			return fmt.Errorf("failed to insert request_type seed: %w", err)
 		}
 
 		return nil
@@ -137,7 +139,7 @@ func CreateTipePengajuan() (int, string, string, func(*mongo.Database) error, fu
 
 	down := func(db *mongo.Database) error {
 		ctx := context.Background()
-		return db.Collection("tipe_pengajuan").Drop(ctx)
+		return db.Collection("request_type").Drop(ctx) // ✅ renamed
 	}
 
 	return version, name, description, up, down

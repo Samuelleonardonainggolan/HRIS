@@ -8,14 +8,17 @@ import (
 )
 
 type JamKerja struct {
-	ID           primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	UserID       primitive.ObjectID `json:"user_id" bson:"user_id"`
-	HariKerja    []string           `json:"hari_kerja" bson:"hari_kerja"` // ["Senin",...]
-	WaktuMulai   time.Time          `json:"waktu_mulai" bson:"waktu_mulai"`
-	WaktuSelesai time.Time          `json:"waktu_selesai" bson:"waktu_selesai"`
-	Aktif        bool               `json:"aktif" bson:"aktif"`
-	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
+	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID    primitive.ObjectID `json:"user_id" bson:"user_id"`
+
+	// ✅ renamed fields (db)
+	DayOfWeek []string  `json:"day_of_week" bson:"day_of_week"` // ["Senin",...]
+	StartTime time.Time `json:"start_time" bson:"start_time"`
+	EndTime   time.Time `json:"end_time" bson:"end_time"`
+	IsActive  bool      `json:"is_active" bson:"is_active"`
+
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 type JamKerjaListRowResponse struct {
@@ -24,37 +27,37 @@ type JamKerjaListRowResponse struct {
 	NIK        string   `json:"nik"`
 	Department string   `json:"department"`
 	Position   string   `json:"position"`
-	HariKerja  []string `json:"hari_kerja"`
+	DayOfWeek []string  `json:"day_of_week"`
 	WorkDays   string   `json:"workDays"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
 	StartTime  string   `json:"startTime"` // "08:00"
 	EndTime    string   `json:"endTime"`   // "17:00"
 }
-
+	
 type JamKerjaDetailResponse struct {
 	UserID       string   `json:"user_id"`
 	Name         string   `json:"name"`
 	NIK          string   `json:"nik"`
 	Department   string   `json:"department"`
 	Position     string   `json:"position"`
-	HariKerja    []string `json:"hari_kerja"`
-	WaktuMulai   string   `json:"waktu_mulai"`   // "HH:mm"
-	WaktuSelesai string   `json:"waktu_selesai"` // "HH:mm"
-	Aktif        bool     `json:"aktif"`
+	DayOfWeek []string  `json:"day_of_week"`
+	StartTime  string   `json:"start_time"` // "08:00"
+	EndTime    string   `json:"end_time"`   // "17:00"
+	IsActive  bool      `json:"is_active"`
 }
 
 type UpdateJamKerjaRequest struct {
-	HariKerja    []string `json:"hari_kerja" binding:"required,min=1"`
-	WaktuMulai   string   `json:"waktu_mulai" binding:"required"`
-	WaktuSelesai string   `json:"waktu_selesai" binding:"required"`
-	Aktif        *bool    `json:"aktif,omitempty"`
+	DayOfWeek []string  `json:"day_of_week" binding:"required,min=1"`
+	StartTime  string   `json:"start_time" binding:"required"`
+	EndTime    string   `json:"end_time" binding:"required"`
+	IsActive  *bool    `json:"is_active,omitempty"`
 }
 
 type CreateJamKerjaRequest struct {
 	UserID       string   `json:"user_id" binding:"required"`
-	HariKerja    []string `json:"hari_kerja" binding:"required,min=1"`
-	WaktuMulai   string   `json:"waktu_mulai" binding:"required"`   // "HH:mm"
-	WaktuSelesai string   `json:"waktu_selesai" binding:"required"` // "HH:mm"
-	Aktif        *bool    `json:"aktif,omitempty"`
+	DayOfWeek []string  `json:"day_of_week" binding:"required,min=1"`
+	StartTime  string   `json:"start_time" binding:"required"`   // "HH:mm"
+	EndTime    string   `json:"end_time" binding:"required"` // "HH:mm"
+	IsActive  *bool    `json:"is_active,omitempty"`
 }
 
 type AvailableEmployeeResponse struct {

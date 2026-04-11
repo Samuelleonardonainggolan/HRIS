@@ -15,32 +15,32 @@ import (
 
 func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
 	version := 10
-	name := "create_pengajuan_izin_cuti"
-	description := "Create pengajuan_izin_cuti collection and seed sample requests"
+	name := "create_leave_request"
+	description := "Create leave_request collection and seed sample requests"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
-		collection := db.Collection("pengajuan_izin_cuti")
+		collection := db.Collection("leave_request") // ✅ renamed
 
 		// Indexes
 		indexModels := []mongo.IndexModel{
 			{Keys: bson.D{{Key: "user_id", Value: 1}}, Options: options.Index().SetName("idx_user_id")},
-			{Keys: bson.D{{Key: "tipe_pengajuan_id", Value: 1}}, Options: options.Index().SetName("idx_tipe_pengajuan_id")},
+			{Keys: bson.D{{Key: "request_type_id", Value: 1}}, Options: options.Index().SetName("idx_request_type_id")}, // ✅ renamed
 			{Keys: bson.D{{Key: "kepala_departemen_id", Value: 1}}, Options: options.Index().SetName("idx_kepala_departemen_id")},
 			{Keys: bson.D{{Key: "manager_hr_id", Value: 1}}, Options: options.Index().SetName("idx_manager_hr_id")},
 			{Keys: bson.D{{Key: "status_kepala_departemen", Value: 1}}, Options: options.Index().SetName("idx_status_kepala_departemen")},
 			{Keys: bson.D{{Key: "status_manager_hr", Value: 1}}, Options: options.Index().SetName("idx_status_manager_hr")},
-			{Keys: bson.D{{Key: "status_final", Value: 1}}, Options: options.Index().SetName("idx_status_final")},
-			{Keys: bson.D{{Key: "tanggal_mulai", Value: 1}}, Options: options.Index().SetName("idx_tanggal_mulai")},
-			{Keys: bson.D{{Key: "tanggal_selesai", Value: 1}}, Options: options.Index().SetName("idx_tanggal_selesai")},
+			{Keys: bson.D{{Key: "final_status", Value: 1}}, Options: options.Index().SetName("idx_final_status")}, // ✅ renamed
+			{Keys: bson.D{{Key: "start_date", Value: 1}}, Options: options.Index().SetName("idx_start_date")},       // ✅ renamed
+			{Keys: bson.D{{Key: "end_date", Value: 1}}, Options: options.Index().SetName("idx_end_date")},           // ✅ renamed
 
 			// Optional unique guard (prevent duplicated request on same range)
 			{
 				Keys: bson.D{
 					{Key: "user_id", Value: 1},
-					{Key: "tipe_pengajuan_id", Value: 1},
-					{Key: "tanggal_mulai", Value: 1},
-					{Key: "tanggal_selesai", Value: 1},
+					{Key: "request_type_id", Value: 1}, // ✅ renamed
+					{Key: "start_date", Value: 1},      // ✅ renamed
+					{Key: "end_date", Value: 1},        // ✅ renamed
 				},
 				Options: options.Index().
 					SetUnique(true).
@@ -56,7 +56,6 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 		// ================
 		// Seeder (optional)
 		// ================
-		// ambil 2 user untuk contoh
 		type userMin struct {
 			ID primitive.ObjectID `bson:"_id"`
 		}
@@ -70,7 +69,6 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 			return fmt.Errorf("failed to decode users for seed: %w", err)
 		}
 		if len(users) == 0 {
-			// no users => skip seed
 			return nil
 		}
 
@@ -80,14 +78,16 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 			approverID = users[1].ID
 		}
 
-		// ambil salah satu tipe_pengajuan untuk contoh
-		var tipe models.TipePengajuan
-		err = db.Collection("tipe_pengajuan").FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"nama_tipe": 1})).Decode(&tipe)
+		// ambil salah satu request_type untuk contoh
+		var tipe models.RequestType
+		err = db.Collection("request_type").
+			FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"type_name": 1})).
+			Decode(&tipe)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
-				return nil // tipe belum ada => skip seed
+				return nil
 			}
-			return fmt.Errorf("failed to get tipe_pengajuan for seed: %w", err)
+			return fmt.Errorf("failed to get request_type for seed: %w", err)
 		}
 
 		now := time.Now()
@@ -95,22 +95,22 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 		end := time.Date(now.Year(), now.Month(), now.Day(), 17, 0, 0, 0, now.Location())
 
 		seed := []interface{}{
-			models.PengajuanIzinCuti{
+			models.LeaveRequest{
 				ID:                     primitive.NewObjectID(),
 				UserID:                 requesterID,
-				TipePengajuanID:        tipe.ID,
-				NamaTipe:               tipe.NamaTipe,
-				TanggalMulai:           start,
-				TanggalSelesai:         end,
-				TotalHari:              3,
-				Alasan:                 "Contoh pengajuan untuk testing persetujuan izin/cuti.",
-				DokumenURL:             "",
-				KuotaCutiID:            nil,
+				RequestTypeID:          tipe.ID,
+				TypeName:               tipe.TypeName,
+				StartDate:              start,
+				EndDate:                end,
+				DaysTotal:              3,
+				Reason:                 "Contoh pengajuan untuk testing persetujuan izin/cuti.",
+				DocumentURL:            "",
+				LeaveBalanceID:         nil,
 				StatusKepalaDepartemen: models.StatusPending,
 				KepalaDepartemenID:     approverID,
 				ManagerHRID:            approverID,
 				StatusManagerHR:        models.StatusPending,
-				StatusFinal:            models.StatusPending,
+				FinalStatus:            models.StatusPending,
 				CreatedAt:              now,
 				UpdatedAt:              now,
 			},
@@ -118,7 +118,7 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 
 		_, err = collection.InsertMany(ctx, seed)
 		if err != nil {
-			return fmt.Errorf("failed to insert pengajuan_izin_cuti seed: %w", err)
+			return fmt.Errorf("failed to insert leave_request seed: %w", err)
 		}
 
 		return nil
@@ -126,7 +126,7 @@ func CreatePengajuanIzinCuti() (int, string, string, func(*mongo.Database) error
 
 	down := func(db *mongo.Database) error {
 		ctx := context.Background()
-		return db.Collection("pengajuan_izin_cuti").Drop(ctx)
+		return db.Collection("leave_request").Drop(ctx) // ✅ renamed
 	}
 
 	return version, name, description, up, down

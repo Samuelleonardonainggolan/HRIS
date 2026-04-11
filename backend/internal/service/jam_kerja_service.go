@@ -97,18 +97,14 @@ func parseHHMMToToday(v string) (time.Time, error) {
 }
 
 func defaultJamKerja() *models.JamKerja {
-	now := time.Now()
+	now := time.Now().UTC()
 	y, m, d := now.Date()
-	loc := now.Location()
-	if loc == nil {
-		loc = time.Local
-	}
 
 	return &models.JamKerja{
-		HariKerja:    []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"},
-		WaktuMulai:   time.Date(y, m, d, 9, 0, 0, 0, loc),
-		WaktuSelesai: time.Date(y, m, d, 18, 0, 0, 0, loc),
-		Aktif:        true,
+		DayOfWeek: []string{"Senin", "Selasa", "Rabu", "Kamis", "Jumat"},
+		StartTime: time.Date(y, m, d, 9, 0, 0, 0, time.UTC),
+		EndTime:   time.Date(y, m, d, 18, 0, 0, 0, time.UTC),
+		IsActive:  true,
 	}
 }
 
@@ -149,7 +145,7 @@ func containsAll(h []string, needed []string) bool {
 // ====== Models request/response (buat file terpisah di pkg/models jika mau) ======
 
 func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaListRowResponse, error) {
-	users, err := s.userRepo.FindAll(ctx) // sesuaikan jika Anda ingin hanya staff
+	users, err := s.userRepo.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +156,6 @@ func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaLi
 		if err != nil {
 			return nil, err
 		}
-
 		if jk == nil {
 			jk = defaultJamKerja()
 		}
@@ -171,10 +166,10 @@ func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaLi
 			NIK:        u.PayrollNumber,
 			Department: u.DepartmentName,
 			Position:   u.PositionName,
-			HariKerja:  jk.HariKerja,
-			WorkDays:   formatHariKerja(jk.HariKerja),
-			StartTime:  jk.WaktuMulai.Format("15:04"),
-			EndTime:    jk.WaktuSelesai.Format("15:04"),
+			DayOfWeek:  jk.DayOfWeek,                    // ✅ map
+			WorkDays:   formatHariKerja(jk.DayOfWeek),   // ✅ map
+			StartTime:  jk.StartTime.UTC().Format("15:04"), // ✅ map + UTC
+			EndTime:    jk.EndTime.UTC().Format("15:04"),   // ✅ map + UTC
 		})
 	}
 
@@ -206,10 +201,10 @@ func (s *jamKerjaService) GetJamKerjaByUserID(ctx context.Context, userID string
 		NIK:          u.PayrollNumber,
 		Department:   u.DepartmentName,
 		Position:     u.PositionName,
-		HariKerja:    jk.HariKerja,
-		WaktuMulai:   jk.WaktuMulai.Format("15:04"),
-		WaktuSelesai: jk.WaktuSelesai.Format("15:04"),
-		Aktif:        jk.Aktif,
+		DayOfWeek:    jk.DayOfWeek,                    // ✅ map
+		StartTime:   jk.StartTime.UTC().Format("15:04"), // ✅ map + UTC
+		EndTime:     jk.EndTime.UTC().Format("15:04"),   // ✅ map + UTC
+		IsActive:     jk.IsActive,                     // ✅ map
 	}, nil
 }
 
@@ -219,21 +214,21 @@ func (s *jamKerjaService) UpdateJamKerjaByUserID(ctx context.Context, userID str
 		return nil, errors.New("user ID tidak valid")
 	}
 
-	if len(req.HariKerja) == 0 {
+	if len(req.DayOfWeek) == 0 {
 		return nil, errors.New("hari kerja wajib diisi")
 	}
-	for _, h := range req.HariKerja {
+	for _, h := range req.DayOfWeek {
 		hh := strings.TrimSpace(h)
 		if !validHari[hh] {
 			return nil, errors.New("hari kerja tidak valid")
 		}
 	}
 
-	startT, err := parseHHMMToToday(req.WaktuMulai)
+	startT, err := parseHHMMToToday(req.StartTime)
 	if err != nil {
 		return nil, err
 	}
-	endT, err := parseHHMMToToday(req.WaktuSelesai)
+	endT, err := parseHHMMToToday(req.EndTime)
 	if err != nil {
 		return nil, err
 	}
@@ -244,15 +239,15 @@ func (s *jamKerjaService) UpdateJamKerjaByUserID(ctx context.Context, userID str
 	}
 
 	aktif := true
-	if req.Aktif != nil {
-		aktif = *req.Aktif
+	if req.IsActive != nil {
+		aktif = *req.IsActive
 	}
 
 	jk := &models.JamKerja{
-		HariKerja:    req.HariKerja,
-		WaktuMulai:   startT,
-		WaktuSelesai: endT,
-		Aktif:        aktif,
+		DayOfWeek:    req.DayOfWeek,
+		StartTime:   startT,
+		EndTime:     endT,
+		IsActive:     aktif,
 	}
 
 	if err := s.jamKerjaRepo.UpsertByUserID(ctx, userID, jk); err != nil {
@@ -265,10 +260,10 @@ func (s *jamKerjaService) UpdateJamKerjaByUserID(ctx context.Context, userID str
 		NIK:          u.PayrollNumber,
 		Department:   u.DepartmentName,
 		Position:     u.PositionName,
-		HariKerja:    req.HariKerja,
-		WaktuMulai:   req.WaktuMulai,
-		WaktuSelesai: req.WaktuSelesai,
-		Aktif:        aktif,
+		DayOfWeek:    req.DayOfWeek,
+		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
+		IsActive:     aktif,
 	}, nil
 }
 
@@ -293,38 +288,38 @@ func (s *jamKerjaService) CreateJamKerja(ctx context.Context, req models.CreateJ
 		return nil, errors.New("jam kerja untuk karyawan ini sudah ada, silakan gunakan fitur atur/update")
 	}
 
-	if len(req.HariKerja) == 0 {
+	if len(req.DayOfWeek) == 0 {
 		return nil, errors.New("hari kerja wajib diisi")
 	}
-	for _, h := range req.HariKerja {
+	for _, h := range req.DayOfWeek {
 		hh := strings.TrimSpace(h)
 		if !validHari[hh] {
 			return nil, errors.New("hari kerja tidak valid")
 		}
 	}
 
-	startT, err := parseHHMMToToday(req.WaktuMulai)
+	startT, err := parseHHMMToToday(req.StartTime)
 	if err != nil {
 		return nil, err
 	}
-	endT, err := parseHHMMToToday(req.WaktuSelesai)
+	endT, err := parseHHMMToToday(req.EndTime)
 	if err != nil {
 		return nil, err
 	}
 
 	aktif := true
-	if req.Aktif != nil {
-		aktif = *req.Aktif
+	if req.IsActive != nil {
+		aktif = *req.IsActive
 	}
 
 	userOID, _ := primitive.ObjectIDFromHex(req.UserID)
 
 	jk := &models.JamKerja{
 		UserID:       userOID,
-		HariKerja:    req.HariKerja,
-		WaktuMulai:   startT,
-		WaktuSelesai: endT,
-		Aktif:        aktif,
+		DayOfWeek:    req.DayOfWeek,
+		StartTime:   startT,
+		EndTime:     endT,
+		IsActive:     aktif,
 	}
 
 	if err := s.jamKerjaRepo.Create(ctx, jk); err != nil {
@@ -337,10 +332,10 @@ func (s *jamKerjaService) CreateJamKerja(ctx context.Context, req models.CreateJ
 		NIK:          u.PayrollNumber,
 		Department:   u.DepartmentName,
 		Position:     u.PositionName,
-		HariKerja:    req.HariKerja,
-		WaktuMulai:   req.WaktuMulai,
-		WaktuSelesai: req.WaktuSelesai,
-		Aktif:        aktif,
+		DayOfWeek:    req.DayOfWeek,
+		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
+		IsActive:     aktif,
 	}, nil
 }
 

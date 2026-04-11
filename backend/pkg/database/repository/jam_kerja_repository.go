@@ -1,4 +1,3 @@
-// pkg/database/repository/jam_kerja_repository.go
 package repository
 
 import (
@@ -14,7 +13,6 @@ import (
 )
 
 type JamKerjaRepository interface {
-	// Basic CRUD operations
 	Create(ctx context.Context, jamKerja *models.JamKerja) error
 	FindByID(ctx context.Context, id string) (*models.JamKerja, error)
 	FindByUserID(ctx context.Context, userID string) (*models.JamKerja, error)
@@ -22,10 +20,8 @@ type JamKerjaRepository interface {
 	Update(ctx context.Context, id string, req *models.JamKerja) error
 	Delete(ctx context.Context, id string) error
 
-	// Upsert operation (create or update by user ID)
 	UpsertByUserID(ctx context.Context, userID string, req *models.JamKerja) error
 
-	// Additional helper methods
 	ExistsByUserID(ctx context.Context, userID string) (bool, error)
 	GetAllUserIDs(ctx context.Context) ([]primitive.ObjectID, error)
 }
@@ -36,11 +32,10 @@ type jamKerjaRepository struct {
 
 func NewJamKerjaRepository(db *mongo.Database) JamKerjaRepository {
 	return &jamKerjaRepository{
-		collection: db.Collection("jam_kerja"),
+		collection: db.Collection("working_hours"), // ✅ renamed
 	}
 }
 
-// Create inserts a new jam kerja record
 func (r *jamKerjaRepository) Create(ctx context.Context, jamKerja *models.JamKerja) error {
 	jamKerja.ID = primitive.NewObjectID()
 	jamKerja.CreatedAt = time.Now()
@@ -49,18 +44,17 @@ func (r *jamKerjaRepository) Create(ctx context.Context, jamKerja *models.JamKer
 	return err
 }
 
-// FindByID retrieves a jam kerja record by its ID
 func (r *jamKerjaRepository) FindByID(ctx context.Context, id string) (*models.JamKerja, error) {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		return nil, errors.New("invalid jam kerja ID")
+		return nil, errors.New("invalid working hours ID")
 	}
 
 	var jk models.JamKerja
 	err = r.collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&jk)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("jam kerja not found")
+			return nil, errors.New("working hours not found")
 		}
 		return nil, err
 	}
@@ -68,7 +62,6 @@ func (r *jamKerjaRepository) FindByID(ctx context.Context, id string) (*models.J
 	return &jk, nil
 }
 
-// FindByUserID retrieves a jam kerja record by user ID
 func (r *jamKerjaRepository) FindByUserID(ctx context.Context, userID string) (*models.JamKerja, error) {
 	oid, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -79,14 +72,13 @@ func (r *jamKerjaRepository) FindByUserID(ctx context.Context, userID string) (*
 	err = r.collection.FindOne(ctx, bson.M{"user_id": oid}).Decode(&jk)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, nil // return nil if no schedule exists
+			return nil, nil
 		}
 		return nil, err
 	}
 	return &jk, nil
 }
 
-// FindAll retrieves all jam kerja records
 func (r *jamKerjaRepository) FindAll(ctx context.Context) ([]models.JamKerja, error) {
 	opts := options.Find().SetSort(bson.D{{Key: "updated_at", Value: -1}})
 	cur, err := r.collection.Find(ctx, bson.M{}, opts)
@@ -102,7 +94,6 @@ func (r *jamKerjaRepository) FindAll(ctx context.Context) ([]models.JamKerja, er
 	return out, nil
 }
 
-// UpsertByUserID creates or updates a jam kerja record by user ID
 func (r *jamKerjaRepository) UpsertByUserID(ctx context.Context, userID string, req *models.JamKerja) error {
 	oid, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -113,12 +104,12 @@ func (r *jamKerjaRepository) UpsertByUserID(ctx context.Context, userID string, 
 
 	update := bson.M{
 		"$set": bson.M{
-			"user_id":       oid,
-			"hari_kerja":    req.HariKerja,
-			"waktu_mulai":   req.WaktuMulai,
-			"waktu_selesai": req.WaktuSelesai,
-			"aktif":         req.Aktif,
-			"updated_at":    now,
+			"user_id":     oid,
+			"day_of_week": req.DayOfWeek, // ✅ renamed
+			"start_time":  req.StartTime, // ✅ renamed
+			"end_time":    req.EndTime,   // ✅ renamed
+			"is_active":   req.IsActive,  // ✅ renamed
+			"updated_at":  now,
 		},
 		"$setOnInsert": bson.M{
 			"created_at": now,
@@ -134,20 +125,19 @@ func (r *jamKerjaRepository) UpsertByUserID(ctx context.Context, userID string, 
 	return err
 }
 
-// Update updates an existing jam kerja record by ID
 func (r *jamKerjaRepository) Update(ctx context.Context, id string, req *models.JamKerja) error {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		return errors.New("invalid jam kerja ID")
+		return errors.New("invalid working hours ID")
 	}
 
 	update := bson.M{
 		"$set": bson.M{
-			"hari_kerja":    req.HariKerja,
-			"waktu_mulai":   req.WaktuMulai,
-			"waktu_selesai": req.WaktuSelesai,
-			"aktif":         req.Aktif,
-			"updated_at":    time.Now(),
+			"day_of_week": req.DayOfWeek,
+			"start_time":  req.StartTime,
+			"end_time":    req.EndTime,
+			"is_active":   req.IsActive,
+			"updated_at":  time.Now(),
 		},
 	}
 
@@ -156,16 +146,15 @@ func (r *jamKerjaRepository) Update(ctx context.Context, id string, req *models.
 		return err
 	}
 	if result.MatchedCount == 0 {
-		return errors.New("jam kerja not found")
+		return errors.New("working hours not found")
 	}
 	return nil
 }
 
-// Delete removes a jam kerja record by ID
 func (r *jamKerjaRepository) Delete(ctx context.Context, id string) error {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		return errors.New("invalid jam kerja ID")
+		return errors.New("invalid working hours ID")
 	}
 
 	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objectID})
@@ -173,12 +162,11 @@ func (r *jamKerjaRepository) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	if result.DeletedCount == 0 {
-		return errors.New("jam kerja not found")
+		return errors.New("working hours not found")
 	}
 	return nil
 }
 
-// ExistsByUserID checks if a jam kerja record exists for a given user ID
 func (r *jamKerjaRepository) ExistsByUserID(ctx context.Context, userID string) (bool, error) {
 	oid, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -195,7 +183,6 @@ func (r *jamKerjaRepository) ExistsByUserID(ctx context.Context, userID string) 
 	return true, nil
 }
 
-// GetAllUserIDs retrieves all user IDs that have jam kerja records
 func (r *jamKerjaRepository) GetAllUserIDs(ctx context.Context) ([]primitive.ObjectID, error) {
 	cur, err := r.collection.Find(
 		ctx,

@@ -13,9 +13,9 @@ import (
 )
 
 type PengajuanIzinCutiRepository interface {
-	FindByID(ctx context.Context, id string) (*models.PengajuanIzinCuti, error)
-	Find(ctx context.Context, filter bson.M) ([]models.PengajuanIzinCuti, error)
-	UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, statusManagerHR string, statusFinal string) (*models.PengajuanIzinCuti, error)
+	FindByID(ctx context.Context, id string) (*models.LeaveRequest, error)
+	Find(ctx context.Context, filter bson.M) ([]models.LeaveRequest, error)
+	UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, statusManagerHR string, finalStatus string) (*models.LeaveRequest, error)
 }
 
 type pengajuanIzinCutiRepository struct {
@@ -23,16 +23,16 @@ type pengajuanIzinCutiRepository struct {
 }
 
 func NewPengajuanIzinCutiRepository(db *mongo.Database) PengajuanIzinCutiRepository {
-	return &pengajuanIzinCutiRepository{collection: db.Collection("pengajuan_izin_cuti")}
+	return &pengajuanIzinCutiRepository{collection: db.Collection("leave_request")} // ✅ renamed
 }
 
-func (r *pengajuanIzinCutiRepository) FindByID(ctx context.Context, id string) (*models.PengajuanIzinCuti, error) {
+func (r *pengajuanIzinCutiRepository) FindByID(ctx context.Context, id string) (*models.LeaveRequest, error) {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.New("invalid pengajuan ID")
 	}
 
-	var pengajuan models.PengajuanIzinCuti
+	var pengajuan models.LeaveRequest
 	err = r.collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&pengajuan)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -44,7 +44,7 @@ func (r *pengajuanIzinCutiRepository) FindByID(ctx context.Context, id string) (
 	return &pengajuan, nil
 }
 
-func (r *pengajuanIzinCutiRepository) Find(ctx context.Context, filter bson.M) ([]models.PengajuanIzinCuti, error) {
+func (r *pengajuanIzinCutiRepository) Find(ctx context.Context, filter bson.M) ([]models.LeaveRequest, error) {
 	if filter == nil {
 		filter = bson.M{}
 	}
@@ -56,7 +56,7 @@ func (r *pengajuanIzinCutiRepository) Find(ctx context.Context, filter bson.M) (
 	}
 	defer cursor.Close(ctx)
 
-	var pengajuans []models.PengajuanIzinCuti
+	var pengajuans []models.LeaveRequest
 	if err := cursor.All(ctx, &pengajuans); err != nil {
 		return nil, err
 	}
@@ -64,7 +64,13 @@ func (r *pengajuanIzinCutiRepository) Find(ctx context.Context, filter bson.M) (
 	return pengajuans, nil
 }
 
-func (r *pengajuanIzinCutiRepository) UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, statusManagerHR string, statusFinal string) (*models.PengajuanIzinCuti, error) {
+func (r *pengajuanIzinCutiRepository) UpdateManagerHRDecision(
+	ctx context.Context,
+	id string,
+	managerHRID primitive.ObjectID,
+	statusManagerHR string,
+	finalStatus string,
+) (*models.LeaveRequest, error) {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.New("invalid pengajuan ID")
@@ -76,13 +82,13 @@ func (r *pengajuanIzinCutiRepository) UpdateManagerHRDecision(ctx context.Contex
 		"$set": bson.M{
 			"manager_hr_id":     managerHRID,
 			"status_manager_hr": statusManagerHR,
-			"status_final":      statusFinal,
+			"final_status":      finalStatus, // ✅ renamed
 			"updated_at":        now,
 		},
 	}
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 
-	var updated models.PengajuanIzinCuti
+	var updated models.LeaveRequest
 	err = r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {

@@ -136,7 +136,7 @@ func computeFinalStatus(statusKepalaDepartemen string, statusManagerHR string) s
 	return models.StatusPending
 }
 
-func (s *pengajuanIzinCutiService) toApprovalResponse(p models.PengajuanIzinCuti, hasUser bool, u *models.User) models.PengajuanIzinCutiApprovalResponse {
+func (s *pengajuanIzinCutiService) toApprovalResponse(p models.LeaveRequest, hasUser bool, u *models.User) models.PengajuanIzinCutiApprovalResponse {
 	resp := models.PengajuanIzinCutiApprovalResponse{Pengajuan: p.ToResponse()}
 	if !hasUser || u == nil {
 		return resp
