@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Download,
   Calendar,
@@ -13,6 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { BadgeProps } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,8 +27,13 @@ import { id } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as UiCalendar } from "@/components/ui/calender";
+import {
+  attendanceManagerApi,
+  type AttendanceStatusUI,
+  type ManagerAttendanceItem,
+} from "@/lib/api/attendance-manager";
 
-type AttendanceStatus = "HADIR" | "TELAT" | "IZIN" | "ALFA";
+type AttendanceStatus = AttendanceStatusUI;
 
 interface AttendanceRow {
   id: string;
@@ -35,6 +41,7 @@ interface AttendanceRow {
   email: string;
   empId: string;
   dept: string;
+  date: string;
   dateLabel: string;
   clockIn: string;
   clockOut: string;
@@ -43,29 +50,38 @@ interface AttendanceRow {
 }
 
 function statusBadgeVariant(status: AttendanceStatus) {
+  type BadgeVariant = BadgeProps["variant"];
   switch (status) {
     case "HADIR":
-      return "success" as any;
+      return "success" as BadgeVariant;
     case "TELAT":
-      return "warning" as any; // kalau tidak ada, ganti "secondary"
+      return "warning" as BadgeVariant;
     case "IZIN":
-      return "secondary" as any;
+      return "secondary" as BadgeVariant;
     case "ALFA":
-      return "destructive" as any;
+      return "danger" as BadgeVariant;
     default:
-      return "secondary" as any;
+      return "secondary" as BadgeVariant;
   }
 }
 
 export default function PresensiKaryawanManagerHRPage() {
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // ✅ date range picker state (bukan input ketik)
+  const now = new Date();
   const defaultRange: DateRange = {
-    from: new Date(2023, 9, 1), // 01 Okt 2023
-    to: new Date(2023, 9, 31),  // 31 Okt 2023
+    from: new Date(now.getFullYear(), now.getMonth(), 1),
+    to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
   };
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
+  const [appliedFilters, setAppliedFilters] = useState(() => ({
+    from: format(defaultRange.from as Date, "yyyy-MM-dd"),
+    to: format(defaultRange.to as Date, "yyyy-MM-dd"),
+    department: "all",
+    q: "",
+  }));
 
   const dateRangeLabel = useMemo(() => {
     if (!dateRange?.from) return "Pilih rentang tanggal";
@@ -81,90 +97,20 @@ export default function PresensiKaryawanManagerHRPage() {
 
   // pagination (client-side)
   const [page, setPage] = useState(1);
-  const pageSize = 4;
+  const pageSize = 10;
+  const [filtersKey, setFiltersKey] = useState(0);
 
   const [rows, setRows] = useState<AttendanceRow[]>([]);
+  const [totalItems, setTotalItems] = useState(0);
+  const [summary, setSummary] = useState({
+    total_kehadiran_pct: 0,
+    tepat_waktu: 0,
+    terlambat: 0,
+    izin_sakit: 0,
+    alfa: 0,
+  });
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setRows([
-        {
-          id: "1",
-          name: "Budi Santoso",
-          email: "budi.s@sapphire.com",
-          empId: "EMP-2023-01",
-          dept: "IT Development",
-          dateLabel: "25 Okt 2023",
-          clockIn: "08:00",
-          clockOut: "17:05",
-          status: "HADIR",
-          location: "HQ Office",
-        },
-        {
-          id: "2",
-          name: "Siti Aminah",
-          email: "siti.a@sapphire.com",
-          empId: "EMP-2023-14",
-          dept: "Finance",
-          dateLabel: "25 Okt 2023",
-          clockIn: "08:45",
-          clockOut: "17:15",
-          status: "TELAT",
-          location: "Remote - Home",
-        },
-        {
-          id: "3",
-          name: "Rian Wibawa",
-          email: "rian.w@sapphire.com",
-          empId: "EMP-2023-09",
-          dept: "Sales & Mkt",
-          dateLabel: "25 Okt 2023",
-          clockIn: "--:--",
-          clockOut: "--:--",
-          status: "IZIN",
-          location: "Unrecorded",
-        },
-        {
-          id: "4",
-          name: "Diana Putri",
-          email: "diana.p@sapphire.com",
-          empId: "EMP-2023-05",
-          dept: "IT Development",
-          dateLabel: "25 Okt 2023",
-          clockIn: "07:55",
-          clockOut: "17:30",
-          status: "HADIR",
-          location: "HQ Office",
-        },
-      ]);
-      setIsLoading(false);
-    }, 500);
-
-    return () => clearTimeout(t);
-  }, []);
-
-  const filteredRows = useMemo(() => {
-    const q = searchEmployee.toLowerCase().trim();
-    return rows.filter((r) => {
-      const matchName =
-        r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
-      const matchDept =
-        departmentFilter === "all" ? true : r.dept === departmentFilter;
-      return matchName && matchDept;
-    });
-  }, [rows, searchEmployee, departmentFilter]);
-
-  const totalItems = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-
-  const pagedRows = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredRows.slice(start, start + pageSize);
-  }, [filteredRows, page]);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, totalItems);
@@ -174,19 +120,109 @@ export default function PresensiKaryawanManagerHRPage() {
     setDepartmentFilter("all");
     setSearchEmployee("");
     setPage(1);
+    setAppliedFilters({
+      from: format(defaultRange.from as Date, "yyyy-MM-dd"),
+      to: format(defaultRange.to as Date, "yyyy-MM-dd"),
+      department: "all",
+      q: "",
+    });
+    setFiltersKey((k) => k + 1);
   };
 
   const handleApplyFilter = () => {
-    // nanti kalau sudah pakai API:
-    // gunakan dateRange?.from dan dateRange?.to sebagai filter
+    if (!dateRange?.from || !dateRange?.to) return;
+    setAppliedFilters({
+      from: format(dateRange.from, "yyyy-MM-dd"),
+      to: format(dateRange.to, "yyyy-MM-dd"),
+      department: departmentFilter,
+      q: searchEmployee,
+    });
     setPage(1);
+    setFiltersKey((k) => k + 1);
   };
 
-  // summary cards (dummy)
-  const totalKehadiranPct = 94;
-  const tepatWaktu = 42;
-  const terlambat = 4;
-  const izinSakit = 2;
+  const mapItemsToRows = useCallback(
+    (items: ManagerAttendanceItem[]): AttendanceRow[] =>
+      items.map((it) => ({
+        id: it.id,
+        name: it.full_name,
+        email: it.email,
+        empId: it.payroll_number,
+        dept: it.department_name,
+        date: it.date,
+        dateLabel: format(new Date(`${it.date}T00:00:00`), "dd MMM yyyy", { locale: id }),
+        clockIn: it.clock_in_time || "--:--",
+        clockOut: it.clock_out_time || "--:--",
+        status: it.status,
+        location: it.location || "Unrecorded",
+      })),
+    []
+  );
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const data = await attendanceManagerApi.list({
+        from: appliedFilters.from,
+        to: appliedFilters.to,
+        department: appliedFilters.department,
+        q: appliedFilters.q,
+        page,
+        page_size: pageSize,
+      });
+
+      setTotalItems(data.total);
+      setSummary(data.summary);
+      setRows(mapItemsToRows(data.items));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal memuat data presensi";
+      setLoadError(message);
+      setRows([]);
+      setTotalItems(0);
+      setSummary({
+        total_kehadiran_pct: 0,
+        tepat_waktu: 0,
+        terlambat: 0,
+        izin_sakit: 0,
+        alfa: 0,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [appliedFilters.department, appliedFilters.from, appliedFilters.q, appliedFilters.to, mapItemsToRows, page]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData, filtersKey, page]);
+
+  const handleExport = async () => {
+    try {
+      const blob = await attendanceManagerApi.exportCsv({
+        from: appliedFilters.from,
+        to: appliedFilters.to,
+        department: appliedFilters.department,
+        q: appliedFilters.q,
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `presensi_${appliedFilters.from}_${appliedFilters.to}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal export laporan";
+      setLoadError(message);
+    }
+  };
+
+  const totalKehadiranPct = summary.total_kehadiran_pct;
+  const tepatWaktu = summary.tepat_waktu;
+  const terlambat = summary.terlambat;
+  const izinSakit = summary.izin_sakit;
 
   return (
     <div className="p-6 space-y-6">
@@ -199,7 +235,11 @@ export default function PresensiKaryawanManagerHRPage() {
           </p>
         </div>
 
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+        <Button
+          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          onClick={handleExport}
+          disabled={!appliedFilters.from || !appliedFilters.to || isLoading}
+        >
           <Download className="h-4 w-4" />
           Export Laporan
         </Button>
@@ -267,7 +307,7 @@ export default function PresensiKaryawanManagerHRPage() {
               <Button
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
                 onClick={handleApplyFilter}
-                disabled={!dateRange?.from || !dateRange?.to}
+                disabled={!dateRange?.from || !dateRange?.to || isLoading}
                 title={!dateRange?.to ? "Pilih rentang tanggal lengkap (mulai & selesai)" : undefined}
               >
                 Terapkan Filter
@@ -295,6 +335,9 @@ export default function PresensiKaryawanManagerHRPage() {
           <div className="px-6 pt-6 pb-3">
             {isLoading && (
               <div className="text-sm text-gray-600">Memuat presensi...</div>
+            )}
+            {!isLoading && loadError && (
+              <div className="text-sm text-red-600">{loadError}</div>
             )}
           </div>
 
@@ -331,7 +374,7 @@ export default function PresensiKaryawanManagerHRPage() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100 bg-white">
-                  {pagedRows.map((r) => (
+                  {rows.map((r) => (
                     <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
@@ -400,7 +443,7 @@ export default function PresensiKaryawanManagerHRPage() {
                 </tbody>
               </table>
 
-              {!isLoading && filteredRows.length === 0 && (
+              {!isLoading && totalItems === 0 && (
                 <div className="py-12 text-center text-sm text-gray-500">
                   Tidak ada data presensi ditemukan.
                 </div>

@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -277,4 +278,94 @@ func (h *AttendanceHandler) GetScheduleInfo(c *gin.Context) {
 		"status": "success",
 		"data":   info,
 	})
+}
+
+func (h *AttendanceHandler) GetManagerAttendanceRecords(c *gin.Context) {
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "from dan to wajib diisi (YYYY-MM-DD)"})
+		return
+	}
+
+	fromDate, err := time.ParseInLocation("2006-01-02", fromStr, wib)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "format from tidak valid"})
+		return
+	}
+	toDate, err := time.ParseInLocation("2006-01-02", toStr, wib)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "format to tidak valid"})
+		return
+	}
+	if toDate.Before(fromDate) {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "to tidak boleh sebelum from"})
+		return
+	}
+
+	from := time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, wib)
+	toExclusive := time.Date(toDate.Year(), toDate.Month(), toDate.Day(), 0, 0, 0, 0, wib).Add(24 * time.Hour)
+
+	department := c.Query("department")
+	q := c.Query("q")
+
+	page, _ := strconv.ParseInt(c.DefaultQuery("page", "1"), 10, 64)
+	pageSize, _ := strconv.ParseInt(c.DefaultQuery("page_size", "10"), 10, 64)
+	if pageSize > 100 {
+		pageSize = 100
+	}
+
+	resp, err := h.attendanceService.GetManagerAttendance(c.Request.Context(), from, toExclusive, department, q, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "data": resp})
+}
+
+func (h *AttendanceHandler) ExportManagerAttendanceRecords(c *gin.Context) {
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "from dan to wajib diisi (YYYY-MM-DD)"})
+		return
+	}
+
+	fromDate, err := time.ParseInLocation("2006-01-02", fromStr, wib)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "format from tidak valid"})
+		return
+	}
+	toDate, err := time.ParseInLocation("2006-01-02", toStr, wib)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "format to tidak valid"})
+		return
+	}
+	if toDate.Before(fromDate) {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "to tidak boleh sebelum from"})
+		return
+	}
+
+	from := time.Date(fromDate.Year(), fromDate.Month(), fromDate.Day(), 0, 0, 0, 0, wib)
+	toExclusive := time.Date(toDate.Year(), toDate.Month(), toDate.Day(), 0, 0, 0, 0, wib).Add(24 * time.Hour)
+
+	department := c.Query("department")
+	q := c.Query("q")
+
+	reader, filename, err := h.attendanceService.ExportManagerAttendanceCSVStream(c.Request.Context(), from, toExclusive, department, q)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+	defer reader.Close()
+
+	if filename == "" {
+		filename = "presensi.csv"
+	}
+	contentDisposition := fmt.Sprintf("attachment; filename=\"%s\"", filename)
+
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", contentDisposition)
+	c.DataFromReader(http.StatusOK, -1, "text/csv; charset=utf-8", reader, nil)
 }

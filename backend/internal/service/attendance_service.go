@@ -2,10 +2,14 @@
 package service
 
 import (
+	"bytes"
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/internal/faceclient"
@@ -26,6 +30,9 @@ type AttendanceService interface {
 	ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
 	GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error)
 	GetWorkScheduleInfo(ctx context.Context, userID string) (*WorkScheduleInfo, error)
+	GetManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) (*models.ManagerAttendanceListResponse, error)
+	ExportManagerAttendanceCSV(ctx context.Context, from, to time.Time, departmentName, q string) ([]byte, string, error)
+	ExportManagerAttendanceCSVStream(ctx context.Context, from, to time.Time, departmentName, q string) (io.ReadCloser, string, error)
 }
 
 type WorkScheduleInfo struct {
@@ -88,6 +95,222 @@ func NewAttendanceService(
 		officeLat:         2.3561,
 		officeLng:         99.1431,
 		radiusMeters:      10000,
+	}
+}
+
+func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) (*models.ManagerAttendanceListResponse, error) {
+	rows, total, statusCounts, err := s.attendanceRepo.FindManagerAttendance(ctx, from, to, departmentName, q, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]models.ManagerAttendanceRecord, 0, len(rows))
+	for _, r := range rows {
+		clockIn := "--:--"
+		if r.ClockInTime != nil {
+			clockIn = r.ClockInTime.In(wib).Format("15:04")
+		}
+		clockOut := "--:--"
+		if r.ClockOutTime != nil {
+			clockOut = r.ClockOutTime.In(wib).Format("15:04")
+		}
+
+		location := formatGeoLocation(r.ClockInLocation)
+
+		items = append(items, models.ManagerAttendanceRecord{
+			ID:             r.ID.Hex(),
+			UserID:         r.UserID.Hex(),
+			FullName:       r.User.FullName,
+			Email:          r.User.Email,
+			PayrollNumber:  r.User.PayrollNumber,
+			DepartmentName: r.User.DepartmentName,
+			Date:           r.Date.In(wib).Format("2006-01-02"),
+			ClockInTime:    clockIn,
+			ClockOutTime:   clockOut,
+			Status:         mapAttendanceStatusToUI(r.Status),
+			Location:       location,
+		})
+	}
+
+	summary := buildManagerAttendanceSummary(statusCounts)
+	summary.TotalRecords = total
+
+	return &models.ManagerAttendanceListResponse{
+		Items:    items,
+		Page:     page,
+		PageSize: pageSize,
+		Total:    total,
+		Summary:  summary,
+	}, nil
+}
+
+func (s *attendanceService) ExportManagerAttendanceCSV(ctx context.Context, from, to time.Time, departmentName, q string) ([]byte, string, error) {
+	rows, err := s.attendanceRepo.FindManagerAttendanceExport(ctx, from, to, departmentName, q)
+	if err != nil {
+		return nil, "", err
+	}
+
+	buf := &bytes.Buffer{}
+	buf.WriteString("date,payroll_number,full_name,email,department,clock_in,clock_out,status,location\n")
+	for _, r := range rows {
+		dateValue := r.DateStr
+		if dateValue == "" {
+			dateValue = r.Date.In(wib).Format("02/01/2006")
+		}
+		clockIn := ""
+		if r.ClockInTime != nil {
+			clockIn = r.ClockInTime.In(wib).Format("15:04")
+		}
+		clockOut := ""
+		if r.ClockOutTime != nil {
+			clockOut = r.ClockOutTime.In(wib).Format("15:04")
+		}
+		location := formatGeoLocation(r.ClockInLocation)
+
+		line := fmt.Sprintf(
+			"%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+			dateValue,
+			escapeCSV(r.User.PayrollNumber),
+			escapeCSV(r.User.FullName),
+			escapeCSV(r.User.Email),
+			escapeCSV(r.User.DepartmentName),
+			escapeCSV(clockIn),
+			escapeCSV(clockOut),
+			escapeCSV(mapAttendanceStatusToUI(r.Status)),
+			escapeCSV(location),
+		)
+		buf.WriteString(line)
+	}
+
+	filename := fmt.Sprintf("presensi_%s_%s.csv", from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
+	return buf.Bytes(), filename, nil
+}
+
+func escapeCSV(s string) string {
+	if strings.ContainsAny(s, ",\n\r\"") {
+		s = strings.ReplaceAll(s, "\"", "\"\"")
+		return "\"" + s + "\""
+	}
+	return s
+}
+
+func mapAttendanceStatusToUI(status models.AttendanceStatus) string {
+	switch status {
+	case models.StatusOnTime:
+		return "HADIR"
+	case models.StatusLate:
+		return "TELAT"
+	case models.StatusOvertime:
+		return "HADIR"
+	case models.StatusAbsent:
+		return "ALFA"
+	default:
+		return "ALFA"
+	}
+}
+
+func formatGeoLocation(loc models.GeoLocation) string {
+	if loc.Latitude != 0 || loc.Longitude != 0 {
+		return fmt.Sprintf("%.5f, %.5f", loc.Latitude, loc.Longitude)
+	}
+	return "Unrecorded"
+}
+func (s *attendanceService) ExportManagerAttendanceCSVStream(ctx context.Context, from, to time.Time, departmentName, q string) (io.ReadCloser, string, error) {
+	pr, pw := io.Pipe()
+	filename := fmt.Sprintf("presensi_%s_%s.csv", from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
+
+	go func() {
+		bw := bufio.NewWriterSize(pw, 64*1024)
+		_, writeErr := bw.WriteString("date,payroll_number,full_name,email,department,clock_in,clock_out,status,location\n")
+		if writeErr != nil {
+			_ = pw.CloseWithError(writeErr)
+			return
+		}
+		if err := bw.Flush(); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+
+		cursor, err := s.attendanceRepo.FindManagerAttendanceExportCursor(ctx, from, to, departmentName, q)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		defer cursor.Close(ctx)
+
+		for cursor.Next(ctx) {
+			var r models.ManagerAttendanceAggRow
+			if err := cursor.Decode(&r); err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+
+			dateValue := r.DateStr
+			if dateValue == "" {
+				dateValue = r.Date.In(wib).Format("02/01/2006")
+			}
+			clockIn := ""
+			if r.ClockInTime != nil {
+				clockIn = r.ClockInTime.In(wib).Format("15:04")
+			}
+			clockOut := ""
+			if r.ClockOutTime != nil {
+				clockOut = r.ClockOutTime.In(wib).Format("15:04")
+			}
+			location := formatGeoLocation(r.ClockInLocation)
+
+			line := fmt.Sprintf(
+				"%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+				dateValue,
+				escapeCSV(r.User.PayrollNumber),
+				escapeCSV(r.User.FullName),
+				escapeCSV(r.User.Email),
+				escapeCSV(r.User.DepartmentName),
+				escapeCSV(clockIn),
+				escapeCSV(clockOut),
+				escapeCSV(mapAttendanceStatusToUI(r.Status)),
+				escapeCSV(location),
+			)
+
+			if _, err := bw.WriteString(line); err != nil {
+				_ = pw.CloseWithError(err)
+				return
+			}
+		}
+
+		if err := cursor.Err(); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+
+		if err := bw.Flush(); err != nil {
+			_ = pw.CloseWithError(err)
+			return
+		}
+		_ = pw.Close()
+	}()
+
+	return pr, filename, nil
+}
+
+
+func buildManagerAttendanceSummary(statusCounts map[string]int64) models.ManagerAttendanceSummary {
+	tepatWaktu := statusCounts[string(models.StatusOnTime)]
+	terlambat := statusCounts[string(models.StatusLate)]
+	alfa := statusCounts[string(models.StatusAbsent)]
+	izin := int64(0)
+	denom := tepatWaktu + terlambat + izin + alfa
+	kehadiran := tepatWaktu + terlambat
+	pct := float64(0)
+	if denom > 0 {
+		pct = (float64(kehadiran) / float64(denom)) * 100
+	}
+	return models.ManagerAttendanceSummary{
+		TepatWaktu:        tepatWaktu,
+		Terlambat:         terlambat,
+		IzinSakit:         izin,
+		Alfa:              alfa,
+		TotalKehadiranPct: math.Round(pct*10) / 10,
 	}
 }
 

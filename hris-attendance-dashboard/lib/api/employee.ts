@@ -338,18 +338,28 @@ class EmployeeService {
       }
 
       const dataText = await response.text();
-      let data: any = {};
+      let data: unknown = {};
       try {
         data = dataText ? JSON.parse(dataText) : {};
       } catch {
         throw new Error('Invalid response from server');
       }
 
+      const dataObj = (val: unknown): val is { error?: string; message?: string; data?: unknown } =>
+        typeof val === 'object' && val !== null;
+
       if (!response.ok) {
-        throw new Error(data?.error || data?.message || 'Failed to update position');
+        const msg =
+          dataObj(data) && (typeof data.error === 'string' || typeof data.message === 'string')
+            ? (data.error as string) || (data.message as string)
+            : 'Failed to update position';
+        throw new Error(msg);
       }
 
-      const p = data.data as Record<string, unknown>;
+      const p =
+        dataObj(data) && typeof data.data === 'object' && data.data !== null
+          ? (data.data as Record<string, unknown>)
+          : {};
       const toPosition = (p2: Record<string, unknown>): Position => {
         const id2 = String(p2.id ?? '');
         const departmentId2 = String(p2.departmentId ?? p2.department_id ?? '');

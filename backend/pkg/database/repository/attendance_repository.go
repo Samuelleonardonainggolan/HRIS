@@ -26,6 +26,10 @@ type AttendanceRepository interface {
 	FindByUserIDAndMonth(ctx context.Context, userID primitive.ObjectID, year, month int) ([]models.Attendance, error)
 	GetMonthlySummary(ctx context.Context, userID primitive.ObjectID, year, month int) (*models.MonthlyAttendanceResponse, error)
 	CreateIndexes(ctx context.Context) error
+	FindManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) ([]models.ManagerAttendanceAggRow, int64, map[string]int64, error)
+	FindManagerAttendanceAll(ctx context.Context, from, to time.Time, departmentName, q string) ([]models.ManagerAttendanceAggRow, map[string]int64, error)
+	FindManagerAttendanceExport(ctx context.Context, from, to time.Time, departmentName, q string) ([]models.ManagerAttendanceAggRow, error)
+	FindManagerAttendanceExportCursor(ctx context.Context, from, to time.Time, departmentName, q string) (*mongo.Cursor, error)
 }
 
 // attendanceRepository struct implementing the interface
@@ -203,4 +207,171 @@ func (r *attendanceRepository) CreateIndexes(ctx context.Context) error {
 
 	_, err := r.collection.Indexes().CreateMany(ctx, indexModels)
 	return err
+}
+
+func (r *attendanceRepository) FindManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) ([]models.ManagerAttendanceAggRow, int64, map[string]int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	skip := (page - 1) * pageSize
+
+	match := bson.D{{Key: "date", Value: bson.D{{Key: "$gte", Value: from.UTC()}, {Key: "$lt", Value: to.UTC()}}}}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$lookup", Value: bson.D{{Key: "from", Value: "users"}, {Key: "localField", Value: "user_id"}, {Key: "foreignField", Value: "_id"}, {Key: "as", Value: "user"}}}},
+		{{Key: "$unwind", Value: "$user"}},
+	}
+
+	if departmentName != "" && departmentName != "all" {
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "user.department_name", Value: departmentName}}}})
+	}
+
+	if q != "" {
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "$or", Value: bson.A{
+			bson.D{{Key: "user.full_name", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+			bson.D{{Key: "user.email", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+			bson.D{{Key: "user.payroll_number", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+		}}}}})
+	}
+
+	sortStage := bson.D{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}, {Key: "user.full_name", Value: 1}}}}
+	facetStage := bson.D{{Key: "$facet", Value: bson.D{
+		{Key: "data", Value: bson.A{
+			bson.D{{Key: "$skip", Value: skip}},
+			bson.D{{Key: "$limit", Value: pageSize}},
+			bson.D{{Key: "$project", Value: bson.D{
+				{Key: "_id", Value: 1},
+				{Key: "user_id", Value: 1},
+				{Key: "date", Value: 1},
+				{Key: "clock_in_time", Value: 1},
+				{Key: "clock_out_time", Value: 1},
+				{Key: "clock_in_location", Value: 1},
+				{Key: "status", Value: 1},
+				{Key: "user", Value: bson.D{
+					{Key: "full_name", Value: "$user.full_name"},
+					{Key: "email", Value: "$user.email"},
+					{Key: "payroll_number", Value: "$user.payroll_number"},
+					{Key: "department_name", Value: "$user.department_name"},
+				}},
+			}}},
+		}},
+		{Key: "total", Value: bson.A{bson.D{{Key: "$count", Value: "count"}}}},
+		{Key: "status_summary", Value: bson.A{
+			bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
+		}},
+	}}}
+
+	pipeline = append(pipeline, sortStage, facetStage)
+
+	cursor, err := r.collection.Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	if err != nil {
+		return nil, 0, nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var facetResults []struct {
+		Data          []models.ManagerAttendanceAggRow `bson:"data"`
+		Total         []struct{ Count int64 `bson:"count"` } `bson:"total"`
+		StatusSummary []struct {
+			ID    string `bson:"_id"`
+			Count int64  `bson:"count"`
+		} `bson:"status_summary"`
+	}
+
+	if err := cursor.All(ctx, &facetResults); err != nil {
+		return nil, 0, nil, err
+	}
+	if len(facetResults) == 0 {
+		return []models.ManagerAttendanceAggRow{}, 0, map[string]int64{}, nil
+	}
+
+	total := int64(0)
+	if len(facetResults[0].Total) > 0 {
+		total = facetResults[0].Total[0].Count
+	}
+
+	statusCounts := map[string]int64{}
+	for _, s := range facetResults[0].StatusSummary {
+		statusCounts[s.ID] = s.Count
+	}
+
+	return facetResults[0].Data, total, statusCounts, nil
+}
+
+func (r *attendanceRepository) FindManagerAttendanceAll(ctx context.Context, from, to time.Time, departmentName, q string) ([]models.ManagerAttendanceAggRow, map[string]int64, error) {
+	data, err := r.FindManagerAttendanceExport(ctx, from, to, departmentName, q)
+	if err != nil {
+		return nil, nil, err
+	}
+	statusCounts := map[string]int64{}
+	for _, r := range data {
+		statusCounts[string(r.Status)]++
+	}
+	return data, statusCounts, nil
+}
+
+func (r *attendanceRepository) FindManagerAttendanceExport(ctx context.Context, from, to time.Time, departmentName, q string) ([]models.ManagerAttendanceAggRow, error) {
+	cursor, err := r.FindManagerAttendanceExportCursor(ctx, from, to, departmentName, q)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var out []models.ManagerAttendanceAggRow
+	if err := cursor.All(ctx, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *attendanceRepository) FindManagerAttendanceExportCursor(ctx context.Context, from, to time.Time, departmentName, q string) (*mongo.Cursor, error) {
+	match := bson.D{{Key: "date", Value: bson.D{{Key: "$gte", Value: from.UTC()}, {Key: "$lt", Value: to.UTC()}}}}
+
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: match}},
+		{{Key: "$lookup", Value: bson.D{{Key: "from", Value: "users"}, {Key: "localField", Value: "user_id"}, {Key: "foreignField", Value: "_id"}, {Key: "as", Value: "user"}}}},
+		{{Key: "$unwind", Value: "$user"}},
+	}
+
+	if departmentName != "" && departmentName != "all" {
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "user.department_name", Value: departmentName}}}})
+	}
+
+	if q != "" {
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "$or", Value: bson.A{
+			bson.D{{Key: "user.full_name", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+			bson.D{{Key: "user.email", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+			bson.D{{Key: "user.payroll_number", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
+		}}}}})
+	}
+
+	pipeline = append(pipeline,
+		bson.D{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}}}},
+		bson.D{{Key: "$project", Value: bson.D{
+			{Key: "_id", Value: 1},
+			{Key: "user_id", Value: 1},
+			{Key: "date", Value: 1},
+			{Key: "date_str", Value: bson.D{{Key: "$dateToString", Value: bson.D{
+				{Key: "format", Value: "%d/%m/%Y"},
+				{Key: "date", Value: bson.D{{Key: "$ifNull", Value: bson.A{"$date", bson.D{{Key: "$ifNull", Value: bson.A{"$clock_in_time", "$created_at"}}}}}}},
+				{Key: "timezone", Value: "+07:00"},
+			}}}},
+			{Key: "clock_in_time", Value: 1},
+			{Key: "clock_out_time", Value: 1},
+			{Key: "clock_in_location", Value: 1},
+			{Key: "status", Value: 1},
+			{Key: "user", Value: bson.D{
+				{Key: "full_name", Value: "$user.full_name"},
+				{Key: "email", Value: "$user.email"},
+				{Key: "payroll_number", Value: "$user.payroll_number"},
+				{Key: "department_name", Value: "$user.department_name"},
+			}},
+		}}},
+	)
+
+	return r.collection.Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true).SetBatchSize(1000))
 }
