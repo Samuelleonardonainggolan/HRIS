@@ -5,6 +5,7 @@ import { Search, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-rea
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { BadgeProps } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -12,8 +13,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { jamKerjaApi } from "@/lib/api/jam-kerja";
 
-type WorkDays = "Senin - Jumat" | "Senin - Sabtu" | "Shift";
+type WorkDays = string;
 
 interface WorkScheduleRow {
   id: string;
@@ -23,16 +33,29 @@ interface WorkScheduleRow {
   workDays: WorkDays;
   startTime: string;
   endTime: string;
+  dayOfWeek: string[];
 }
 
 function workDaysBadgeVariant(v: WorkDays) {
-  if (v === "Senin - Sabtu") return "success" as any;
-  if (v === "Shift") return "secondary" as any;
-  return "secondary" as any;
+  type BadgeVariant = BadgeProps["variant"];
+  if (v === "Senin - Sabtu") return "success" as BadgeVariant;
+  return "secondary" as BadgeVariant;
+}
+
+const hariOrder = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
+
+function workDaysLabelFromHari(hari: string[]): WorkDays {
+  const set = new Set(hari);
+  const isMonFri = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"].every((h) => set.has(h));
+  if (isMonFri && hari.length === 5) return "Senin - Jumat";
+  const isMonSat = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"].every((h) => set.has(h));
+  if (isMonSat && hari.length === 6) return "Senin - Sabtu";
+  return "Shift";
 }
 
 export default function ManajemenJamKerjaManagerDepartemenPage() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [jabatanFilter, setJabatanFilter] = useState("all");
@@ -40,52 +63,57 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
   const [rows, setRows] = useState<WorkScheduleRow[]>([]);
 
   const [page, setPage] = useState(1);
-  const pageSize = 4;
+  const pageSize = 10;
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedUserName, setSelectedUserName] = useState<string | null>(null);
+  const [formDays, setFormDays] = useState<string[]>([]);
+  const [formStartTime, setFormStartTime] = useState("08:00");
+  const [formEndTime, setFormEndTime] = useState("17:00");
+  const [formActive, setFormActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setRows([
-        {
-          id: "1",
-          name: "Andi Pratama",
-          nik: "2023010042",
-          jabatan: "Senior Web Developer",
-          workDays: "Senin - Jumat",
-          startTime: "08:00",
-          endTime: "17:00",
-        },
-        {
-          id: "2",
-          name: "Siti Aminah",
-          nik: "2023010058",
-          jabatan: "HR Specialist",
-          workDays: "Senin - Jumat",
-          startTime: "08:30",
-          endTime: "17:30",
-        },
-        {
-          id: "3",
-          name: "Budi Santoso",
-          nik: "2023020011",
-          jabatan: "Social Media Manager",
-          workDays: "Senin - Sabtu",
-          startTime: "09:00",
-          endTime: "18:00",
-        },
-        {
-          id: "4",
-          name: "Rina Septiani",
-          nik: "2023020089",
-          jabatan: "Tax Accountant",
-          workDays: "Senin - Jumat",
-          startTime: "08:00",
-          endTime: "17:00",
-        },
-      ]);
-      setLoading(false);
-    }, 450);
+    let cancelled = false;
 
-    return () => clearTimeout(t);
+    const load = async () => {
+      try {
+        setLoading(true);
+        setLoadError(null);
+        const data = await jamKerjaApi.listMyDepartment();
+        if (cancelled) return;
+
+        const mapped: WorkScheduleRow[] = (data || []).map((r) => {
+          const hari = Array.isArray(r.day_of_week) ? r.day_of_week : [];
+          return {
+            id: r.id,
+            name: r.name,
+            nik: r.nik,
+            jabatan: r.position,
+            dayOfWeek: hari,
+            workDays: workDaysLabelFromHari(hari),
+            startTime: r.startTime,
+            endTime: r.endTime,
+          };
+        });
+        setRows(mapped);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Gagal memuat data jam kerja";
+        if (!cancelled) {
+          setLoadError(message);
+          setRows([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const jabatanOptions = useMemo(() => {
@@ -106,21 +134,88 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
   const totalItems = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
+  const currentPage = Math.min(page, totalPages);
+
   const paged = useMemo(() => {
-    const start = (page - 1) * pageSize;
+    const start = (currentPage - 1) * pageSize;
     return filtered.slice(start, start + pageSize);
-  }, [filtered, page]);
+  }, [filtered, currentPage]);
 
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  const from = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, totalItems);
+  const from = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const to = Math.min(currentPage * pageSize, totalItems);
 
   const handleOpenSetSchedule = (employeeId: string) => {
-    console.log("Atur jam kerja:", employeeId);
-    // router.push(`/dashboard/manager-departemen/jam-kerja/${employeeId}`)
+    const row = rows.find((r) => r.id === employeeId);
+    setSelectedUserId(employeeId);
+    setSelectedUserName(row?.name ?? null);
+    setDialogOpen(true);
+    setFormError(null);
+    setSaving(false);
+
+    jamKerjaApi
+      .getByUserId(employeeId)
+      .then((detail) => {
+        setFormDays(Array.isArray(detail.day_of_week) ? detail.day_of_week : []);
+        setFormStartTime(detail.start_time);
+        setFormEndTime(detail.end_time);
+        setFormActive(!!detail.is_active);
+      })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : "Gagal memuat detail jam kerja";
+        setFormError(message);
+      });
+  };
+
+  const toggleHari = (hari: string) => {
+    setFormDays((prev) => {
+      const set = new Set(prev);
+      if (set.has(hari)) set.delete(hari);
+      else set.add(hari);
+      return Array.from(set);
+    });
+  };
+
+  const handleSave = async () => {
+    if (!selectedUserId) return;
+    if (formDays.length === 0) {
+      setFormError("Pilih minimal 1 hari kerja");
+      return;
+    }
+    if (!formStartTime || !formEndTime) {
+      setFormError("Jam mulai dan selesai wajib diisi");
+      return;
+    }
+
+    setSaving(true);
+    setFormError(null);
+    try {
+      const updated = await jamKerjaApi.updateByUserId(selectedUserId, {
+        day_of_week: formDays,
+        start_time: formStartTime,
+        end_time: formEndTime,
+        is_active: formActive,
+      });
+
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id !== selectedUserId
+            ? r
+            : {
+                ...r,
+                dayOfWeek: updated.day_of_week,
+                workDays: workDaysLabelFromHari(updated.day_of_week),
+                startTime: updated.start_time,
+                endTime: updated.end_time,
+              }
+        )
+      );
+      setDialogOpen(false);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal menyimpan jam kerja";
+      setFormError(message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -213,6 +308,12 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
                       Memuat data jam kerja...
                     </td>
                   </tr>
+                ) : loadError ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-red-600">
+                      {loadError}
+                    </td>
+                  </tr>
                 ) : paged.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-6 py-10 text-center text-sm text-gray-500">
@@ -291,8 +392,8 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
+                onClick={() => setPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
                 className="h-9 w-9 rounded-lg border border-gray-200 bg-white flex items-center justify-center
                            disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
@@ -305,7 +406,7 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
                   onClick={() => setPage(p)}
                   className={[
                     "h-9 w-9 rounded-lg border text-sm font-medium",
-                    p === page
+                    p === currentPage
                       ? "border-blue-600 text-blue-600 bg-blue-50"
                       : "border-gray-200 text-gray-700 bg-white hover:bg-gray-50",
                   ].join(" ")}
@@ -315,8 +416,8 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
               ))}
 
               <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
+                onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
                 className="h-9 w-9 rounded-lg border border-gray-200 bg-white flex items-center justify-center
                            disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
               >
@@ -326,6 +427,73 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Atur Jam Kerja</DialogTitle>
+            <DialogDescription>
+              {selectedUserName ? `Karyawan: ${selectedUserName}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Hari Kerja</div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {hariOrder.map((h) => (
+                  <label key={h} className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={formDays.includes(h)}
+                      onChange={() => toggleHari(h)}
+                    />
+                    {h}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Mulai</div>
+                <input
+                  type="time"
+                  value={formStartTime}
+                  onChange={(e) => setFormStartTime(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Selesai</div>
+                <input
+                  type="time"
+                  value={formEndTime}
+                  onChange={(e) => setFormEndTime(e.target.value)}
+                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={formActive} onChange={(e) => setFormActive(e.target.checked)} />
+              Jadwal aktif
+            </label>
+
+            {formError && <div className="text-sm text-red-600">{formError}</div>}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" onClick={() => setDialogOpen(false)} disabled={saving}>
+              Batal
+            </Button>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl" onClick={handleSave} disabled={saving}>
+              {saving ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
