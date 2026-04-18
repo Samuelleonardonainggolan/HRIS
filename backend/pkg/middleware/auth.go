@@ -128,3 +128,22 @@ func AdminOnly() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func ManagerDepartemenOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
+
+		if role != models.RoleManagerDepartemen {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Manager Departemen only"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}

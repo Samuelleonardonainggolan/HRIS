@@ -169,6 +169,15 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
+
+			deptLeaveRequests := protected.Group("/dept-leave-requests")
+			deptLeaveRequests.Use(middleware.ManagerDepartemenOnly())
+			{
+				deptLeaveRequests.GET("", pengajuanIzinCutiHandler.ListForKepalaDepartemen)
+				deptLeaveRequests.GET("/:id", pengajuanIzinCutiHandler.GetForKepalaDepartemen)
+				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
+				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
+			}
 		}
 	}
 }

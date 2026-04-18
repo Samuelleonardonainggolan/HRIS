@@ -16,6 +16,10 @@ type PengajuanIzinCutiService interface {
 	GetForManagerHR(ctx context.Context, id string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	ApproveByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	RejectByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaDepartemenUserID string) ([]models.PengajuanIzinCutiApprovalResponse, error)
+	GetForKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 }
 
 type pengajuanIzinCutiService struct {
@@ -91,6 +95,121 @@ func (s *pengajuanIzinCutiService) ApproveByManagerHR(ctx context.Context, id st
 
 func (s *pengajuanIzinCutiService) RejectByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
 	return s.decideByManagerHR(ctx, id, managerHRUserID, models.StatusRejected)
+}
+
+func (s *pengajuanIzinCutiService) ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaDepartemenUserID string) ([]models.PengajuanIzinCutiApprovalResponse, error) {
+	kepalaOID, err := primitive.ObjectIDFromHex(kepalaDepartemenUserID)
+	if err != nil {
+		return nil, errors.New("kepala departemen user ID tidak valid")
+	}
+
+	filter := bson.M{"kepala_departemen_id": kepalaOID}
+	status = strings.TrimSpace(strings.ToUpper(status))
+	if status != "" && status != "ALL" {
+		filter["status_kepala_departemen"] = status
+	}
+
+	pengajuans, err := s.pengajuanRepo.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	userIDs := make([]string, 0, len(pengajuans))
+	for _, p := range pengajuans {
+		userIDs = append(userIDs, p.UserID.Hex())
+	}
+	users, err := s.userRepo.FindByIDs(ctx, uniqueStrings(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	userByID := make(map[string]models.User, len(users))
+	for _, u := range users {
+		userByID[u.ID.Hex()] = u
+	}
+
+	q := strings.ToLower(strings.TrimSpace(search))
+	result := make([]models.PengajuanIzinCutiApprovalResponse, 0, len(pengajuans))
+	for _, p := range pengajuans {
+		u, ok := userByID[p.UserID.Hex()]
+		if q != "" {
+			if !ok {
+				continue
+			}
+			if !strings.Contains(strings.ToLower(u.FullName), q) && !strings.Contains(strings.ToLower(u.PayrollNumber), q) {
+				continue
+			}
+		}
+		result = append(result, s.toApprovalResponse(p, ok, &u))
+	}
+
+	return result, nil
+}
+
+func (s *pengajuanIzinCutiService) GetForKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	kepalaOID, err := primitive.ObjectIDFromHex(kepalaDepartemenUserID)
+	if err != nil {
+		return nil, errors.New("kepala departemen user ID tidak valid")
+	}
+
+	p, err := s.pengajuanRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if p.KepalaDepartemenID != kepalaOID {
+		return nil, errors.New("akses ditolak")
+	}
+
+	u, err := s.userRepo.FindByID(ctx, p.UserID.Hex())
+	if err != nil {
+		resp := models.PengajuanIzinCutiApprovalResponse{Pengajuan: p.ToResponse()}
+		return &resp, nil
+	}
+	resp := s.toApprovalResponse(*p, true, u)
+	return &resp, nil
+}
+
+func (s *pengajuanIzinCutiService) ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusApproved)
+}
+
+func (s *pengajuanIzinCutiService) RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusRejected)
+}
+
+func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, statusKepalaDepartemen string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	if statusKepalaDepartemen != models.StatusApproved && statusKepalaDepartemen != models.StatusRejected {
+		return nil, errors.New("status tidak valid")
+	}
+
+	kepalaOID, err := primitive.ObjectIDFromHex(kepalaDepartemenUserID)
+	if err != nil {
+		return nil, errors.New("kepala departemen user ID tidak valid")
+	}
+
+	current, err := s.pengajuanRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if current.KepalaDepartemenID != kepalaOID {
+		return nil, errors.New("akses ditolak")
+	}
+	if strings.ToUpper(current.StatusKepalaDepartemen) != models.StatusPending {
+		return nil, errors.New("pengajuan sudah diproses")
+	}
+
+	finalStatus := computeFinalStatus(statusKepalaDepartemen, strings.ToUpper(current.StatusManagerHR))
+	updated, err := s.pengajuanRepo.UpdateKepalaDepartemenDecision(ctx, id, kepalaOID, statusKepalaDepartemen, finalStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	u, err := s.userRepo.FindByID(ctx, updated.UserID.Hex())
+	if err != nil {
+		resp := models.PengajuanIzinCutiApprovalResponse{Pengajuan: updated.ToResponse()}
+		return &resp, nil
+	}
+	resp := s.toApprovalResponse(*updated, true, u)
+	return &resp, nil
 }
 
 func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id string, managerHRUserID string, statusManagerHR string) (*models.PengajuanIzinCutiApprovalResponse, error) {

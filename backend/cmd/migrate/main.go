@@ -185,4 +185,14 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	// Migration 12: Migrate legacy pengajuan_izin_cuti
+	version, name, desc, up, down = migrations.MigratePengajuanIzinCutiLegacy()
+	manager.Register(migration.Migration{
+		Version:     version,
+		Name:        name,
+		Description: desc,
+		Up:          up,
+		Down:        down,
+	})
 }
