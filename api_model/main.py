@@ -1,22 +1,3 @@
-"""
-=============================================================================
-Hotel Labersa Toba — Stateless Design
-=============================================================================
-Prinsip:
-  - TIDAK ada database, TIDAK ada auth
-  - Terima request dari Golang → proses → kembalikan hasil
-  - Embedding disimpan di Golang, dikirim ke sini saat verifikasi
-  - Dilindungi API Key (hanya Golang yang boleh akses)
-
-Endpoint:
-  POST /face/extract         ← Ekstrak embedding dari foto (saat registrasi)
-  POST /face/verify          ← Cocokkan foto vs embedding acuan (saat absen)
-  POST /geo/validate         ← Validasi koordinat GPS
-  POST /attendance/process   ← Pipeline lengkap: geo + face sekaligus
-  GET  /health               ← Status service
-=============================================================================
-"""
-
 import io
 import os
 import json

@@ -197,6 +197,8 @@ func registerMigrations(manager *migration.Manager) {
 	})
 
 	version, name, desc, up, down = migrations.CreateOvertimeRequest()
+	// Migration 12: Migrate legacy pengajuan_izin_cuti
+	version, name, desc, up, down = migrations.MigratePengajuanIzinCutiLegacy()
 	manager.Register(migration.Migration{
 		Version:     version,
 		Name:        name,

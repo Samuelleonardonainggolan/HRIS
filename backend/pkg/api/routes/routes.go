@@ -127,14 +127,17 @@ func SetupRoutes(
 				// Get all work schedules (Admin/HR)
 				jamKerja.GET("", jamKerjaHandler.GetAllJamKerja)
 
+				// Get work schedules for manager department
+				jamKerja.GET("/my-department", middleware.ManagerOnly(), jamKerjaHandler.GetJamKerjaMyDepartment)
+
 				// Get work schedule by user ID
 				jamKerja.GET("/user/:userId", jamKerjaHandler.GetJamKerjaByUserID)
 
 				// Create work schedule (Manager/HR only)
 				jamKerja.POST("", middleware.ManagerHROnly(), jamKerjaHandler.CreateJamKerja)
 
-				// Update work schedule by user ID (Manager/HR only)
-				jamKerja.PUT("/user/:userId", middleware.ManagerHROnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
+				// Update work schedule by user ID (Manager only)
+				jamKerja.PUT("/user/:userId", middleware.ManagerOnly(), jamKerjaHandler.UpdateJamKerjaByUserID)
 
 				// Get available employees without work schedule (Manager/HR only)
 				jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
@@ -165,6 +168,15 @@ func SetupRoutes(
 				leaveRequests.GET("/:id", pengajuanIzinCutiHandler.GetForManagerHR)
 				leaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByManagerHR)
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
+			}
+
+			deptLeaveRequests := protected.Group("/dept-leave-requests")
+			deptLeaveRequests.Use(middleware.ManagerDepartemenOnly())
+			{
+				deptLeaveRequests.GET("", pengajuanIzinCutiHandler.ListForKepalaDepartemen)
+				deptLeaveRequests.GET("/:id", pengajuanIzinCutiHandler.GetForKepalaDepartemen)
+				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
+				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
 			}
 		}
 	}

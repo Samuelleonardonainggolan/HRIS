@@ -134,6 +134,7 @@ func main() {
 	log.Println("     GET    /api/v1/attendance/schedule-info") // ✅ Dari kode pertama (via routes)
 	log.Println("   Jam Kerja (Work Schedule):")                // ✅ Dari kode kedua
 	log.Println("     GET    /api/v1/jam-kerja")
+	log.Println("     GET    /api/v1/jam-kerja/my-department")
 	log.Println("     GET    /api/v1/jam-kerja/user/:userId")
 	log.Println("     POST   /api/v1/jam-kerja")
 	log.Println("     PUT    /api/v1/jam-kerja/user/:userId")

@@ -16,8 +16,10 @@ import (
 
 type JamKerjaService interface {
 	ListJamKerja(ctx context.Context) ([]models.JamKerjaListRowResponse, error)
+	ListJamKerjaMyDepartment(ctx context.Context, departmentName, q, position string) ([]models.JamKerjaListRowResponse, error)
 	GetJamKerjaByUserID(ctx context.Context, userID string) (*models.JamKerjaDetailResponse, error)
 	UpdateJamKerjaByUserID(ctx context.Context, userID string, req models.UpdateJamKerjaRequest) (*models.JamKerjaDetailResponse, error)
+	UpdateJamKerjaByUserIDForManager(ctx context.Context, actorRole, actorDepartment, userID string, req models.UpdateJamKerjaRequest) (*models.JamKerjaDetailResponse, error)
 	CreateJamKerja(ctx context.Context, req models.CreateJamKerjaRequest) (*models.JamKerjaDetailResponse, error)
 	SearchAvailableEmployees(ctx context.Context, q string) ([]models.AvailableEmployeeResponse, error)
 }
@@ -176,6 +178,58 @@ func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaLi
 	return out, nil
 }
 
+func (s *jamKerjaService) ListJamKerjaMyDepartment(ctx context.Context, departmentName, q, position string) ([]models.JamKerjaListRowResponse, error) {
+	users, err := s.userRepo.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	query := strings.ToLower(strings.TrimSpace(q))
+	posFilter := strings.TrimSpace(position)
+	dept := strings.TrimSpace(departmentName)
+
+	out := make([]models.JamKerjaListRowResponse, 0)
+	for _, u := range users {
+		if strings.TrimSpace(u.DepartmentName) != dept {
+			continue
+		}
+		if posFilter != "" && posFilter != "all" {
+			if strings.TrimSpace(u.PositionName) != posFilter {
+				continue
+			}
+		}
+		if query != "" {
+			name := strings.ToLower(u.FullName)
+			nik := strings.ToLower(u.PayrollNumber)
+			if !strings.Contains(name, query) && !strings.Contains(nik, query) {
+				continue
+			}
+		}
+
+		jk, err := s.jamKerjaRepo.FindByUserID(ctx, u.ID.Hex())
+		if err != nil {
+			return nil, err
+		}
+		if jk == nil {
+			jk = defaultJamKerja()
+		}
+
+		out = append(out, models.JamKerjaListRowResponse{
+			ID:         u.ID.Hex(),
+			Name:       u.FullName,
+			NIK:        u.PayrollNumber,
+			Department: u.DepartmentName,
+			Position:   u.PositionName,
+			DayOfWeek:  jk.DayOfWeek,
+			WorkDays:   string(workDaysLabelFromHari(jk.DayOfWeek)),
+			StartTime:  jk.StartTime.UTC().Format("15:04"),
+			EndTime:    jk.EndTime.UTC().Format("15:04"),
+		})
+	}
+
+	return out, nil
+}
+
 func (s *jamKerjaService) GetJamKerjaByUserID(ctx context.Context, userID string) (*models.JamKerjaDetailResponse, error) {
 	_, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -265,6 +319,23 @@ func (s *jamKerjaService) UpdateJamKerjaByUserID(ctx context.Context, userID str
 		EndTime:     req.EndTime,
 		IsActive:     aktif,
 	}, nil
+}
+
+func (s *jamKerjaService) UpdateJamKerjaByUserIDForManager(ctx context.Context, actorRole, actorDepartment, userID string, req models.UpdateJamKerjaRequest) (*models.JamKerjaDetailResponse, error) {
+	actorRole = strings.TrimSpace(actorRole)
+	actorDepartment = strings.TrimSpace(actorDepartment)
+
+	if actorRole == models.RoleManagerDepartemen {
+		u, err := s.userRepo.FindByID(ctx, userID)
+		if err != nil {
+			return nil, errors.New("karyawan tidak ditemukan")
+		}
+		if strings.TrimSpace(u.DepartmentName) != actorDepartment {
+			return nil, errors.New("akses ditolak: hanya dapat mengatur jam kerja departemen Anda")
+		}
+	}
+
+	return s.UpdateJamKerjaByUserID(ctx, userID, req)
 }
 
 func (s *jamKerjaService) CreateJamKerja(ctx context.Context, req models.CreateJamKerjaRequest) (*models.JamKerjaDetailResponse, error) {

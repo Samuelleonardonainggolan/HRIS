@@ -16,6 +16,7 @@ type PengajuanIzinCutiRepository interface {
 	FindByID(ctx context.Context, id string) (*models.LeaveRequest, error)
 	Find(ctx context.Context, filter bson.M) ([]models.LeaveRequest, error)
 	UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, statusManagerHR string, finalStatus string) (*models.LeaveRequest, error)
+	UpdateKepalaDepartemenDecision(ctx context.Context, id string, kepalaDepartemenID primitive.ObjectID, statusKepalaDepartemen string, finalStatus string) (*models.LeaveRequest, error)
 }
 
 type pengajuanIzinCutiRepository struct {
@@ -93,6 +94,41 @@ func (r *pengajuanIzinCutiRepository) UpdateManagerHRDecision(
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, errors.New("pengajuan sudah diproses")
+		}
+		return nil, err
+	}
+
+	return &updated, nil
+}
+
+func (r *pengajuanIzinCutiRepository) UpdateKepalaDepartemenDecision(
+	ctx context.Context,
+	id string,
+	kepalaDepartemenID primitive.ObjectID,
+	statusKepalaDepartemen string,
+	finalStatus string,
+) (*models.LeaveRequest, error) {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("invalid pengajuan ID")
+	}
+
+	now := time.Now()
+	filter := bson.M{"_id": objectID, "status_kepala_departemen": models.StatusPending, "kepala_departemen_id": kepalaDepartemenID}
+	update := bson.M{
+		"$set": bson.M{
+			"status_kepala_departemen": statusKepalaDepartemen,
+			"final_status":            finalStatus,
+			"updated_at":              now,
+		},
+	}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+
+	var updated models.LeaveRequest
+	err = r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("pengajuan sudah diproses atau bukan wewenang Anda")
 		}
 		return nil, err
 	}

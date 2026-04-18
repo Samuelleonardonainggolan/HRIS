@@ -4,9 +4,11 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -83,6 +85,15 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		return nil, errors.New("user ID tidak valid")
 	}
 
+	var requester models.User
+	err = s.db.Collection("users").FindOne(ctx, bson.M{"_id": userObjID}).Decode(&requester)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, err
+	}
+
 	// Validasi tipe pengajuan ID
 	tipeObjID, err := primitive.ObjectIDFromHex(req.TipePengajuanID)
 	if err != nil {
@@ -114,39 +125,55 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
 	}
 
-	// Cari kepala departemen dan manager HR (pakai approver pertama sebagai fallback)
-	// TODO: sesuaikan dengan struktur organisasi backend Anda
-	var approver struct {
+	var dept models.Department
+	_ = s.db.Collection("departments").FindOne(ctx, bson.M{"_id": requester.DepartmentID}).Decode(&dept)
+
+	var managerHR struct {
 		ID primitive.ObjectID `bson:"_id"`
 	}
-	_ = s.db.Collection("users").FindOne(ctx, map[string]interface{}{"role": "manager_hr"}).Decode(&approver)
-	if approver.ID.IsZero() {
-		// fallback ke user pertama jika tidak ada manager HR
-		_ = s.db.Collection("users").FindOne(ctx, map[string]interface{}{}).Decode(&approver)
+	_ = s.db.Collection("users").FindOne(
+		ctx,
+		bson.M{"role": models.RoleManagerHR},
+	).Decode(&managerHR)
+
+	kepalaDepartemenID := dept.ManagerID
+	if kepalaDepartemenID.IsZero() {
+		kepalaDepartemenID = managerHR.ID
+	}
+	if kepalaDepartemenID.IsZero() {
+		kepalaDepartemenID = requester.ID
+	}
+
+	managerHRID := managerHR.ID
+	if managerHRID.IsZero() {
+		managerHRID = kepalaDepartemenID
 	}
 
 	now := time.Now()
 	pengajuan := &models.LeaveRequest{
 		ID:                     primitive.NewObjectID(),
 		UserID:                 userObjID,
-		RequestTypeID:        	tipeObjID,
+		RequestTypeID:          tipeObjID,
 		TypeName:               tipe.TypeName,
-		StartDate:           	tanggalMulai,
-		EndDate:         		tanggalSelesai,
+		StartDate:              tanggalMulai,
+		EndDate:                tanggalSelesai,
 		DaysTotal:              req.TotalHari,
 		Reason:                 req.Alasan,
 		DocumentURL:            req.DokumenURL,
 		StatusKepalaDepartemen: models.StatusPending,
-		KepalaDepartemenID:     approver.ID,
-		ManagerHRID:            approver.ID,
+		KepalaDepartemenID:     kepalaDepartemenID,
+		ManagerHRID:            managerHRID,
 		StatusManagerHR:        models.StatusPending,
 		FinalStatus:            models.StatusPending,
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}
 
-	_, err = s.db.Collection("pengajuan_izin_cuti").InsertOne(ctx, pengajuan)
+	_, err = s.db.Collection("leave_request").InsertOne(ctx, pengajuan)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, fmt.Errorf("pengajuan sudah ada untuk rentang tanggal tersebut")
+		}
 		return nil, err
 	}
 
@@ -160,7 +187,7 @@ func (s *pengajuanServiceImpl) GetPengajuanByUser(ctx context.Context, userID st
 		return nil, errors.New("user ID tidak valid")
 	}
 
-	cursor, err := s.db.Collection("pengajuan_izin_cuti").Find(ctx, map[string]interface{}{"user_id": userObjID})
+	cursor, err := s.db.Collection("leave_request").Find(ctx, bson.M{"user_id": userObjID})
 	if err != nil {
 		return nil, err
 	}
