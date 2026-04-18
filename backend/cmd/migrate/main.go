@@ -147,7 +147,7 @@ func registerMigrations(manager *migration.Manager) {
 	})
 
 	// Migration 8: Waktu Istirahat
-	version, name, desc, up, down = migrations.CreateWaktuIstirahat()
+	version, name, desc, up, down = migrations.CreateBreakTime()
 	manager.Register(migration.Migration{
 		Version:     version,
 		Name:        name,
@@ -178,6 +178,25 @@ func registerMigrations(manager *migration.Manager) {
 
 	// Migration 11: Pengajuan Izin/Cuti
 	version, name, desc, up, down = migrations.CreatePengajuanIzinCuti()
+	manager.Register(migration.Migration{
+		Version:     version,
+		Name:        name,
+		Description: desc,
+		Up:          up,
+		Down:        down,
+	})
+
+	// Migration 12: Leave Balance
+	version, name, desc, up, down = migrations.CreateLeaveBalance()
+	manager.Register(migration.Migration{
+		Version:     version,
+		Name:        name,
+		Description: desc,
+		Up:          up,
+		Down:        down,
+	})
+
+	version, name, desc, up, down = migrations.CreateOvertimeRequest()
 	manager.Register(migration.Migration{
 		Version:     version,
 		Name:        name,

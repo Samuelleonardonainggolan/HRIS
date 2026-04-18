@@ -53,6 +53,14 @@ func (h *JamKerjaHandler) UpdateJamKerjaByUserID(c *gin.Context) {
 		return
 	}
 
+	normalizeJamKerjaPayloadUpdate(&req)
+
+	// ✅ validasi manual (required)
+	if len(req.DayOfWeek) == 0 || req.StartTime == "" || req.EndTime == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "day_of_week, start_time, end_time wajib diisi"))
+		return
+	}
+
 	data, err := h.jamKerjaService.UpdateJamKerjaByUserID(c.Request.Context(), userID, req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to update jam kerja", err.Error()))
@@ -67,6 +75,14 @@ func (h *JamKerjaHandler) CreateJamKerja(c *gin.Context) {
 	var req models.CreateJamKerjaRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	normalizeJamKerjaPayload(&req)
+
+	// ✅ validasi manual (required)
+	if len(req.DayOfWeek) == 0 || req.StartTime == "" || req.EndTime == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "day_of_week, start_time, end_time wajib diisi"))
 		return
 	}
 
@@ -89,4 +105,37 @@ func (h *JamKerjaHandler) GetAvailableEmployees(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse("Employees retrieved successfully", data))
+}
+
+
+func normalizeJamKerjaPayload(req *models.CreateJamKerjaRequest) {
+	// create
+	if len(req.DayOfWeek) == 0 && len(req.HariKerja) > 0 {
+		req.DayOfWeek = req.HariKerja
+	}
+	if req.StartTime == "" && req.WaktuMulai != "" {
+		req.StartTime = req.WaktuMulai
+	}
+	if req.EndTime == "" && req.WaktuSelesai != "" {
+		req.EndTime = req.WaktuSelesai
+	}
+	if req.IsActive == nil && req.Aktif != nil {
+		req.IsActive = req.Aktif
+	}
+}
+
+func normalizeJamKerjaPayloadUpdate(req *models.UpdateJamKerjaRequest) {
+	// update
+	if len(req.DayOfWeek) == 0 && len(req.HariKerja) > 0 {
+		req.DayOfWeek = req.HariKerja
+	}
+	if req.StartTime == "" && req.WaktuMulai != "" {
+		req.StartTime = req.WaktuMulai
+	}
+	if req.EndTime == "" && req.WaktuSelesai != "" {
+		req.EndTime = req.WaktuSelesai
+	}
+	if req.IsActive == nil && req.Aktif != nil {
+		req.IsActive = req.Aktif
+	}
 }

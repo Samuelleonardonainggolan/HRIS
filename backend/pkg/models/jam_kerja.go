@@ -46,18 +46,33 @@ type JamKerjaDetailResponse struct {
 }
 
 type UpdateJamKerjaRequest struct {
-	DayOfWeek []string  `json:"day_of_week" binding:"required,min=1"`
-	StartTime  string   `json:"start_time" binding:"required"`
-	EndTime    string   `json:"end_time" binding:"required"`
-	IsActive  *bool    `json:"is_active,omitempty"`
+	// ✅ format baru
+	DayOfWeek  []string `json:"day_of_week"`
+	StartTime  string   `json:"start_time"`
+	EndTime    string   `json:"end_time"`
+	IsActive   *bool    `json:"is_active,omitempty"`
+
+	// ✅ format lama (biar tidak break)
+	HariKerja    []string `json:"hari_kerja,omitempty"`
+	WaktuMulai   string   `json:"waktu_mulai,omitempty"`
+	WaktuSelesai string   `json:"waktu_selesai,omitempty"`
+	Aktif        *bool    `json:"aktif,omitempty"`
 }
 
 type CreateJamKerjaRequest struct {
-	UserID       string   `json:"user_id" binding:"required"`
-	DayOfWeek []string  `json:"day_of_week" binding:"required,min=1"`
-	StartTime  string   `json:"start_time" binding:"required"`   // "HH:mm"
-	EndTime    string   `json:"end_time" binding:"required"` // "HH:mm"
+	UserID string `json:"user_id" binding:"required"`
+
+	// ✅ format baru
+	DayOfWeek []string `json:"day_of_week"`
+	StartTime string   `json:"start_time"`
+	EndTime   string   `json:"end_time"`
 	IsActive  *bool    `json:"is_active,omitempty"`
+
+	// ✅ format lama (biar tidak break)
+	HariKerja    []string `json:"hari_kerja,omitempty"`
+	WaktuMulai   string   `json:"waktu_mulai,omitempty"`
+	WaktuSelesai string   `json:"waktu_selesai,omitempty"`
+	Aktif        *bool    `json:"aktif,omitempty"`
 }
 
 type AvailableEmployeeResponse struct {

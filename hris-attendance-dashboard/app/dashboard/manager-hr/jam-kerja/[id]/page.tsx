@@ -39,7 +39,22 @@ export default function AturJamKerjaPage() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || json?.message || "Gagal memuat jam kerja");
-        setDetail(json.data);
+        const d = json?.data ?? {};
+        setDetail({
+          user_id: d.user_id ?? d.userId ?? "",
+          name: d.name ?? "",
+          nik: d.nik ?? "",
+          department: d.department ?? "",
+          position: d.position ?? "",
+          hari_kerja: Array.isArray(d.hari_kerja)
+            ? d.hari_kerja
+            : Array.isArray(d.day_of_week)
+              ? d.day_of_week
+              : [],
+          waktu_mulai: d.waktu_mulai ?? d.start_time ?? "09:00",
+          waktu_selesai: d.waktu_selesai ?? d.end_time ?? "18:00",
+          aktif: typeof d.aktif === "boolean" ? d.aktif : (typeof d.is_active === "boolean" ? d.is_active : true),
+        });
         } catch (e: any) {
         console.error(e);
         setDetail(null);
@@ -68,10 +83,10 @@ export default function AturJamKerjaPage() {
         method: "PUT",
         headers: authService.getAuthHeaders(),
         body: JSON.stringify({
-            hari_kerja: detail.hari_kerja,
-            waktu_mulai: detail.waktu_mulai,
-            waktu_selesai: detail.waktu_selesai,
-            aktif: detail.aktif,
+            day_of_week: detail.hari_kerja,      // ✅
+            start_time: detail.waktu_mulai,      // ✅ "HH:mm"
+            end_time: detail.waktu_selesai,      // ✅ "HH:mm"
+            is_active: detail.aktif,             // ✅ optional
         }),
         });
 

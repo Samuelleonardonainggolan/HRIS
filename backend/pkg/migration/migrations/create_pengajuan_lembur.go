@@ -1,23 +1,22 @@
-// pkg/migration/migrations/015_create_break_time.go
+// pkg/migration/migrations/014_create_overtime_request.go
 package migrations
 
 import (
 	"context"
-	"fmt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func CreateBreakTime() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
-	version := 11 // ✅ sesuaikan urutan migration Anda
-	name := "create_break_time"
-	description := "Create break_time collection and indexes"
+func CreateOvertimeRequest() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
+	version := 14 // ✅ sesuaikan urutan migration Anda
+	name := "create_overtime_request"
+	description := "Create overtime_request collection and indexes"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
-		collection := db.Collection("break_time")
+		collection := db.Collection("overtime_request")
 
 		indexModels := []mongo.IndexModel{
 			{
@@ -37,15 +36,19 @@ func CreateBreakTime() (int, string, string, func(*mongo.Database) error, func(*
 				Options: options.Index().SetName("idx_end_time"),
 			},
 			{
-				Keys:    bson.D{{Key: "status", Value: 1}},
-				Options: options.Index().SetName("idx_status"),
+				Keys:    bson.D{{Key: "status_kepala_departemen", Value: 1}},
+				Options: options.Index().SetName("idx_status_kepala_departemen"),
+			},
+			{
+				Keys:    bson.D{{Key: "kepala_departemen_id", Value: 1}},
+				Options: options.Index().SetName("idx_kepala_departemen_id"),
 			},
 			{
 				Keys:    bson.D{{Key: "created_at", Value: -1}},
 				Options: options.Index().SetName("idx_created_at"),
 			},
 
-			// Optional unique guard: 1 break record per user per date+time range
+			// Optional unique guard: 1 overtime per user per date+time range
 			{
 				Keys: bson.D{
 					{Key: "user_id", Value: 1},
@@ -60,16 +63,12 @@ func CreateBreakTime() (int, string, string, func(*mongo.Database) error, func(*
 		}
 
 		_, err := collection.Indexes().CreateMany(ctx, indexModels)
-		if err != nil {
-			return fmt.Errorf("failed to create indexes: %w", err)
-		}
-
-		return nil
+		return err
 	}
 
 	down := func(db *mongo.Database) error {
 		ctx := context.Background()
-		return db.Collection("break_time").Drop(ctx)
+		return db.Collection("overtime_request").Drop(ctx)
 	}
 
 	return version, name, description, up, down
