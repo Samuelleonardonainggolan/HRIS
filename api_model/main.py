@@ -26,11 +26,53 @@ logger = logging.getLogger("face-service")
 # =============================================================================
 MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Dataset\output_cpu\facenet_labersa_cpu.pt")
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.60"))
-OFFICE_LAT = float(os.getenv("OFFICE_LAT", "2.3561"))
-OFFICE_LNG = float(os.getenv("OFFICE_LNG", "99.1431"))
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
+OFFICE_LAT = float(os.getenv("OFFICE_LAT")) if os.getenv("OFFICE_LAT") else None
+OFFICE_LNG = float(os.getenv("OFFICE_LNG")) if os.getenv("OFFICE_LNG") else None
 GEOFENCE_RADIUS_M = float(os.getenv("GEOFENCE_RADIUS_M", "100"))
 API_KEY = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
+DEFAULT_GEOFENCES_JSON = os.getenv("DEFAULT_GEOFENCES_JSON", "")
+
+
+def _load_default_geofences() -> List[dict]:
+    """
+    Muat geofence default dari env (opsional):
+    DEFAULT_GEOFENCES_JSON='[{"name":"HQ","latitude":2.35,"longitude":99.14,"radius_m":120}]'
+    """
+    if not DEFAULT_GEOFENCES_JSON.strip():
+        return []
+
+    try:
+        raw = json.loads(DEFAULT_GEOFENCES_JSON)
+        if not isinstance(raw, list):
+            logger.warning("DEFAULT_GEOFENCES_JSON harus berupa list")
+            return []
+
+        geofences: List[dict] = []
+        for idx, item in enumerate(raw):
+            if not isinstance(item, dict):
+                logger.warning(f"DEFAULT_GEOFENCES_JSON[{idx}] bukan object, dilewati")
+                continue
+
+            lat = item.get("latitude")
+            lng = item.get("longitude")
+            if lat is None or lng is None:
+                logger.warning(f"DEFAULT_GEOFENCES_JSON[{idx}] tidak punya latitude/longitude, dilewati")
+                continue
+
+            geofences.append({
+                "name": item.get("name") or f"Geofence-{idx+1}",
+                "latitude": float(lat),
+                "longitude": float(lng),
+                "radius_m": float(item.get("radius_m", GEOFENCE_RADIUS_M)),
+            })
+        return geofences
+    except Exception as e:
+        logger.warning(f"Gagal parse DEFAULT_GEOFENCES_JSON: {e}")
+        return []
+
+
+DEFAULT_GEOFENCES = _load_default_geofences()
 
 # =============================================================================
 # MODEL
@@ -682,21 +724,86 @@ def haversine(lat1, lng1, lat2, lng2) -> float:
     return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
 
-def validate_location(latitude: float, longitude: float,
-                      radius_m: float = None) -> dict:
+def validate_location(
+    latitude: float,
+    longitude: float,
+    radius_m: float = None,
+    geofences: Optional[List[dict]] = None,
+) -> dict:
+    """
+    Validasi lokasi terhadap banyak geofence.
+    Prioritas geofence:
+      1) geofences dari request
+      2) DEFAULT_GEOFENCES dari env
+      3) fallback legacy OFFICE_LAT/LNG + radius
+    """
     radius = radius_m or GEOFENCE_RADIUS_M
-    distance = haversine(latitude, longitude, OFFICE_LAT, OFFICE_LNG)
-    valid = distance <= radius
+
+    candidate_geofences = geofences or []
+    if not candidate_geofences:
+        candidate_geofences = DEFAULT_GEOFENCES
+
+    if not candidate_geofences and OFFICE_LAT is not None and OFFICE_LNG is not None:
+        candidate_geofences = [{
+            "name": "Default Office",
+            "latitude": OFFICE_LAT,
+            "longitude": OFFICE_LNG,
+            "radius_m": radius,
+        }]
+
+    closest = None
+    closest_distance = float("inf")
+
+    for gf in candidate_geofences:
+        try:
+            gf_lat = float(gf["latitude"])
+            gf_lng = float(gf["longitude"])
+            gf_radius = float(gf.get("radius_m", radius))
+            gf_name = gf.get("name") or "Geofence"
+        except Exception:
+            continue
+
+        distance = haversine(latitude, longitude, gf_lat, gf_lng)
+        is_inside = distance <= gf_radius
+
+        if is_inside:
+            if closest is None or distance < closest_distance:
+                closest = {
+                    "name": gf_name,
+                    "latitude": gf_lat,
+                    "longitude": gf_lng,
+                    "radius_m": gf_radius,
+                    "distance_m": distance,
+                }
+                closest_distance = distance
+        elif distance < closest_distance:
+            closest_distance = distance
+
+    if closest is not None:
+        distance = closest["distance_m"]
+        return {
+            "is_valid": True,
+            "distance_m": round(distance, 1),
+            "radius_m": closest["radius_m"],
+            "office_lat": closest["latitude"],
+            "office_lng": closest["longitude"],
+            "geofence_name": closest["name"],
+            "geofence_count": len(candidate_geofences),
+            "message": f"Lokasi valid di area {closest['name']}, jarak {distance:.0f}m",
+        }
+
     return {
-        "is_valid": valid,
-        "distance_m": round(distance, 1),
+        "is_valid": False,
+        "distance_m": round(closest_distance if closest_distance != float("inf") else 0.0, 1),
         "radius_m": radius,
-        "office_lat": OFFICE_LAT,
-        "office_lng": OFFICE_LNG,
+        "office_lat": None,
+        "office_lng": None,
+        "geofence_name": None,
+        "geofence_count": len(candidate_geofences),
         "message": (
-            f"Lokasi valid, jarak {distance:.0f}m dari kantor"
-            if valid else
-            f"Diluar radius, jarak {distance:.0f}m (maks {radius:.0f}m)"
+            f"Di luar semua geofence yang diizinkan (jarak terdekat {closest_distance:.0f}m)"
+            if closest_distance != float("inf")
+            else "Tidak ada geofence valid yang bisa diproses"
         ),
     }
 
@@ -718,6 +825,7 @@ class GeoRequest(BaseModel):
     latitude: float
     longitude: float
     radius_m: Optional[float] = None
+    geofences: Optional[List[dict]] = None
 
 
 class AttendanceProcessRequest(BaseModel):
@@ -732,6 +840,7 @@ class AttendanceProcessRequest(BaseModel):
     record_type: str  # "checkin" / "checkout"
     threshold: Optional[float] = None
     radius_m: Optional[float] = None
+    geofences: Optional[List[dict]] = None
 
 
 # =============================================================================
@@ -794,8 +903,9 @@ def health():
         "status": "ok",
         "model_loaded": face_svc.loaded,
         "num_classes": len(face_svc.class_names),
-        "office_coords": {"lat": OFFICE_LAT, "lng": OFFICE_LNG},
+        "office_coords": {"lat": OFFICE_LAT, "lng": OFFICE_LNG} if OFFICE_LAT and OFFICE_LNG else None,
         "geofence_m": GEOFENCE_RADIUS_M,
+        "default_geofences_count": len(DEFAULT_GEOFENCES),
         "threshold": SIMILARITY_THRESHOLD,
     }
 
@@ -858,7 +968,7 @@ async def extract_embedding_endpoint(
 @app.post("/face/verify", summary="🔍 Cocokkan foto vs embedding acuan")
 async def verify_face(
     photo: UploadFile = File(..., description="Foto selfie saat absen"),
-    data: str = Form(..., description='JSON: {"employee_id":"...","stored_embedding":[...],"threshold":0.60}'),
+    data: str = Form(..., description='JSON: {"employee_id":"...","stored_embedding":[...],"threshold":0.75}'),
     _=Depends(verify_api_key),
 ):
     # Parse JSON body dari form field
@@ -958,7 +1068,7 @@ def validate_geo(
     req: GeoRequest,
     _=Depends(verify_api_key),
 ):
-    result = validate_location(req.latitude, req.longitude, req.radius_m)
+    result = validate_location(req.latitude, req.longitude, req.radius_m, req.geofences)
     logger.info(f"[GEO] lat={req.latitude} lng={req.longitude} valid={result['is_valid']} dist={result['distance_m']}m")
     return result
 
@@ -983,8 +1093,8 @@ async def process_attendance(
 
     t0 = time.time()
 
-    # Step 1: Validasi GPS
-    geo = validate_location(req.latitude, req.longitude, req.radius_m)
+    # Step 1: Validasi GPS (dinamis, bisa multi-geofence)
+    geo = validate_location(req.latitude, req.longitude, req.radius_m, req.geofences)
 
     if not geo["is_valid"]:
         elapsed = round((time.time() - t0) * 1000, 1)

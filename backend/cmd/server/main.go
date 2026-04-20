@@ -59,7 +59,7 @@ func main() {
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
 
 	// ✅ AttendanceService dengan jamKerjaRepo (dari kode pertama)
-	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, faceClient)
+	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
 
 	pengajuanService := service.NewPengajuanService(mongodb.Database)
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)

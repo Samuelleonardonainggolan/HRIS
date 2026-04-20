@@ -103,3 +103,67 @@ func (h *PengajuanHandler) GetMyPengajuan(c *gin.Context) {
 		"data":   list,
 	})
 }
+
+// UpdatePengajuan - PUT /api/v1/pengajuan/:id
+func (h *PengajuanHandler) UpdatePengajuan(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Unauthorized",
+		})
+		return
+	}
+
+	id := c.Param("id")
+	var req service.UpdatePengajuanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Request tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	result, err := h.pengajuanService.UpdatePengajuan(c.Request.Context(), userID.(string), id, req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Pengajuan berhasil diperbarui",
+		"data":    result,
+	})
+}
+
+// CancelPengajuan - DELETE /api/v1/pengajuan/:id
+func (h *PengajuanHandler) CancelPengajuan(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Unauthorized",
+		})
+		return
+	}
+
+	id := c.Param("id")
+	err := h.pengajuanService.CancelPengajuan(c.Request.Context(), userID.(string), id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Pengajuan berhasil dibatalkan",
+	})
+}
