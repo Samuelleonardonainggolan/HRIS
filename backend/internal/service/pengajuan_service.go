@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
@@ -18,6 +19,8 @@ type PengajuanService interface {
 	GetAllTipePengajuan(ctx context.Context) ([]models.RequestTypeResponse, error)
 	CreatePengajuan(ctx context.Context, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
 	GetPengajuanByUser(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error)
+	UpdatePengajuan(ctx context.Context, userID, pengajuanID string, req UpdatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
+	CancelPengajuan(ctx context.Context, userID, pengajuanID string) error
 }
 
 // CreatePengajuanRequest adalah request untuk membuat pengajuan baru.
@@ -29,6 +32,16 @@ type CreatePengajuanRequest struct {
 	TotalHari       int    `json:"total_hari" binding:"required"`
 	Alasan          string `json:"alasan" binding:"required"`
 	DokumenURL      string `json:"dokumen_url,omitempty"`
+}
+
+// UpdatePengajuanRequest adalah request untuk mengubah pengajuan milik user.
+type UpdatePengajuanRequest struct {
+	TipePengajuanID *string `json:"tipe_pengajuan_id,omitempty"`
+	TanggalMulai    *string `json:"tanggal_mulai,omitempty"`   // format: yyyy-MM-dd
+	TanggalSelesai  *string `json:"tanggal_selesai,omitempty"` // format: yyyy-MM-dd
+	TotalHari       *int    `json:"total_hari,omitempty"`
+	Alasan          *string `json:"alasan,omitempty"`
+	DokumenURL      *string `json:"dokumen_url,omitempty"`
 }
 
 // pengajuanService adalah implementasi konkret dari PengajuanService.
@@ -203,4 +216,154 @@ func (s *pengajuanServiceImpl) GetPengajuanByUser(ctx context.Context, userID st
 		result = append(result, p.ToResponse())
 	}
 	return result, nil
+}
+
+func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, pengajuanID string, req UpdatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
+	}
+
+	pengajuanObjID, err := primitive.ObjectIDFromHex(pengajuanID)
+	if err != nil {
+		return nil, errors.New("ID pengajuan tidak valid")
+	}
+
+	var current models.LeaveRequest
+	err = s.db.Collection("leave_request").FindOne(ctx, bson.M{
+		"_id":     pengajuanObjID,
+		"user_id": userObjID,
+	}).Decode(&current)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("pengajuan tidak ditemukan")
+		}
+		return nil, err
+	}
+
+	if strings.ToUpper(current.FinalStatus) != models.StatusPending {
+		return nil, errors.New("pengajuan sudah diproses, tidak dapat diubah")
+	}
+
+	set := bson.M{"updated_at": time.Now()}
+
+	if req.TipePengajuanID != nil {
+		tipeID := strings.TrimSpace(*req.TipePengajuanID)
+		if tipeID != "" {
+			tipeObjID, err := primitive.ObjectIDFromHex(tipeID)
+			if err != nil {
+				return nil, errors.New("tipe pengajuan ID tidak valid")
+			}
+
+			var tipe models.RequestType
+			err = s.db.Collection("request_type").FindOne(ctx, bson.M{"_id": tipeObjID}).Decode(&tipe)
+			if err != nil {
+				if err == mongo.ErrNoDocuments {
+					return nil, errors.New("tipe pengajuan tidak ditemukan")
+				}
+				return nil, err
+			}
+
+			set["request_type_id"] = tipeObjID
+			set["type_name"] = tipe.TypeName
+		}
+	}
+
+	startDate := current.StartDate
+	endDate := current.EndDate
+	const layout = "2006-01-02"
+	tz := time.FixedZone("WIB", 7*60*60)
+
+	if req.TanggalMulai != nil {
+		tanggalMulai := strings.TrimSpace(*req.TanggalMulai)
+		if tanggalMulai != "" {
+			parsed, err := time.ParseInLocation(layout, tanggalMulai, tz)
+			if err != nil {
+				return nil, errors.New("format tanggal_mulai tidak valid (gunakan yyyy-MM-dd)")
+			}
+			startDate = parsed
+			set["start_date"] = parsed
+		}
+	}
+
+	if req.TanggalSelesai != nil {
+		tanggalSelesai := strings.TrimSpace(*req.TanggalSelesai)
+		if tanggalSelesai != "" {
+			parsed, err := time.ParseInLocation(layout, tanggalSelesai, tz)
+			if err != nil {
+				return nil, errors.New("format tanggal_selesai tidak valid (gunakan yyyy-MM-dd)")
+			}
+			endDate = parsed
+			set["end_date"] = parsed
+		}
+	}
+
+	if endDate.Before(startDate) {
+		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
+	}
+
+	if req.TotalHari != nil {
+		if *req.TotalHari <= 0 {
+			return nil, errors.New("total_hari harus lebih dari 0")
+		}
+		set["days_total"] = *req.TotalHari
+	}
+
+	if req.Alasan != nil {
+		set["reason"] = strings.TrimSpace(*req.Alasan)
+	}
+
+	if req.DokumenURL != nil {
+		set["document_url"] = strings.TrimSpace(*req.DokumenURL)
+	}
+
+	_, err = s.db.Collection("leave_request").UpdateOne(
+		ctx,
+		bson.M{"_id": pengajuanObjID, "user_id": userObjID, "final_status": models.StatusPending},
+		bson.M{"$set": set},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var updated models.LeaveRequest
+	err = s.db.Collection("leave_request").FindOne(ctx, bson.M{"_id": pengajuanObjID}).Decode(&updated)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := updated.ToResponse()
+	return &resp, nil
+}
+
+func (s *pengajuanServiceImpl) CancelPengajuan(ctx context.Context, userID, pengajuanID string) error {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return errors.New("user ID tidak valid")
+	}
+
+	pengajuanObjID, err := primitive.ObjectIDFromHex(pengajuanID)
+	if err != nil {
+		return errors.New("ID pengajuan tidak valid")
+	}
+
+	res, err := s.db.Collection("leave_request").UpdateOne(
+		ctx,
+		bson.M{"_id": pengajuanObjID, "user_id": userObjID, "final_status": models.StatusPending},
+		bson.M{"$set": bson.M{
+			"status_kepala_departemen": models.StatusRejected,
+			"status_manager_hr":        models.StatusRejected,
+			"final_status":             models.StatusRejected,
+			"updated_at":               time.Now(),
+		}},
+	)
+	if err != nil {
+		return err
+	}
+
+	if res.MatchedCount == 0 {
+		return errors.New("pengajuan tidak ditemukan atau sudah diproses")
+	}
+
+	return nil
 }

@@ -102,9 +102,9 @@ function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
   const employeeId = x.employee?.payroll_number ?? x.pengajuan.user_id;
   const department = x.employee?.department_name ?? "-";
   const position = x.employee?.position_name ?? "-";
-  const start = new Date(x.pengajuan.tanggal_mulai);
-  const end = new Date(x.pengajuan.tanggal_selesai);
-  const attachmentName = getFileNameFromUrl(x.pengajuan.dokumen_url);
+  const start = new Date(x.pengajuan.start_date ?? x.pengajuan.tanggal_mulai ?? "");
+  const end = new Date(x.pengajuan.end_date ?? x.pengajuan.tanggal_selesai ?? "");
+  const attachmentName = getFileNameFromUrl(x.pengajuan.document_url ?? x.pengajuan.dokumen_url);
 
   return {
     id: x.pengajuan.id,
@@ -112,14 +112,14 @@ function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
     employeeId,
     department,
     position,
-    type: (x.pengajuan.nama_tipe || "IZIN KHUSUS").toUpperCase(),
+    type: (x.pengajuan.type_name || x.pengajuan.nama_tipe || "IZIN KHUSUS").toUpperCase(),
     startAt: formatListDateTime(start),
     endAt: formatListDateTime(end),
     startDateLabel: formatDateLabel(start),
     startTimeLabel: formatTimeLabel(start),
     endDateLabel: formatDateLabel(end),
     endTimeLabel: formatTimeLabel(end),
-    reason: x.pengajuan.alasan,
+    reason: x.pengajuan.reason || x.pengajuan.alasan || "-",
     attachmentName,
     attachmentSize: undefined,
     status: mapStatus(x.pengajuan.status_manager_hr),

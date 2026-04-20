@@ -11,21 +11,32 @@ export interface LeaveRequestApprovalResponse {
   pengajuan: {
     id: string;
     user_id: string;
-    tipe_pengajuan_id: string;
-    nama_tipe: string;
-    tanggal_mulai: string;
-    tanggal_selesai: string;
-    total_hari: number;
-    alasan: string;
-    dokumen_url?: string;
-    kuota_cuti_id?: string;
+    request_type_id: string;
+    type_name: string;
+    start_date: string;
+    end_date: string;
+    days_total: number;
+    reason: string;
+    document_url?: string;
+    leave_balance_id?: string;
     status_kepala_departemen: LeaveRequestStatus;
     kepala_departemen_id: string;
     manager_hr_id: string;
     status_manager_hr: LeaveRequestStatus;
-    status_final: LeaveRequestStatus;
+    final_status: LeaveRequestStatus;
     created_at: string;
     updated_at: string;
+
+    // Backward compatibility for legacy payloads.
+    tipe_pengajuan_id?: string;
+    nama_tipe?: string;
+    tanggal_mulai?: string;
+    tanggal_selesai?: string;
+    total_hari?: number;
+    alasan?: string;
+    dokumen_url?: string;
+    kuota_cuti_id?: string;
+    status_final?: LeaveRequestStatus;
   };
   employee?: {
     id: string;

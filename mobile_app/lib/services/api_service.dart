@@ -10,14 +10,14 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.233.32.124:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.53:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
 
-  // ─── Token Management ─��─────────────────────────────────────────────────────
+  // ─── Token Management ─ ───
 
   static Future<void> saveTokens(
     String accessToken,
@@ -182,6 +182,48 @@ class ApiService {
       }
     } catch (e) {
       print('[API] getWorkScheduleInfo error: $e');
+      rethrow;
+    }
+  }
+
+  /// POST /api/v1/geofences/check
+  /// Validasi lokasi user terhadap semua geofence aktif yang applicable dari database.
+  static Future<GeoVerificationResult> checkUserInGeofence({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/geofences/check'),
+            headers: headers,
+            body: jsonEncode({'latitude': latitude, 'longitude': longitude}),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] checkUserInGeofence status: ${response.statusCode}');
+      print('[API] checkUserInGeofence body: ${response.body}');
+
+      final jsonResponse = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final data = (jsonResponse['data'] is Map)
+            ? jsonResponse['data'] as Map<String, dynamic>
+            : <String, dynamic>{};
+        return GeoVerificationResult.fromJson(data);
+      }
+
+      throw Exception(
+        jsonResponse['error'] ??
+            jsonResponse['message'] ??
+            'Gagal validasi lokasi geofence',
+      );
+    } catch (e) {
+      print('[API] checkUserInGeofence error: $e');
       rethrow;
     }
   }
@@ -383,11 +425,18 @@ class ApiService {
 
       final body = <String, dynamic>{
         'user_id': userId,
+        'request_type_id': tipePengajuanId,
         'tipe_pengajuan_id': tipePengajuanId,
+        'start_date': tanggalMulai,
         'tanggal_mulai': tanggalMulai,
+        'end_date': tanggalSelesai,
         'tanggal_selesai': tanggalSelesai,
+        'days_total': totalHari,
         'total_hari': totalHari,
+        'reason': alasan,
         'alasan': alasan,
+        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
+          'document_url': dokumenUrl,
         if (dokumenUrl != null && dokumenUrl.isNotEmpty)
           'dokumen_url': dokumenUrl,
         if (startTime != null) 'start_time': startTime,
@@ -458,6 +507,79 @@ class ApiService {
     } catch (e) {
       print('[API] getMyPengajuan error: $e');
       throw Exception('getMyPengajuan error: $e');
+    }
+  }
+
+  static Future<LeaveRequest> updatePengajuan({
+    required String pengajuanId,
+    String? tipePengajuanId,
+    String? tanggalMulai,
+    String? tanggalSelesai,
+    int? totalHari,
+    String? alasan,
+    String? dokumenUrl,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final body = <String, dynamic>{
+        if (tipePengajuanId != null && tipePengajuanId.isNotEmpty)
+          'tipe_pengajuan_id': tipePengajuanId,
+        if (tanggalMulai != null && tanggalMulai.isNotEmpty)
+          'tanggal_mulai': tanggalMulai,
+        if (tanggalSelesai != null && tanggalSelesai.isNotEmpty)
+          'tanggal_selesai': tanggalSelesai,
+        if (totalHari != null) 'total_hari': totalHari,
+        if (alasan != null && alasan.isNotEmpty) 'alasan': alasan,
+        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
+          'dokumen_url': dokumenUrl,
+      };
+
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/pengajuan/$pengajuanId'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final payload = (data['data'] is Map<String, dynamic>)
+            ? data['data'] as Map<String, dynamic>
+            : <String, dynamic>{};
+        return LeaveRequest.fromJson(payload);
+      }
+
+      throw Exception(data['message'] ?? 'Gagal mengubah pengajuan');
+    } catch (e) {
+      print('[API] updatePengajuan error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> cancelPengajuan(String pengajuanId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/pengajuan/$pengajuanId'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      throw Exception(data['message'] ?? 'Gagal membatalkan pengajuan');
+    } catch (e) {
+      print('[API] cancelPengajuan error: $e');
+      rethrow;
     }
   }
 
@@ -846,6 +968,7 @@ class ApiService {
       throw Exception('History error: $e');
     }
   }
+
   static Future<AttendanceProcessResult> confirmAttendance({
     required String recordType,
     required double latitude,
@@ -867,17 +990,19 @@ class ApiService {
 
       final headers = await getHeaders();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/attendance/confirm'),
-        headers: headers,
-        body: {
-          'record_type': recordType,
-          'latitude': latitude.toString(),
-          'longitude': longitude.toString(),
-          'photo_filename': photoFilename,
-          'face_similarity': faceSimilarity.toString(),
-        },
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/attendance/confirm'),
+            headers: headers,
+            body: {
+              'record_type': recordType,
+              'latitude': latitude.toString(),
+              'longitude': longitude.toString(),
+              'photo_filename': photoFilename,
+              'face_similarity': faceSimilarity.toString(),
+            },
+          )
+          .timeout(const Duration(seconds: 30));
 
       print('[API] Confirm attendance status: ${response.statusCode}');
       print('[API] Confirm attendance body: ${response.body}');
@@ -890,7 +1015,9 @@ class ApiService {
         await clearTokens();
         throw Exception('Sesi telah berakhir. Silakan login ulang.');
       } else {
-        throw Exception(jsonResponse['message'] ?? 'Gagal mengkonfirmasi absensi');
+        throw Exception(
+          jsonResponse['message'] ?? 'Gagal mengkonfirmasi absensi',
+        );
       }
     } catch (e) {
       print('[API] Confirm attendance error: $e');
@@ -918,11 +1045,14 @@ class TipePengajuan {
 
   factory TipePengajuan.fromJson(Map<String, dynamic> json) {
     return TipePengajuan(
-      id: json['id'] ?? '',
-      namaTipe: json['nama_tipe'] ?? '',
-      namaKategori: json['nama_kategori'] ?? '',
-      potongKuota: json['potong_kuota'] == true,
-      wajibLampiran: json['wajib_lampiran'] == true,
+      id: (json['id'] ?? '').toString(),
+      namaTipe: (json['type_name'] ?? json['nama_tipe'] ?? '').toString(),
+      namaKategori: (json['category_name'] ?? json['nama_kategori'] ?? '')
+          .toString(),
+      potongKuota:
+          json['quota_deduction'] == true || json['potong_kuota'] == true,
+      wajibLampiran:
+          json['attachment_required'] == true || json['wajib_lampiran'] == true,
     );
   }
 
@@ -974,8 +1104,8 @@ class WorkScheduleInfoResponse {
 
 class TodayScheduleInfo {
   final bool isWorkDay;
-  final String clockInWindow;   // "HH:mm - HH:mm"
-  final String clockOutWindow;  // "HH:mm - HH:mm" ✅ DIUBAH
+  final String clockInWindow; // "HH:mm - HH:mm"
+  final String clockOutWindow; // "HH:mm - HH:mm" ✅ DIUBAH
   final bool canClockIn;
   final bool canClockOut;
   final String message;

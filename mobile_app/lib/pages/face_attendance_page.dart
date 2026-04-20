@@ -25,7 +25,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   // File and location
   File? _capturedImage;
   Position? _currentPosition;
-  
+
   // Status
   String _locationStatus = 'Mendeteksi lokasi...';
   String _faceStatus = 'Menunggu pengambilan gambar';
@@ -33,7 +33,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   bool _isLocationValid = false;
   bool _isFaceVerified = false;
   bool _attendanceSuccess = false;
-  
+
   // Verification data
   double _faceSimilarity = 0.0;
   String _userId = '';
@@ -44,53 +44,50 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   bool _isFaceDetected = false;
   List<double>? _faceEmbedding;
   String? _errorMessage;
-  
+
   // Real-time clock
   late Timer _clockTimer;
   String _currentTime = '';
   String _currentDate = '';
-  
+
   // Animation
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
-  
+
   // Constants
   final ImagePicker _imagePicker = ImagePicker();
-  final double _officeLat = 2.3561;
-  final double _officeLng = 99.1431;
-  final double _radiusMeters = 10000;
   final double _similarityThreshold = 0.6;
 
   @override
   void initState() {
     super.initState();
-    
+
     // Init locale untuk format tanggal Indonesia
     initializeDateFormatting('id', null);
-    
+
     // Setup animation
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    
+
     // Start real-time clock
     _updateClock();
     _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) _updateClock();
     });
-    
+
     // Load data and check permissions
     _loadUserId();
     _checkPermissions();
   }
 
   // ==================== CLOCK METHODS ====================
-  
+
   void _updateClock() {
     final now = DateTime.now();
     setState(() {
@@ -100,13 +97,13 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   }
 
   // ==================== USER & PERMISSION METHODS ====================
-  
+
   Future<void> _loadUserId() async {
     final userId = await ApiService.getUserId();
     setState(() {
       _userId = userId ?? '';
     });
-    
+
     if (_userId.isEmpty) {
       _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
       Future.delayed(const Duration(seconds: 2), () {
@@ -116,15 +113,15 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       print('✅ User ID loaded: $_userId');
     }
   }
-  
+
   Future<void> _checkPermissions() async {
     await _checkLocationPermission();
     await _checkCameraPermission();
   }
-  
+
   Future<void> _checkLocationPermission() async {
     setState(() => _locationStatus = 'Memeriksa izin lokasi...');
-    
+
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -137,7 +134,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         return;
       }
     }
-    
+
     if (permission == LocationPermission.deniedForever) {
       setState(() {
         _locationStatus = 'Izin lokasi ditolak permanen';
@@ -146,28 +143,28 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showSettingsDialog('Lokasi');
       return;
     }
-    
+
     setState(() => _isLocationPermissionGranted = true);
     _getCurrentLocation();
   }
-  
+
   Future<void> _checkCameraPermission() async {
     var status = await Permission.camera.status;
     if (status.isDenied) status = await Permission.camera.request();
     setState(() => _isCameraPermissionGranted = status.isGranted);
     if (status.isPermanentlyDenied) _showSettingsDialog('Kamera');
   }
-  
+
   // ==================== LOCATION METHODS ====================
-  
+
   Future<void> _getCurrentLocation() async {
     if (!_isLocationPermissionGranted) {
       setState(() => _locationStatus = 'Izin lokasi tidak diberikan');
       return;
     }
-    
+
     setState(() => _locationStatus = 'Mendapatkan lokasi...');
-    
+
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -178,16 +175,18 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         _showLocationServiceDialog();
         return;
       }
-      
+
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 15),
       );
-      
+
       setState(() {
         _currentPosition = position;
-        _checkOfficeRadius(position);
+        _locationStatus = 'Memvalidasi geofence...';
       });
+
+      await _checkDynamicGeofence(position);
     } catch (e) {
       setState(() {
         _locationStatus = 'Gagal mendapatkan lokasi';
@@ -196,31 +195,46 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showErrorSnackBar('Gagal mendapatkan lokasi: $e');
     }
   }
-  
-  void _checkOfficeRadius(Position position) {
-    double distance = Geolocator.distanceBetween(
-      position.latitude,
-      position.longitude,
-      _officeLat,
-      _officeLng,
-    );
-    
-    setState(() {
-      _isLocationValid = distance <= _radiusMeters;
-      _locationStatus = _isLocationValid
-          ? 'Dalam area kantor ✓'
-          : 'Di luar area kantor (${distance.toStringAsFixed(0)}m) ✗';
-    });
+
+  Future<void> _checkDynamicGeofence(Position position) async {
+    try {
+      final result = await ApiService.checkUserInGeofence(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isLocationValid = result.isValid;
+        if (result.isValid) {
+          final areaName = (result.geofenceName ?? '').trim();
+          _locationStatus = areaName.isNotEmpty
+              ? 'Dalam area $areaName (${result.distanceM.toStringAsFixed(0)}m) ✓'
+              : 'Dalam area geofence (${result.distanceM.toStringAsFixed(0)}m) ✓';
+        } else {
+          _locationStatus = result.message.isNotEmpty
+              ? result.message
+              : 'Di luar area geofence yang diizinkan';
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLocationValid = false;
+        _locationStatus = 'Gagal validasi geofence: $e';
+      });
+    }
   }
-  
+
   // ==================== FACE VERIFICATION METHODS ====================
-  
+
   Future<void> _captureImage() async {
     if (_attendanceSuccess) {
       _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
       return;
     }
-    
+
     if (!_isCameraPermissionGranted) {
       await _checkCameraPermission();
       if (!_isCameraPermissionGranted) {
@@ -228,13 +242,21 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         return;
       }
     }
-    
+
     if (_userId.isEmpty) {
       _showErrorSnackBar('Sesi login telah berakhir. Silakan login ulang.');
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-    
+
+    await _getCurrentLocation();
+    if (!_isLocationValid) {
+      _showErrorSnackBar(
+        'Anda harus berada dalam area geofence yang diizinkan',
+      );
+      return;
+    }
+
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
@@ -243,7 +265,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         imageQuality: 85,
         preferredCameraDevice: CameraDevice.front,
       );
-      
+
       if (image != null) {
         setState(() {
           _capturedImage = File(image.path);
@@ -253,20 +275,20 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           _verificationResult = null;
           _verificationMessage = null;
         });
-        
+
         try {
           final result = await _verifyFaceOnly(image.path);
-          
+
           setState(() {
             _verificationResult = result;
             _faceSimilarity = (result['similarity'] as num?)?.toDouble() ?? 0.0;
             _isFaceVerified = result['matched'] == true;
             _faceStatus = _isFaceVerified
-                ? '✓ Wajah terverifikasi (${(_faceSimilarity * 100).toStringAsFixed(1)}%)'
+                ? '✓ Wajah terverifikasi'
                 : '✗ ${result['message'] ?? 'Wajah tidak cocok'}';
             _isLoading = false;
           });
-          
+
           if (!_isFaceVerified) {
             _showErrorSnackBar(result['message'] ?? 'Verifikasi gagal');
           }
@@ -276,7 +298,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
             _isLoading = false;
             _faceStatus = '✗ Gagal verifikasi wajah';
           });
-          
+
           _handleVerificationError(e.toString());
         }
       }
@@ -288,22 +310,24 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showErrorSnackBar('Gagal mengakses kamera: $e');
     }
   }
-  
+
   Future<Map<String, dynamic>> _verifyFaceOnly(String imagePath) async {
     final token = await ApiService.getAccessToken();
     if (token == null) throw Exception('Token tidak ditemukan');
-    
+
     var request = http.MultipartRequest(
       'POST',
       Uri.parse('${ApiService.baseUrl}/attendance/process'),
     );
-    
+
     request.headers.addAll({'Authorization': 'Bearer $token'});
-    request.fields['record_type'] = widget.type == 'clock_in' ? 'clock_in' : 'clock_out';
+    request.fields['record_type'] = widget.type == 'clock_in'
+        ? 'clock_in'
+        : 'clock_out';
     request.fields['verify_only'] = 'true';
     request.fields['latitude'] = (_currentPosition?.latitude ?? 0).toString();
     request.fields['longitude'] = (_currentPosition?.longitude ?? 0).toString();
-    
+
     request.files.add(
       await http.MultipartFile.fromPath(
         'photo',
@@ -311,33 +335,43 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         filename: 'verify_${DateTime.now().millisecondsSinceEpoch}.jpg',
       ),
     );
-    
+
     print('📤 Verifikasi wajah & lokasi (VERIFY ONLY - tidak simpan ke DB)...');
-    
+
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-    
+
     print('Status: ${response.statusCode}');
     print('Body: ${response.body}');
-    
+
     if (response.statusCode == 200) {
       final json = jsonDecode(response.body);
       final data = json['data'] as Map<String, dynamic>? ?? json;
-      
+
       if (data.containsKey('attendance') && data['attendance'] != null) {
-        print('❌ ERROR: Backend seharusnya TIDAK return attendance saat verify_only=true!');
-        throw Exception('Data attendance tidak seharusnya ada di verifikasi. User harus klik tombol konfirmasi dulu!');
+        print(
+          '❌ ERROR: Backend seharusnya TIDAK return attendance saat verify_only=true!',
+        );
+        throw Exception(
+          'Data attendance tidak seharusnya ada di verifikasi. User harus klik tombol konfirmasi dulu!',
+        );
       }
-      
-      print('✅ [VERIFY_ONLY] Verifikasi berhasil - menunggu user klik tombol konfirmasi');
-      print('   Face Similarity: ${(data['face_similarity'] as num?)?.toDouble() ?? 0.0}');
+
+      print(
+        '✅ [VERIFY_ONLY] Verifikasi berhasil - menunggu user klik tombol konfirmasi',
+      );
+      print(
+        '   Face Similarity: ${(data['face_similarity'] as num?)?.toDouble() ?? 0.0}',
+      );
       print('   Location Valid: ${data['location_valid']}');
       print('   Distance: ${(data['distance_m'] as num?)?.toDouble() ?? 0.0}m');
-      
+
       return {
         'success': true,
         'matched': true,
         'similarity': (data['face_similarity'] as num?)?.toDouble() ?? 0.0,
+        'location_valid': data['location_valid'] == true,
+        'distance': (data['distance_m'] as num?)?.toDouble() ?? 0.0,
         'message': data['message'] ?? json['message'] ?? '',
       };
     } else if (response.statusCode == 400) {
@@ -349,7 +383,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       throw Exception(error['message'] ?? 'Verifikasi gagal');
     }
   }
-  
+
   void _handleVerificationError(String errorMsg) {
     String clean = errorMsg;
     if (errorMsg.contains('"message":"')) {
@@ -359,9 +393,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       final parts = errorMsg.split('message:');
       if (parts.length > 1) clean = parts[1].trim();
     }
-    
+
     print('🧹 Clean error: $clean');
-    
+
     if (clean.contains('kacamata') ||
         clean.contains('glasses') ||
         clean.contains('bingkai kacamata') ||
@@ -399,9 +433,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _showErrorSnackBar('Gagal verifikasi: $clean');
     }
   }
-  
+
   // ==================== ATTENDANCE METHODS ====================
-  
+
   Future<void> _confirmAttendance() async {
     if (_attendanceSuccess) {
       _showInfoSnackBar('Anda sudah melakukan konfirmasi absensi');
@@ -412,7 +446,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       return;
     }
     if (!_isLocationValid) {
-      _showErrorSnackBar('Anda harus berada dalam area kantor');
+      _showErrorSnackBar(
+        'Anda harus berada dalam area geofence yang diizinkan',
+      );
       return;
     }
     if (!_isFaceVerified) {
@@ -424,19 +460,19 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       if (mounted) Navigator.pushReplacementNamed(context, '/login');
       return;
     }
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       print('💾 Mengirim data absensi ke database (tersimpan sekarang)...');
-      
+
       final result = await ApiService.processAttendance(
         recordType: widget.type == 'clock_in' ? 'clock_in' : 'clock_out',
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         photoPath: _capturedImage!.path,
       );
-      
+
       if (result.success) {
         setState(() => _attendanceSuccess = true);
         print('✅ Absensi berhasil disimpan ke DATABASE');
@@ -464,9 +500,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       if (mounted) setState(() => _isLoading = false);
     }
   }
-  
+
   // ==================== DIALOG METHODS ====================
-  
+
   void _showAccessoryWarningDialog(String message) {
     showDialog(
       context: context,
@@ -562,7 +598,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   void _showSuccessDialog({required String title, required double similarity}) {
     showDialog(
       context: context,
@@ -676,7 +712,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       },
     );
   }
-  
+
   void _showPermissionDialog(String permission) {
     showDialog(
       context: context,
@@ -713,7 +749,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   void _showSettingsDialog(String permission) {
     showDialog(
       context: context,
@@ -739,7 +775,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   void _showLocationServiceDialog() {
     showDialog(
       context: context,
@@ -765,7 +801,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   void _showInfoSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -784,7 +820,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -797,29 +833,30 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       ),
     );
   }
-  
+
   // ==================== LIFECYCLE METHODS ====================
-  
+
   @override
   void dispose() {
     _clockTimer.cancel();
     _animationController.dispose();
     super.dispose();
   }
-  
+
   // ==================== BUILD METHOD ====================
-  
+
   @override
   Widget build(BuildContext context) {
-    final bool canConfirm = _isLocationValid &&
+    final bool canConfirm =
+        _isLocationValid &&
         _isFaceVerified &&
         !_isLoading &&
         !_attendanceSuccess;
-    
+
     final Color headerColor = widget.type == 'clock_in'
         ? AppTheme.successColor
         : AppTheme.errorColor;
-    
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -914,9 +951,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Verifikasi Lokasi
               Container(
                 padding: const EdgeInsets.all(20),
@@ -1020,9 +1057,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Verifikasi Wajah
               Container(
                 padding: const EdgeInsets.all(20),
@@ -1055,7 +1092,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     GestureDetector(
                       onTap: _isLoading ? null : _captureImage,
                       child: Container(
@@ -1091,7 +1128,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                       height: 70,
                                       decoration: BoxDecoration(
                                         color: _isCameraPermissionGranted
-                                            ? const Color(0xFF135BEC).withOpacity(0.1)
+                                            ? const Color(
+                                                0xFF135BEC,
+                                              ).withOpacity(0.1)
                                             : Colors.grey.withOpacity(0.1),
                                         shape: BoxShape.circle,
                                       ),
@@ -1128,11 +1167,11 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                               ),
                       ),
                     ),
-                    
+
                     if (_capturedImage != null) ...[
                       const SizedBox(height: 16),
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(5),
                         decoration: BoxDecoration(
                           color: _isFaceVerified
                               ? AppTheme.successColor.withOpacity(0.1)
@@ -1164,14 +1203,6 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                           : AppTheme.errorColor,
                                     ),
                                   ),
-                                  if (_faceSimilarity > 0)
-                                    Text(
-                                      'Similarity: ${(_faceSimilarity * 100).toStringAsFixed(1)}%',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey.shade600,
-                                      ),
-                                    ),
                                 ],
                               ),
                             ),
@@ -1189,7 +1220,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                         ),
                       ),
                     ],
-                    
+
                     if (_isLoading) ...[
                       const SizedBox(height: 16),
                       const Center(
@@ -1203,9 +1234,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Petunjuk Absensi
               Container(
                 padding: const EdgeInsets.all(16),
@@ -1237,12 +1268,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                           const SizedBox(height: 4),
                           Text(
                             !_isFaceVerified
-                                ? '1. Pastikan Anda dalam area kantor\n'
-                                  '2. Ambil foto selfie tanpa kacamata/masker\n'
-                                  '3. Tunggu verifikasi wajah selesai'
+                                ? '1. Pastikan Anda dalam area geofence yang diizinkan\n'
+                                      '2. Ambil foto selfie tanpa kacamata/masker\n'
+                                      '3. Tunggu verifikasi wajah selesai'
                                 : '✅ Verifikasi wajah berhasil!\n'
-                                  'Klik tombol di bawah untuk\n'
-                                  'mengkonfirmasi & simpan ke database',
+                                      'Klik tombol di bawah untuk\n'
+                                      'mengkonfirmasi & simpan ke database',
                             style: TextStyle(
                               fontSize: 11,
                               color: Colors.grey.shade700,
@@ -1255,9 +1286,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 24),
-              
+
               // Tombol Konfirmasi
               SizedBox(
                 width: double.infinity,
@@ -1282,13 +1313,13 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                         ? (_attendanceSuccess
                               ? '✅ Sudah Absen Masuk'
                               : (_isFaceVerified
-                                  ? 'Konfirmasi Absen Masuk'
-                                  : 'Tunggu Verifikasi Wajah'))
+                                    ? 'Konfirmasi Absen Masuk'
+                                    : 'Tunggu Verifikasi Wajah'))
                         : (_attendanceSuccess
                               ? '✅ Sudah Absen Pulang'
                               : (_isFaceVerified
-                                  ? 'Konfirmasi Absen Pulang'
-                                  : 'Tunggu Verifikasi Wajah')),
+                                    ? 'Konfirmasi Absen Pulang'
+                                    : 'Tunggu Verifikasi Wajah')),
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -1296,7 +1327,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                   ),
                 ),
               ),
-              
+
               if (_attendanceSuccess) ...[
                 const SizedBox(height: 12),
                 Center(

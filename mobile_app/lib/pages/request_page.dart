@@ -40,19 +40,251 @@ class _RequestPageState extends State<RequestPage> {
     try {
       // ✅ Ambil data real dari backend
       final data = await ApiService.getMyPengajuan();
-      if (mounted) setState(() { _requests = data; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _requests = data;
+          _isLoading = false;
+        });
     } catch (e) {
       print('[Request] load error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _cancelRequest(LeaveRequest r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Batalkan Pengajuan'),
+        content: const Text(
+          'Pengajuan yang dibatalkan tidak bisa dikembalikan. Lanjutkan?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await ApiService.cancelPengajuan(r.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil dibatalkan')),
+      );
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal membatalkan pengajuan: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    }
+  }
+
+  Future<void> _editRequest(LeaveRequest r) async {
+    DateTime startDate = r.startDate;
+    DateTime endDate = r.endDate;
+    final reasonCtrl = TextEditingController(text: r.reason);
+
+    final edited = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Edit Pengajuan'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tanggal Mulai'),
+                  subtitle: Text(DateFormat('yyyy-MM-dd').format(startDate)),
+                  trailing: const Icon(Icons.calendar_today, size: 18),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: startDate,
+                      firstDate: DateTime.now().add(const Duration(days: 2)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setLocal(() {
+                        startDate = picked;
+                        if (endDate.isBefore(startDate)) endDate = startDate;
+                      });
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tanggal Selesai'),
+                  subtitle: Text(DateFormat('yyyy-MM-dd').format(endDate)),
+                  trailing: const Icon(Icons.calendar_month, size: 18),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: endDate,
+                      firstDate: startDate,
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) {
+                      setLocal(() => endDate = picked);
+                    }
+                  },
+                ),
+                TextField(
+                  controller: reasonCtrl,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Alasan',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Simpan'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (edited != true) {
+      reasonCtrl.dispose();
+      return;
+    }
+
+    try {
+      final totalHari = endDate.difference(startDate).inDays + 1;
+      await ApiService.updatePengajuan(
+        pengajuanId: r.id,
+        tanggalMulai: DateFormat('yyyy-MM-dd').format(startDate),
+        tanggalSelesai: DateFormat('yyyy-MM-dd').format(endDate),
+        totalHari: totalHari,
+        alasan: reasonCtrl.text.trim(),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pengajuan berhasil diperbarui')),
+      );
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal mengedit pengajuan: $e'),
+          backgroundColor: const Color(0xFFEF4444),
+        ),
+      );
+    } finally {
+      reasonCtrl.dispose();
+    }
+  }
+
+  void _showRequestDetail(LeaveRequest r) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        final dateFmt = DateFormat('dd MMM yyyy', 'id');
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                r.type,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('Kategori: ${r.namaKategori}'),
+              Text('Status: ${_statusLabel(r.statusFinal)}'),
+              Text(
+                'Periode: ${dateFmt.format(r.startDate)} - ${dateFmt.format(r.endDate)}',
+              ),
+              Text('Durasi: ${r.days} hari'),
+              const SizedBox(height: 10),
+              const Text(
+                'Alasan',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              Text(r.reason.isEmpty ? '-' : r.reason),
+              const SizedBox(height: 14),
+              const Text(
+                'Tahap Persetujuan',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              _approvalRow('Kepala Departemen', r.statusKepala),
+              const SizedBox(height: 6),
+              _approvalRow('Manager HR', r.statusManagerHr),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _approvalRow(String label, String status) {
+    final c = _statusColor(status);
+    return Row(
+      children: [
+        Icon(Icons.circle, size: 10, color: c),
+        const SizedBox(width: 8),
+        Expanded(child: Text(label)),
+        Text(
+          _statusLabel(status),
+          style: TextStyle(color: c, fontWeight: FontWeight.w700, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
   List<LeaveRequest> get _filtered {
     if (_selectedTab == 0) return _requests;
     final cat = _tabs[_selectedTab]; // 'Izin' | 'Cuti' | 'Lembur'
-    return _requests.where((r) =>
-      r.namaKategori.toLowerCase() == cat.toLowerCase()
-    ).toList();
+    return _requests
+        .where((r) => r.namaKategori.toLowerCase() == cat.toLowerCase())
+        .toList();
   }
 
   String _greeting() {
@@ -72,14 +304,21 @@ class _RequestPageState extends State<RequestPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(child: Column(children: [
-        _buildHeader(),
-        _buildTabs(),
-        Expanded(child: _buildBody()),
-      ])),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            _buildTabs(),
+            Expanded(child: _buildBody()),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final res = await Navigator.push(context, MaterialPageRoute(builder: (_) => const NewRequestPage()));
+          final res = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const NewRequestPage()),
+          );
           if (res == true) _loadRequests();
         },
         backgroundColor: const Color(0xFF135BEC),
@@ -96,46 +335,130 @@ class _RequestPageState extends State<RequestPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 16, offset: const Offset(0, 4))],
-      ),
-      child: Row(children: [
-        Stack(children: [
-          Container(
-              height: 48, width: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)]),
-                boxShadow: [BoxShadow(color: const Color(0xFF135BEC).withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
-              ),
-              child: Padding(padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                  child: ClipOval(child: Image.network(_avatarUrl(), fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Color(0xFF135BEC), size: 26))),
-                )),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
-          Positioned(bottom: 1, right: 1,
-            child: Container(height: 12, width: 12,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: const Color(0xFF2ECC71), border: Border.all(color: Colors.white, width: 2)))),
-        ]),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_greeting(), style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-          Text(_user?.fullName ?? 'Profil Saya',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-            overflow: TextOverflow.ellipsis),
-        ])),
-        Stack(children: [
-          Container(height: 44, width: 44,
-            decoration: BoxDecoration(color: const Color(0xFFF1F5F9), shape: BoxShape.circle),
-            child: IconButton(
-              icon: const Icon(Icons.notifications_none, color: Color(0xFF475569), size: 22),
-              onPressed: () {}, padding: EdgeInsets.zero)),
-          Positioned(top: 9, right: 9,
-            child: Container(height: 8, width: 8,
-              decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFEF4444)))),
-        ]),
-      ]),
+        ],
+      ),
+      child: Row(
+        children: [
+          Stack(
+            children: [
+              Container(
+                height: 48,
+                width: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF135BEC).withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: ClipOval(
+                      child: Image.network(
+                        _avatarUrl(),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.person,
+                          color: Color(0xFF135BEC),
+                          size: 26,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 1,
+                right: 1,
+                child: Container(
+                  height: 12,
+                  width: 12,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF2ECC71),
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _greeting(),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade500,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  _user?.fullName ?? 'Profil Saya',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Stack(
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.notifications_none,
+                    color: Color(0xFF475569),
+                    size: 22,
+                  ),
+                  onPressed: () {},
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+              Positioned(
+                top: 9,
+                right: 9,
+                child: Container(
+                  height: 8,
+                  width: 8,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFFEF4444),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -145,40 +468,72 @@ class _RequestPageState extends State<RequestPage> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(children: List.generate(_tabs.length, (i) {
-          final sel = _selectedTab == i;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () => setState(() => _selectedTab = i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                decoration: BoxDecoration(
-                  color: sel ? const Color(0xFF135BEC) : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6, offset: const Offset(0, 2))],
+        child: Row(
+          children: List.generate(_tabs.length, (i) {
+            final sel = _selectedTab == i;
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedTab = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: sel ? const Color(0xFF135BEC) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    _tabs[i],
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: sel ? Colors.white : Colors.grey.shade600,
+                    ),
+                  ),
                 ),
-                child: Text(_tabs[i], style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600,
-                  color: sel ? Colors.white : Colors.grey.shade600)),
               ),
-            ),
-          );
-        })),
+            );
+          }),
+        ),
       ),
     );
   }
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_filtered.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(Icons.assignment_outlined, size: 52, color: Colors.grey.shade300),
-      const SizedBox(height: 12),
-      Text('Belum ada pengajuan', style: TextStyle(color: Colors.grey.shade500)),
-      const SizedBox(height: 6),
-      Text('Ketuk + untuk buat pengajuan baru', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
-    ]));
+    if (_filtered.isEmpty)
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.assignment_outlined,
+              size: 52,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Belum ada pengajuan',
+              style: TextStyle(color: Colors.grey.shade500),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Ketuk + untuk buat pengajuan baru',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+            ),
+          ],
+        ),
+      );
 
     return RefreshIndicator(
       onRefresh: _loadRequests,
@@ -192,121 +547,256 @@ class _RequestPageState extends State<RequestPage> {
 
   Widget _buildCard(LeaveRequest r) {
     final isLembur = r.namaKategori.toLowerCase() == 'lembur';
-    final sc  = _statusColor(r.statusFinal);
-    final sl  = _statusLabel(r.statusFinal);
+    final sc = _statusColor(r.statusFinal);
+    final sl = _statusLabel(r.statusFinal);
     final fmt = DateFormat('EEE, dd MMM yyyy', 'id');
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(18),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 3))],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Ikon kategori
-          Container(
-            height: 44, width: 44,
-            decoration: BoxDecoration(
-              color: _kategoriColor(r.namaKategori).withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12)),
-            child: Icon(_kategoriIcon(r.namaKategori),
-              color: _kategoriColor(r.namaKategori), size: 22)),
-          const SizedBox(width: 14),
-          // Info tengah
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Icons.calendar_today_rounded, size: 11, color: Colors.grey.shade400),
-              const SizedBox(width: 4),
-              Text(fmt.format(r.startDate),
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
-            ]),
-            const SizedBox(height: 4),
-            // ✅ Gunakan r.type (nama_tipe dari backend, misal "Izin Sakit")
-            Text(r.type,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-            const SizedBox(height: 6),
-            Row(children: [
-              Icon(isLembur ? Icons.access_time_rounded : Icons.date_range_rounded,
-                size: 13, color: const Color(0xFF135BEC)),
-              const SizedBox(width: 5),
-              Text(
-                r.days <= 1 && !isLembur
-                    ? DateFormat('dd MMM yyyy').format(r.startDate)
-                    : isLembur
-                        ? DateFormat('dd MMM yyyy').format(r.startDate)
-                        : '${DateFormat('dd MMM').format(r.startDate)} s/d ${DateFormat('dd MMM').format(r.endDate)}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFF135BEC), fontWeight: FontWeight.w500)),
-            ]),
-            const SizedBox(height: 8),
-            // ✅ Approval chain bertahap
-            _buildApprovalChain(r),
-          ])),
-          const SizedBox(width: 10),
-          // Kanan: status + durasi
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(color: sc.withOpacity(0.1), borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: sc.withOpacity(0.3))),
-              child: Text(sl, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: sc))),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(12)),
-              child: Text(
-                isLembur ? '— Jam' : '${r.days} Hari',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)))),
-          ]),
-        ]),
+    return GestureDetector(
+      onTap: () => _showRequestDetail(r),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Ikon kategori
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: _kategoriColor(r.namaKategori).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _kategoriIcon(r.namaKategori),
+                  color: _kategoriColor(r.namaKategori),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Info tengah
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 11,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          fmt.format(r.startDate),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // ✅ Gunakan r.type (nama_tipe dari backend, misal "Izin Sakit")
+                    Text(
+                      r.type,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          isLembur
+                              ? Icons.access_time_rounded
+                              : Icons.date_range_rounded,
+                          size: 13,
+                          color: const Color(0xFF135BEC),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          r.days <= 1 && !isLembur
+                              ? DateFormat('dd MMM yyyy').format(r.startDate)
+                              : isLembur
+                              ? DateFormat('dd MMM yyyy').format(r.startDate)
+                              : '${DateFormat('dd MMM').format(r.startDate)} s/d ${DateFormat('dd MMM').format(r.endDate)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF135BEC),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // ✅ Approval chain bertahap
+                    _buildApprovalChain(r),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Kanan: status + durasi
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (r.statusFinal == 'PENDING')
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onSelected: (v) {
+                        if (v == 'detail') _showRequestDetail(r);
+                        if (v == 'edit') _editRequest(r);
+                        if (v == 'cancel') _cancelRequest(r);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'detail',
+                          child: Text('Lihat Detail'),
+                        ),
+                        PopupMenuItem(
+                          value: 'edit',
+                          child: Text('Edit Pengajuan'),
+                        ),
+                        PopupMenuItem(
+                          value: 'cancel',
+                          child: Text('Batalkan Pengajuan'),
+                        ),
+                      ],
+                    )
+                  else
+                    const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: sc.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: sc.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      sl,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: sc,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isLembur ? '— Jam' : '${r.days} Hari',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
   Widget _buildApprovalChain(LeaveRequest r) {
-    return Row(children: [
-      _approvalDot(r.statusKepala, 'Ka.Dept'),
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Container(width: 14, height: 1, color: Colors.grey.shade200)),
-      _approvalDot(r.statusManagerHr, 'Mgr HR'),
-    ]);
+    return Row(
+      children: [
+        _approvalDot(r.statusKepala, 'Ka.Dept'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Container(width: 14, height: 1, color: Colors.grey.shade200),
+        ),
+        _approvalDot(r.statusManagerHr, 'Mgr HR'),
+      ],
+    );
   }
 
   Widget _approvalDot(String status, String label) {
     final c = status == 'APPROVED'
         ? const Color(0xFF2ECC71)
         : status == 'REJECTED'
-            ? const Color(0xFFEF4444)
-            : const Color(0xFFF59E0B);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: c)),
-      const SizedBox(width: 3),
-      Text(label, style: TextStyle(fontSize: 9, color: Colors.grey.shade400, fontWeight: FontWeight.w500)),
-    ]);
+        ? const Color(0xFFEF4444)
+        : const Color(0xFFF59E0B);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+        ),
+        const SizedBox(width: 3),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.grey.shade400,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
   }
 
   String _statusLabel(String s) {
     switch (s.toUpperCase()) {
-      case 'APPROVED': return 'DISETUJUI';
-      case 'REJECTED': return 'DITOLAK';
-      default:         return 'MENUNGGU';
+      case 'APPROVED':
+        return 'DISETUJUI';
+      case 'REJECTED':
+        return 'DITOLAK';
+      default:
+        return 'MENUNGGU';
     }
   }
 
   IconData _kategoriIcon(String k) {
     switch (k.toLowerCase()) {
-      case 'cuti':   return Icons.beach_access_rounded;
-      case 'lembur': return Icons.timelapse_rounded;
-      default:       return Icons.assignment_late_rounded;
+      case 'cuti':
+        return Icons.beach_access_rounded;
+      case 'lembur':
+        return Icons.timelapse_rounded;
+      default:
+        return Icons.assignment_late_rounded;
     }
   }
 
   Color _kategoriColor(String k) {
     switch (k.toLowerCase()) {
-      case 'cuti':   return const Color(0xFF8B5CF6);
-      case 'lembur': return const Color(0xFFF59E0B);
-      default:       return const Color(0xFF135BEC);
+      case 'cuti':
+        return const Color(0xFF8B5CF6);
+      case 'lembur':
+        return const Color(0xFFF59E0B);
+      default:
+        return const Color(0xFF135BEC);
     }
   }
 
@@ -315,18 +805,27 @@ class _RequestPageState extends State<RequestPage> {
     try {
       final s = start.split(':');
       final e = end.split(':');
-      final mins = (int.parse(e[0]) * 60 + int.parse(e[1])) - (int.parse(s[0]) * 60 + int.parse(s[1]));
-      final h = mins ~/ 60; final m = mins % 60;
+      final mins =
+          (int.parse(e[0]) * 60 + int.parse(e[1])) -
+          (int.parse(s[0]) * 60 + int.parse(s[1]));
+      final h = mins ~/ 60;
+      final m = mins % 60;
       return m == 0 ? '$h Jam' : '$h Jam $m Menit';
-    } catch (_) { return '0 Jam'; }
+    } catch (_) {
+      return '0 Jam';
+    }
   }
 
   Color _statusColor(String s) {
     switch (s.toUpperCase()) {
-      case 'APPROVED': return const Color(0xFF2ECC71);
-      case 'PENDING':  return const Color(0xFFF59E0B);
-      case 'REJECTED': return const Color(0xFFEF4444);
-      default: return Colors.grey;
+      case 'APPROVED':
+        return const Color(0xFF2ECC71);
+      case 'PENDING':
+        return const Color(0xFFF59E0B);
+      case 'REJECTED':
+        return const Color(0xFFEF4444);
+      default:
+        return Colors.grey;
     }
   }
 }

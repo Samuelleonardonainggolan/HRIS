@@ -378,7 +378,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     String clockInButtonLabel = canClockIn
         ? "CLOCK IN"
         : (_workScheduleInfo?.todaySchedule?.isWorkDay ?? false)
-        ? (_workScheduleInfo?.todaySchedule?.message ?? "CLOCK IN")
+        ? "CLOCK IN"
         : "CLOCK IN";
 
     String clockOutButtonLabel = canClockOut
@@ -766,57 +766,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ),
             ),
           ),
-          if (hasClockedOut && _todayAttendance != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(50),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildInfoChip(
-                    Icons.timer,
-                    "${_todayAttendance!.workHours.toStringAsFixed(1)} jam",
-                    "Jam Kerja",
-                  ),
-                  Container(height: 30, width: 1, color: Colors.white30),
-                  _buildInfoChip(
-                    Icons.verified,
-                    "${(_todayAttendance!.faceSimilarity != null ? _todayAttendance!.faceSimilarity! * 100 : 0).toStringAsFixed(0)}%",
-                    "Similarity",
-                  ),
-                ],
-              ),
-            ),
-          ],
+          
         ],
       ),
-    );
-  }
-
-  Widget _buildInfoChip(IconData icon, String value, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 18),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 10),
-        ),
-      ],
     );
   }
 

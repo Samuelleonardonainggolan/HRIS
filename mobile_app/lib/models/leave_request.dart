@@ -1,18 +1,18 @@
 // lib/models/leave_request.dart
 class LeaveRequest {
   final String id;
-  final String type;         // nama_tipe dari backend, misal "Izin Sakit"
+  final String type; // nama_tipe dari backend, misal "Izin Sakit"
   final String namaKategori; // "Izin" | "Cuti" | "Lembur"
-  final DateTime startDate;  // tanggal_mulai
-  final DateTime endDate;    // tanggal_selesai
-  final String reason;       // alasan
-  final String status;       // sudah di-map ke Indonesia: Menunggu/Disetujui/Ditolak
-  final String statusFinal;  // raw: PENDING/APPROVED/REJECTED
+  final DateTime startDate; // tanggal_mulai
+  final DateTime endDate; // tanggal_selesai
+  final String reason; // alasan
+  final String status; // sudah di-map ke Indonesia: Menunggu/Disetujui/Ditolak
+  final String statusFinal; // raw: PENDING/APPROVED/REJECTED
   final String statusKepala; // status_kepala_departemen
   final String statusManagerHr; // status_manager_hr
-  final int days;            // total_hari
-  final String? startTime;   // lembur: jam mulai
-  final String? endTime;     // lembur: jam selesai
+  final int days; // total_hari
+  final String? startTime; // lembur: jam mulai
+  final String? endTime; // lembur: jam selesai
   final String? dokumenUrl;
 
   LeaveRequest({
@@ -34,67 +34,85 @@ class LeaveRequest {
 
   /// Parse langsung dari response backend PengajuanIzinCuti
   factory LeaveRequest.fromJson(Map<String, dynamic> json) {
-    // Deteksi apakah ini format backend baru (ada tanggal_mulai) atau format lama
-    final isBackend = json['tanggal_mulai'] != null || json['nama_tipe'] != null;
+    final rawStatus =
+        (json['final_status'] ??
+                json['status_final'] ??
+                _reverseMapStatus((json['status'] ?? 'Menunggu').toString()))
+            .toString()
+            .toUpperCase();
 
-    if (isBackend) {
-      final rawStatus = (json['status_final'] ?? 'PENDING').toString().toUpperCase();
-      return LeaveRequest(
-        id:             json['id'] ?? '',
-        type:           json['nama_tipe'] ?? json['type'] ?? '',
-        namaKategori:   json['nama_kategori'] ?? _guessKategori(json['nama_tipe'] ?? ''),
-        startDate:      _parseDate(json['tanggal_mulai']),
-        endDate:        _parseDate(json['tanggal_selesai']),
-        reason:         json['alasan'] ?? '',
-        status:         _mapStatus(rawStatus),
-        statusFinal:    rawStatus,
-        statusKepala:   (json['status_kepala_departemen'] ?? 'PENDING').toString().toUpperCase(),
-        statusManagerHr: (json['status_manager_hr'] ?? 'PENDING').toString().toUpperCase(),
-        days:           json['total_hari'] ?? 0,
-        startTime:      json['start_time'],
-        endTime:        json['end_time'],
-        dokumenUrl:     json['dokumen_url'],
-      );
-    }
+    final typeName =
+        (json['type_name'] ?? json['nama_tipe'] ?? json['type'] ?? '')
+            .toString();
 
-    // Format lama (internal mapping dari api_service)
-    final rawStatus = (json['status'] ?? 'Menunggu').toString();
+    final categoryName = (json['category_name'] ?? json['nama_kategori'] ?? '')
+        .toString();
+
+    final startRaw =
+        json['start_date'] ?? json['tanggal_mulai'] ?? json['start_date'];
+    final endRaw =
+        json['end_date'] ?? json['tanggal_selesai'] ?? json['end_date'];
+
+    final daysRaw = json['days_total'] ?? json['total_hari'] ?? json['days'];
+
     return LeaveRequest(
-      id:             json['id'] ?? '',
-      type:           json['type'] ?? '',
-      namaKategori:   json['nama_kategori'] ?? _guessKategori(json['type'] ?? ''),
-      startDate:      _parseDate(json['start_date']),
-      endDate:        _parseDate(json['end_date']),
-      reason:         json['reason'] ?? '',
-      status:         rawStatus,
-      statusFinal:    _reverseMapStatus(rawStatus),
-      statusKepala:   _reverseMapStatus(rawStatus),
-      statusManagerHr: _reverseMapStatus(rawStatus),
-      days:           json['days'] ?? 0,
-      startTime:      json['start_time'],
-      endTime:        json['end_time'],
-      dokumenUrl:     json['dokumen_url'],
+      id: (json['id'] ?? '').toString(),
+      type: typeName,
+      namaKategori: categoryName.isNotEmpty
+          ? categoryName
+          : _guessKategori(typeName),
+      startDate: _parseDate(startRaw),
+      endDate: _parseDate(endRaw),
+      reason: (json['reason'] ?? json['alasan'] ?? '').toString(),
+      status: _mapStatus(rawStatus),
+      statusFinal: rawStatus,
+      statusKepala: (json['status_kepala_departemen'] ?? 'PENDING')
+          .toString()
+          .toUpperCase(),
+      statusManagerHr: (json['status_manager_hr'] ?? 'PENDING')
+          .toString()
+          .toUpperCase(),
+      days: _toInt(daysRaw),
+      startTime: json['start_time']?.toString(),
+      endTime: json['end_time']?.toString(),
+      dokumenUrl: (json['document_url'] ?? json['dokumen_url'])?.toString(),
     );
   }
 
   static DateTime _parseDate(dynamic v) {
     if (v == null) return DateTime.now();
-    try { return DateTime.parse(v.toString()); } catch (_) { return DateTime.now(); }
+    try {
+      return DateTime.parse(v.toString());
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  static int _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
   }
 
   static String _mapStatus(String raw) {
     switch (raw) {
-      case 'APPROVED': return 'Disetujui';
-      case 'REJECTED': return 'Ditolak';
-      default:         return 'Menunggu';
+      case 'APPROVED':
+        return 'Disetujui';
+      case 'REJECTED':
+        return 'Ditolak';
+      default:
+        return 'Menunggu';
     }
   }
 
   static String _reverseMapStatus(String id) {
     switch (id.toLowerCase()) {
-      case 'disetujui': return 'APPROVED';
-      case 'ditolak':   return 'REJECTED';
-      default:           return 'PENDING';
+      case 'disetujui':
+        return 'APPROVED';
+      case 'ditolak':
+        return 'REJECTED';
+      default:
+        return 'PENDING';
     }
   }
 
@@ -109,14 +127,14 @@ class LeaveRequest {
   bool get isApproved => statusFinal == 'APPROVED';
 
   Map<String, dynamic> toJson() => {
-    'id':         id,
-    'type':       type,
+    'id': id,
+    'type': type,
     'start_date': startDate.toIso8601String(),
-    'end_date':   endDate.toIso8601String(),
-    'reason':     reason,
-    'status':     status,
-    'days':       days,
+    'end_date': endDate.toIso8601String(),
+    'reason': reason,
+    'status': status,
+    'days': days,
     'start_time': startTime,
-    'end_time':   endTime,
+    'end_time': endTime,
   };
 }
