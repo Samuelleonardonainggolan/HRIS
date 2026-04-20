@@ -35,7 +35,7 @@ type AttendanceService interface {
 	ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
 	GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error)
 	GetWorkScheduleInfo(ctx context.Context, userID string) (*WorkScheduleInfo, error)
-	// ✅ Manager-only: rekap presensi & export CSV
+	// Manager-only: rekap presensi & export CSV
 	GetManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) (*models.ManagerAttendanceListResponse, error)
 	ExportManagerAttendanceCSV(ctx context.Context, from, to time.Time, departmentName, q string) ([]byte, string, error)
 	ExportManagerAttendanceCSVStream(ctx context.Context, from, to time.Time, departmentName, q string) (io.ReadCloser, string, error)
@@ -55,7 +55,7 @@ type WorkScheduleInfo struct {
 type TodaySchedule struct {
 	IsWorkDay      bool   `json:"is_work_day"`
 	ClockInWindow  string `json:"clock_in_window"`  // HH:mm - HH:mm
-	ClockOutWindow string `json:"clock_out_window"` // HH:mm - HH:mm
+	ClockOutWindow string `json:"clock_out_window"` // HH:mm onwards atau HH:mm - HH:mm
 	CanClockIn     bool   `json:"can_clock_in"`
 	CanClockOut    bool   `json:"can_clock_out"`
 	Message        string `json:"message"`
@@ -95,7 +95,7 @@ type TodayScheduleInfoResponse struct {
 }
 
 // ── Struct implementasi ───────────────────────────────────────────────────────
-// ✅ Menggabungkan semua dependency:
+// Menggabungkan semua dependency:
 //   - V1: officeLat/officeLng/radiusMeters sebagai fallback statis
 //   - V2: geofenceRepo untuk validasi dinamis dari database
 
@@ -104,9 +104,9 @@ type attendanceService struct {
 	userRepo          repository.UserRepository
 	faceEmbeddingRepo repository.FaceEmbeddingRepository
 	jamKerjaRepo      repository.JamKerjaRepository
-	geofenceRepo      repository.GeofenceRepository // ✅ dari V2: dynamic geofence
+	geofenceRepo      repository.GeofenceRepository // dari V2: dynamic geofence
 	faceClient        *faceclient.Client
-	// ✅ dari V1: fallback statis jika DB geofence kosong
+	// dari V1: fallback statis jika DB geofence kosong
 	officeLat    float64
 	officeLng    float64
 	radiusMeters float64
@@ -129,7 +129,7 @@ func NewAttendanceService(
 		jamKerjaRepo:      jamKerjaRepo,
 		geofenceRepo:      geofenceRepo,
 		faceClient:        faceClient,
-		// ✅ Fallback statis (Labersa Hotel) digunakan jika tidak ada geofence aktif di DB
+		// Fallback statis (Labersa Hotel) digunakan jika tidak ada geofence aktif di DB
 		officeLat:    2.3561,
 		officeLng:    99.1431,
 		radiusMeters: 10000,
@@ -345,7 +345,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	now := time.Now().In(wib)
 	location := models.GeoLocation{Latitude: latitude, Longitude: longitude}
 
-	// ✅ Status: Tepat Waktu jika clock-in <= startTime + 1 menit toleransi
+	// Status: Tepat Waktu jika clock-in <= startTime + 1 menit toleransi
 	startTimeToday := s.extractTimeForToday(now, jamKerja.StartTime)
 	lateThreshold := startTimeToday.Add(1 * time.Minute)
 	status := models.StatusOnTime
@@ -464,9 +464,34 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 	return s.attendanceRepo.GetMonthlySummary(ctx, userObjID, year, month)
 }
 
+func (s *attendanceService) resolveUserFromIdentifier(ctx context.Context, identifier string) (*models.User, string, error) {
+	id := strings.TrimSpace(identifier)
+	if id == "" {
+		return nil, "", errors.New("user tidak ditemukan")
+	}
+
+	// Primary path: token already contains Mongo ObjectID.
+	if _, err := primitive.ObjectIDFromHex(id); err == nil {
+		user, findErr := s.userRepo.FindByID(ctx, id)
+		if findErr == nil && user != nil {
+			return user, user.ID.Hex(), nil
+		}
+	}
+
+	// Backward compatibility: allow old tokens that stored email/payroll as user_id.
+	if user, err := s.userRepo.FindByEmail(ctx, id); err == nil && user != nil {
+		return user, user.ID.Hex(), nil
+	}
+	if user, err := s.userRepo.FindByPayrollNumber(ctx, id); err == nil && user != nil {
+		return user, user.ID.Hex(), nil
+	}
+
+	return nil, "", errors.New("user tidak ditemukan")
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  PROCESS ATTENDANCE WITH FACE
-//  ✅ Gabungan: geofence dinamis dari DB (V2) + fallback statis (V1)
+//  Gabungan: geofence dinamis dari DB (V2) + fallback statis (V1)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 func (s *attendanceService) ProcessAttendanceWithFace(
@@ -481,7 +506,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 
 	// 1. Validasi lokasi — coba geofence dinamis dari DB terlebih dahulu.
 	//    Jika tidak ada geofence aktif, fallback ke koordinat statis (V1).
-	user, err := s.userRepo.FindByID(ctx, userID)
+	user, resolvedUserID, err := s.resolveUserFromIdentifier(ctx, userID)
 	if err != nil || user == nil {
 		return &AttendanceProcessResult{
 			Success: false, Message: "data user tidak ditemukan",
@@ -498,7 +523,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 2. Cek embedding wajah
-	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, userID)
+	faceEmbedding, err := s.faceEmbeddingRepo.FindByUserID(ctx, resolvedUserID)
 	if err != nil || faceEmbedding == nil {
 		return &AttendanceProcessResult{
 			Success:       false,
@@ -515,7 +540,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 3. Ekstrak embedding foto saat ini
-	currentEmbedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
+	currentEmbedding, err := s.faceClient.ExtractEmbedding(resolvedUserID, photo, filename)
 	if err != nil {
 		return &AttendanceProcessResult{
 			Success: false, Message: "Gagal memproses foto: " + err.Error(),
@@ -530,7 +555,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 4. Hitung similarity
-	//    ✅ threshold 0.75 (V2 lebih ketat) — sesuaikan jika perlu
+	//    threshold 0.75 (V2 lebih ketat) — sesuaikan jika perlu
 	similarity := s.cosineSimilarity(currentEmbedding, faceEmbedding.FaceEmbedding)
 	const threshold = 0.75
 	if similarity < threshold {
@@ -543,7 +568,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 
 	// 5. verifyOnly=true → hanya return hasil, tidak simpan ke DB
 	if verifyOnly {
-		fmt.Printf("✅ [VERIFY ONLY] user=%s\n", userID)
+		fmt.Printf("✅ [VERIFY ONLY] user=%s\n", resolvedUserID)
 		return &AttendanceProcessResult{
 			Success:        true,
 			Message:        "Verifikasi berhasil - klik Konfirmasi untuk menyimpan",
@@ -552,12 +577,12 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 6. Simpan ke database
-	fmt.Printf("💾 [SUBMIT] %s untuk user=%s\n", recordType, userID)
+	fmt.Printf("💾 [SUBMIT] %s untuk user=%s\n", recordType, resolvedUserID)
 	var attendance *models.Attendance
 	if recordType == "clock_in" {
-		attendance, err = s.ClockIn(ctx, userID, latitude, longitude, photo, filename, similarity)
+		attendance, err = s.ClockIn(ctx, resolvedUserID, latitude, longitude, photo, filename, similarity)
 	} else {
-		attendance, err = s.ClockOut(ctx, userID, latitude, longitude, photo, filename, similarity)
+		attendance, err = s.ClockOut(ctx, resolvedUserID, latitude, longitude, photo, filename, similarity)
 	}
 	if err != nil {
 		return &AttendanceProcessResult{
@@ -620,7 +645,7 @@ func (s *attendanceService) validateLocation(ctx context.Context, user *models.U
 		}
 	}
 
-	// ✅ Fallback: gunakan koordinat statis jika tidak ada geofence DB aktif
+	// Fallback: gunakan koordinat statis jika tidak ada geofence DB aktif
 	dist := s.calculateDistance(latitude, longitude, s.officeLat, s.officeLng)
 	if dist <= s.radiusMeters {
 		return true, dist, ""
@@ -653,7 +678,7 @@ func (s *attendanceService) geofenceAppliesToUser(user *models.User, geofence *m
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  MANAGER: REKAP PRESENSI + CSV EXPORT  (dari V1)
+//  MANAGER: REKAP PRESENSI + CSV EXPORT
 // ═══════════════════════════════════════════════════════════════════════════════
 
 func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) (*models.ManagerAttendanceListResponse, error) {
@@ -672,6 +697,8 @@ func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to t
 		if r.ClockOutTime != nil {
 			clockOut = r.ClockOutTime.In(wib).Format("15:04")
 		}
+		location := formatGeoLocation(r.ClockInLocation)
+
 		items = append(items, models.ManagerAttendanceRecord{
 			ID:             r.ID.Hex(),
 			UserID:         r.UserID.Hex(),
@@ -679,11 +706,12 @@ func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to t
 			Email:          r.User.Email,
 			PayrollNumber:  r.User.PayrollNumber,
 			DepartmentName: r.User.DepartmentName,
+			PositionName:   r.User.PositionName,
 			Date:           r.Date.In(wib).Format("2006-01-02"),
 			ClockInTime:    clockIn,
 			ClockOutTime:   clockOut,
 			Status:         mapAttendanceStatusToUI(r.Status),
-			Location:       formatGeoLocation(r.ClockInLocation),
+			Location:       location,
 		})
 	}
 
@@ -720,30 +748,36 @@ func (s *attendanceService) ExportManagerAttendanceCSV(ctx context.Context, from
 		if r.ClockOutTime != nil {
 			clockOut = r.ClockOutTime.In(wib).Format("15:04")
 		}
-		buf.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+		location := formatGeoLocation(r.ClockInLocation)
+
+		line := fmt.Sprintf(
+			"%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 			dateValue,
-			escapeCSV(r.User.PayrollNumber), escapeCSV(r.User.FullName),
-			escapeCSV(r.User.Email), escapeCSV(r.User.DepartmentName),
-			escapeCSV(clockIn), escapeCSV(clockOut),
+			escapeCSV(r.User.PayrollNumber),
+			escapeCSV(r.User.FullName),
+			escapeCSV(r.User.Email),
+			escapeCSV(r.User.DepartmentName),
+			escapeCSV(clockIn),
+			escapeCSV(clockOut),
 			escapeCSV(mapAttendanceStatusToUI(r.Status)),
-			escapeCSV(formatGeoLocation(r.ClockInLocation)),
-		))
+			escapeCSV(location),
+		)
+		buf.WriteString(line)
 	}
 
-	filename := fmt.Sprintf("presensi_%s_%s.csv",
-		from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
+	filename := fmt.Sprintf("presensi_%s_%s.csv", from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
 	return buf.Bytes(), filename, nil
 }
 
 func (s *attendanceService) ExportManagerAttendanceCSVStream(ctx context.Context, from, to time.Time, departmentName, q string) (io.ReadCloser, string, error) {
 	pr, pw := io.Pipe()
-	filename := fmt.Sprintf("presensi_%s_%s.csv",
-		from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
+	filename := fmt.Sprintf("presensi_%s_%s.csv", from.In(wib).Format("20060102"), to.In(wib).Add(-time.Nanosecond).Format("20060102"))
 
 	go func() {
 		bw := bufio.NewWriterSize(pw, 64*1024)
-		if _, err := bw.WriteString("date,payroll_number,full_name,email,department,clock_in,clock_out,status,location\n"); err != nil {
-			_ = pw.CloseWithError(err)
+		_, writeErr := bw.WriteString("date,payroll_number,full_name,email,department,clock_in,clock_out,status,location\n")
+		if writeErr != nil {
+			_ = pw.CloseWithError(writeErr)
 			return
 		}
 		if err := bw.Flush(); err != nil {
@@ -777,24 +811,32 @@ func (s *attendanceService) ExportManagerAttendanceCSVStream(ctx context.Context
 			if r.ClockOutTime != nil {
 				clockOut = r.ClockOutTime.In(wib).Format("15:04")
 			}
+			location := formatGeoLocation(r.ClockInLocation)
 
-			line := fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+			line := fmt.Sprintf(
+				"%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
 				dateValue,
-				escapeCSV(r.User.PayrollNumber), escapeCSV(r.User.FullName),
-				escapeCSV(r.User.Email), escapeCSV(r.User.DepartmentName),
-				escapeCSV(clockIn), escapeCSV(clockOut),
+				escapeCSV(r.User.PayrollNumber),
+				escapeCSV(r.User.FullName),
+				escapeCSV(r.User.Email),
+				escapeCSV(r.User.DepartmentName),
+				escapeCSV(clockIn),
+				escapeCSV(clockOut),
 				escapeCSV(mapAttendanceStatusToUI(r.Status)),
-				escapeCSV(formatGeoLocation(r.ClockInLocation)),
+				escapeCSV(location),
 			)
+
 			if _, err := bw.WriteString(line); err != nil {
 				_ = pw.CloseWithError(err)
 				return
 			}
 		}
+
 		if err := cursor.Err(); err != nil {
 			_ = pw.CloseWithError(err)
 			return
 		}
+
 		if err := bw.Flush(); err != nil {
 			_ = pw.CloseWithError(err)
 			return
@@ -809,16 +851,17 @@ func buildManagerAttendanceSummary(statusCounts map[string]int64) models.Manager
 	tepatWaktu := statusCounts[string(models.StatusOnTime)]
 	terlambat := statusCounts[string(models.StatusLate)]
 	alfa := statusCounts[string(models.StatusAbsent)]
-	denom := tepatWaktu + terlambat + alfa
+	izin := int64(0)
+	denom := tepatWaktu + terlambat + izin + alfa
 	kehadiran := tepatWaktu + terlambat
-	pct := 0.0
+	pct := float64(0)
 	if denom > 0 {
 		pct = (float64(kehadiran) / float64(denom)) * 100
 	}
 	return models.ManagerAttendanceSummary{
 		TepatWaktu:        tepatWaktu,
 		Terlambat:         terlambat,
-		IzinSakit:         0,
+		IzinSakit:         izin,
 		Alfa:              alfa,
 		TotalKehadiranPct: math.Round(pct*10) / 10,
 	}
@@ -850,7 +893,7 @@ func (s *attendanceService) buildScheduleMessage(isWorkDay, canClockIn, canClock
 		return "Clock in dibuka pada " + clockInOpen.Format("15:04") + " WIB"
 	}
 	if now.After(clockOutClose) {
-		return "Sudah di luar jam kerja"
+		return "CLOCK IN"
 	}
 	return ""
 }
@@ -866,9 +909,13 @@ func (s *attendanceService) extractTimeForToday(baseTime time.Time, scheduleTime
 
 func (s *attendanceService) getDayName(wd time.Weekday) string {
 	days := map[time.Weekday]string{
-		time.Monday: "Senin", time.Tuesday: "Selasa", time.Wednesday: "Rabu",
-		time.Thursday: "Kamis", time.Friday: "Jumat",
-		time.Saturday: "Sabtu", time.Sunday: "Minggu",
+		time.Monday:    "Senin",
+		time.Tuesday:   "Selasa",
+		time.Wednesday: "Rabu",
+		time.Thursday:  "Kamis",
+		time.Friday:    "Jumat",
+		time.Saturday:  "Sabtu",
+		time.Sunday:    "Minggu",
 	}
 	return days[wd]
 }
@@ -897,7 +944,8 @@ func (s *attendanceService) calculateDistance(lat1, lng1, lat2, lng2 float64) fl
 	Δφ := (lat2 - lat1) * math.Pi / 180
 	Δλ := (lng2 - lng1) * math.Pi / 180
 	a := math.Sin(Δφ/2)*math.Sin(Δφ/2) + math.Cos(φ1)*math.Cos(φ2)*math.Sin(Δλ/2)*math.Sin(Δλ/2)
-	return R * 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
 }
 
 func (s *attendanceService) cosineSimilarity(a, b []float32) float64 {

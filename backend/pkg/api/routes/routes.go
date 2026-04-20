@@ -79,6 +79,9 @@ func SetupRoutes(
 				attendance.GET("/schedule-info", attendanceHandler.GetScheduleInfo) // Informasi jadwal kerja
 				attendance.GET("/records", middleware.ManagerHROnly(), attendanceHandler.GetManagerAttendanceRecords)
 				attendance.GET("/records/export", middleware.ManagerHROnly(), attendanceHandler.ExportManagerAttendanceRecords)
+				// ✅ Tambahan: Records untuk manager departemen (dari kode kedua)
+				attendance.GET("/records/my-department", middleware.ManagerDepartemenOnly(), attendanceHandler.GetManagerDeptAttendanceRecords)
+				attendance.GET("/records/my-department/export", middleware.ManagerDepartemenOnly(), attendanceHandler.ExportManagerDeptAttendanceRecords)
 			}
 
 			// PENGAJUAN IZIN / CUTI
@@ -87,6 +90,7 @@ func SetupRoutes(
 				pengajuan.GET("/tipe", pengajuanHandler.GetTipePengajuan)
 				pengajuan.GET("", pengajuanHandler.GetMyPengajuan)
 				pengajuan.POST("", pengajuanHandler.CreatePengajuan)
+				// ✅ Tambahan: Update dan Cancel pengajuan (dari kode kedua)
 				pengajuan.PUT("/:id", pengajuanHandler.UpdatePengajuan)
 				pengajuan.DELETE("/:id", pengajuanHandler.CancelPengajuan)
 			}
@@ -172,6 +176,7 @@ func SetupRoutes(
 				leaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByManagerHR)
 			}
 
+			// LEAVE REQUEST APPROVAL (Kepala Departemen Only)
 			deptLeaveRequests := protected.Group("/dept-leave-requests")
 			deptLeaveRequests.Use(middleware.ManagerDepartemenOnly())
 			{
