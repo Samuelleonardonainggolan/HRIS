@@ -110,6 +110,8 @@ func SetupRoutes(
 				positions.GET("/:id", positionHandler.GetPositionByID)
 			}
 
+			protected.GET("/employees/my-department", middleware.ManagerDepartemenOnly(), userHandler.GetEmployeesMyDepartment)
+
 			// EMPLOYEES (Admin Only)
 			employees := protected.Group("/employees")
 			employees.Use(middleware.AdminOnly())

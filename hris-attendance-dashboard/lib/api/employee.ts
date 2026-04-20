@@ -66,6 +66,26 @@ class EmployeeService {
     }
   }
 
+  async getEmployeesMyDepartment(): Promise<User[]> {
+    try {
+      const response = await fetch(`${API_BASE}/employees/my-department`, {
+        method: 'GET',
+        headers: authService.getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to fetch employees');
+      }
+
+      return data.data;
+    } catch (error) {
+      console.error('Fetch employees error:', error);
+      throw error;
+    }
+  }
+
   async getEmployeeByID(id: string): Promise<User> {
     try {
       const response = await fetch(`${API_BASE}/employees/${id}`, {

@@ -53,6 +53,27 @@ func (h *UserHandler) GetAllEmployees(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Employees retrieved successfully", employees))
 }
 
+func (h *UserHandler) GetEmployeesMyDepartment(c *gin.Context) {
+	userIDRaw, ok := c.Get("userID")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "missing user"))
+		return
+	}
+	userID, ok := userIDRaw.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "invalid user"))
+		return
+	}
+
+	employees, err := h.userService.GetEmployeesMyDepartment(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Employees retrieved successfully", employees))
+}
+
 // GetEmployeeByID - Get employee by ID
 func (h *UserHandler) GetEmployeeByID(c *gin.Context) {
 	id := c.Param("id")

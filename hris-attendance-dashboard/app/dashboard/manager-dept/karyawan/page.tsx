@@ -61,10 +61,7 @@ export default function PegawaiManagerDepartemenPage() {
       setLoading(true);
       setError(null);
 
-      const data = await employeeService.getAllEmployees();
-
-      // NOTE: kalau backend Anda sudah punya endpoint "employees by department manager",
-      // sebaiknya panggil endpoint itu di sini.
+      const data = await employeeService.getEmployeesMyDepartment();
       const mappedEmployees = data.map(mapUserToEmployee);
 
       setEmployees(mappedEmployees);

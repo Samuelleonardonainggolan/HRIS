@@ -18,6 +18,7 @@ import (
 type UserService interface {
 	CreateEmployee(ctx context.Context, req models.CreateEmployeeRequest) (*models.UserResponse, *string, error)
 	GetAllEmployees(ctx context.Context) ([]models.UserResponse, error)
+	GetEmployeesMyDepartment(ctx context.Context, managerUserID string) ([]models.UserResponse, error)
 	GetEmployeeByID(ctx context.Context, id string) (*models.UserResponse, error)
 	UpdateEmployee(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteEmployee(ctx context.Context, id string) error
@@ -206,6 +207,31 @@ func (s *userService) GetAllEmployees(ctx context.Context) ([]models.UserRespons
 	}
 
 	var responses []models.UserResponse
+	for _, user := range users {
+		responses = append(responses, user.ToResponse())
+	}
+
+	return responses, nil
+}
+
+func (s *userService) GetEmployeesMyDepartment(ctx context.Context, managerUserID string) ([]models.UserResponse, error) {
+	manager, err := s.userRepo.FindByID(ctx, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+	if manager == nil {
+		return nil, errors.New("user not found")
+	}
+	if manager.DepartmentID.IsZero() {
+		return nil, errors.New("department not set")
+	}
+
+	users, err := s.userRepo.FindByDepartment(ctx, manager.DepartmentID.Hex())
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]models.UserResponse, 0, len(users))
 	for _, user := range users {
 		responses = append(responses, user.ToResponse())
 	}
