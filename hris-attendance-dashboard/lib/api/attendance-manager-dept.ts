@@ -7,7 +7,7 @@ const API_BASE =
 
 export type AttendanceStatusUI = "HADIR" | "TELAT" | "IZIN" | "ALFA";
 
-export interface ManagerAttendanceItem {
+export interface ManagerDeptAttendanceItem {
   id: string;
   user_id: string;
   full_name: string;
@@ -22,7 +22,7 @@ export interface ManagerAttendanceItem {
   location: string;
 }
 
-export interface ManagerAttendanceSummary {
+export interface ManagerDeptAttendanceSummary {
   total_records: number;
   tepat_waktu: number;
   terlambat: number;
@@ -31,12 +31,12 @@ export interface ManagerAttendanceSummary {
   total_kehadiran_pct: number;
 }
 
-export interface ManagerAttendanceListResponse {
-  items: ManagerAttendanceItem[];
+export interface ManagerDeptAttendanceListResponse {
+  items: ManagerDeptAttendanceItem[];
   page: number;
   page_size: number;
   total: number;
-  summary: ManagerAttendanceSummary;
+  summary: ManagerDeptAttendanceSummary;
 }
 
 function toQuery(params: Record<string, string | number | undefined>): string {
@@ -51,17 +51,16 @@ function toQuery(params: Record<string, string | number | undefined>): string {
   return out ? `?${out}` : "";
 }
 
-class AttendanceManagerApi {
+class AttendanceManagerDeptApi {
   async list(params: {
     from: string;
     to: string;
-    department?: string;
     q?: string;
     page?: number;
     page_size?: number;
-  }): Promise<ManagerAttendanceListResponse> {
+  }): Promise<ManagerDeptAttendanceListResponse> {
     const res = await fetch(
-      `${API_BASE}/attendance/records${toQuery(params)}`,
+      `${API_BASE}/attendance/records/my-department${toQuery(params)}`,
       {
         method: "GET",
         headers: authService.getAuthHeaders(),
@@ -70,12 +69,12 @@ class AttendanceManagerApi {
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.message || "Failed to fetch attendance records");
-    return data.data as ManagerAttendanceListResponse;
+    return data.data as ManagerDeptAttendanceListResponse;
   }
 
-  async exportCsv(params: { from: string; to: string; department?: string; q?: string }): Promise<Blob> {
+  async exportCsv(params: { from: string; to: string; q?: string }): Promise<Blob> {
     const res = await fetch(
-      `${API_BASE}/attendance/records/export${toQuery(params)}`,
+      `${API_BASE}/attendance/records/my-department/export${toQuery(params)}`,
       {
         method: "GET",
         headers: {
@@ -98,4 +97,4 @@ class AttendanceManagerApi {
   }
 }
 
-export const attendanceManagerApi = new AttendanceManagerApi();
+export const attendanceManagerDeptApi = new AttendanceManagerDeptApi();

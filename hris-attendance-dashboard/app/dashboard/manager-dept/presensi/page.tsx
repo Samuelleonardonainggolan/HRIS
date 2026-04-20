@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Download,
   Calendar,
@@ -13,6 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { BadgeProps } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -25,20 +26,24 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as UiCalendar } from "@/components/ui/calender"; // ✅
+import { Calendar as UiCalendar } from "@/components/ui/calender";
+import {
+  attendanceManagerDeptApi,
+  type AttendanceStatusUI,
+  type ManagerDeptAttendanceItem,
+} from "@/lib/api/attendance-manager-dept";
 
-type AttendanceStatus = "HADIR" | "TELAT" | "IZIN" | "ALFA";
+type AttendanceStatus = AttendanceStatusUI;
 
 interface AttendanceRow {
   id: string;
   name: string;
   email: string;
-
-  position: string; // ✅ Jabatan (pengganti ID/Dept)
-
-  date: Date;
+  empId: string;
+  dept: string;
+  position: string;
+  date: string;
   dateLabel: string;
-
   clockIn: string;
   clockOut: string;
   status: AttendanceStatus;
@@ -46,28 +51,37 @@ interface AttendanceRow {
 }
 
 function statusBadgeVariant(status: AttendanceStatus) {
+  type BadgeVariant = BadgeProps["variant"];
   switch (status) {
     case "HADIR":
-      return "success" as any;
+      return "success" as BadgeVariant;
     case "TELAT":
-      return "warning" as any;
+      return "warning" as BadgeVariant;
     case "IZIN":
-      return "secondary" as any;
+      return "secondary" as BadgeVariant;
     case "ALFA":
-      return "destructive" as any;
+      return "danger" as BadgeVariant;
     default:
-      return "secondary" as any;
+      return "secondary" as BadgeVariant;
   }
 }
 
 export default function PresensiKaryawanManagerDepartemenPage() {
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  const now = new Date();
   const defaultRange: DateRange = {
-    from: new Date(2023, 9, 1),
-    to: new Date(2023, 9, 31),
+    from: new Date(now.getFullYear(), now.getMonth(), 1),
+    to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
   };
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
+  const [appliedFilters, setAppliedFilters] = useState(() => ({
+    from: format(defaultRange.from as Date, "yyyy-MM-dd"),
+    to: format(defaultRange.to as Date, "yyyy-MM-dd"),
+    q: "",
+  }));
+  const [filtersKey, setFiltersKey] = useState(0);
 
   const dateRangeLabel = useMemo(() => {
     if (!dateRange?.from) return "Pilih rentang tanggal";
@@ -76,103 +90,88 @@ export default function PresensiKaryawanManagerDepartemenPage() {
     return `${from} - ${to}`;
   }, [dateRange]);
 
-  // ✅ filter jabatan
+  // filter jabatan client-side dari hasil API
   const [positionFilter, setPositionFilter] = useState("all");
-
   const [searchEmployee, setSearchEmployee] = useState("");
-
   const [page, setPage] = useState(1);
-  const pageSize = 4;
+  const pageSize = 10;
 
   const [rows, setRows] = useState<AttendanceRow[]>([]);
+  const [summary, setSummary] = useState({
+    total_kehadiran_pct: 0,
+    tepat_waktu: 0,
+    terlambat: 0,
+    izin_sakit: 0,
+    alfa: 0,
+  });
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setRows([
-        {
-          id: "1",
-          name: "Budi Santoso",
-          email: "budi.s@sapphire.com",
-          position: "Software Developer",
-          date: new Date(2023, 9, 25),
-          dateLabel: "25 Okt 2023",
-          clockIn: "08:00",
-          clockOut: "17:05",
-          status: "HADIR",
-          location: "HQ Office",
-        },
-        {
-          id: "2",
-          name: "Siti Aminah",
-          email: "siti.a@sapphire.com",
-          position: "Accountant",
-          date: new Date(2023, 9, 25),
-          dateLabel: "25 Okt 2023",
-          clockIn: "08:45",
-          clockOut: "17:15",
-          status: "TELAT",
-          location: "Remote - Home",
-        },
-        {
-          id: "3",
-          name: "Rian Wibawa",
-          email: "rian.w@sapphire.com",
-          position: "Sales Executive",
-          date: new Date(2023, 9, 25),
-          dateLabel: "25 Okt 2023",
-          clockIn: "--:--",
-          clockOut: "--:--",
-          status: "IZIN",
-          location: "Unrecorded",
-        },
-        {
-          id: "4",
-          name: "Diana Putri",
-          email: "diana.p@sapphire.com",
-          position: "Software Developer",
-          date: new Date(2023, 9, 10),
-          dateLabel: "10 Okt 2023",
-          clockIn: "07:55",
-          clockOut: "17:30",
-          status: "HADIR",
-          location: "HQ Office",
-        },
-      ]);
-      setIsLoading(false);
-    }, 500);
-
-    return () => clearTimeout(t);
-  }, []);
-
-  // ✅ option jabatan dari data (atau nanti dari API)
   const positionOptions = useMemo(() => {
-    const uniq = Array.from(new Set(rows.map((r) => r.position).filter(Boolean))).sort();
+    const uniq = Array.from(new Set(rows.map((r) => r.position).filter((p) => p && p !== "-"))).sort();
     return uniq;
   }, [rows]);
 
+  const mapItemsToRows = useCallback(
+    (items: ManagerDeptAttendanceItem[]): AttendanceRow[] =>
+      items.map((it) => ({
+        id: it.id,
+        name: it.full_name,
+        email: it.email,
+        empId: it.payroll_number,
+        dept: it.department_name,
+        position: it.position_name || "-",
+        date: it.date,
+        dateLabel: format(new Date(`${it.date}T00:00:00`), "dd MMM yyyy", { locale: id }),
+        clockIn: it.clock_in_time || "--:--",
+        clockOut: it.clock_out_time || "--:--",
+        status: it.status,
+        location: it.location || "Unrecorded",
+      })),
+    []
+  );
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const data = await attendanceManagerDeptApi.list({
+        from: appliedFilters.from,
+        to: appliedFilters.to,
+        q: appliedFilters.q,
+        page: 1,
+        page_size: 200,
+      });
+
+      setSummary(data.summary);
+      setRows(mapItemsToRows(data.items));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal memuat data presensi";
+      setLoadError(message);
+      setRows([]);
+      setSummary({
+        total_kehadiran_pct: 0,
+        tepat_waktu: 0,
+        terlambat: 0,
+        izin_sakit: 0,
+        alfa: 0,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [appliedFilters.from, appliedFilters.q, appliedFilters.to, mapItemsToRows]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData, filtersKey]);
+
   const filteredRows = useMemo(() => {
-    const q = searchEmployee.toLowerCase().trim();
-
-    const from = dateRange?.from
-      ? new Date(dateRange.from.getFullYear(), dateRange.from.getMonth(), dateRange.from.getDate(), 0, 0, 0, 0)
-      : null;
-
-    const to = dateRange?.to
-      ? new Date(dateRange.to.getFullYear(), dateRange.to.getMonth(), dateRange.to.getDate(), 23, 59, 59, 999)
-      : null;
-
     return rows.filter((r) => {
-      const matchName = r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
       const matchPosition = positionFilter === "all" ? true : r.position === positionFilter;
-      const matchDate = !from || !to ? true : r.date >= from && r.date <= to;
-
-      return matchName && matchPosition && matchDate;
+      return matchPosition;
     });
-  }, [rows, searchEmployee, positionFilter, dateRange]);
+  }, [rows, positionFilter]);
 
   const totalItems = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-
   const pagedRows = useMemo(() => {
     const start = (page - 1) * pageSize;
     return filteredRows.slice(start, start + pageSize);
@@ -190,17 +189,50 @@ export default function PresensiKaryawanManagerDepartemenPage() {
     setPositionFilter("all");
     setSearchEmployee("");
     setPage(1);
+    setAppliedFilters({
+      from: format(defaultRange.from as Date, "yyyy-MM-dd"),
+      to: format(defaultRange.to as Date, "yyyy-MM-dd"),
+      q: "",
+    });
+    setFiltersKey((k) => k + 1);
   };
 
   const handleApplyFilter = () => {
+    if (!dateRange?.from || !dateRange?.to) return;
+    setAppliedFilters({
+      from: format(dateRange.from, "yyyy-MM-dd"),
+      to: format(dateRange.to, "yyyy-MM-dd"),
+      q: searchEmployee,
+    });
     setPage(1);
+    setFiltersKey((k) => k + 1);
   };
 
-  // summary (dummy)
-  const totalKehadiranPct = 94;
-  const tepatWaktu = 42;
-  const terlambat = 4;
-  const izinSakit = 2;
+  const handleExport = async () => {
+    try {
+      const blob = await attendanceManagerDeptApi.exportCsv({
+        from: appliedFilters.from,
+        to: appliedFilters.to,
+        q: appliedFilters.q,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `presensi_departemen_${appliedFilters.from}_${appliedFilters.to}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal export laporan";
+      setLoadError(message);
+    }
+  };
+
+  const totalKehadiranPct = summary.total_kehadiran_pct;
+  const tepatWaktu = summary.tepat_waktu;
+  const terlambat = summary.terlambat;
+  const izinSakit = summary.izin_sakit;
 
   return (
     <div className="p-6 space-y-6">
@@ -213,7 +245,11 @@ export default function PresensiKaryawanManagerDepartemenPage() {
           </p>
         </div>
 
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+        <Button
+          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+          onClick={handleExport}
+          disabled={isLoading || !appliedFilters.from || !appliedFilters.to}
+        >
           <Download className="h-4 w-4" />
           Export Laporan
         </Button>
@@ -310,6 +346,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
         <CardContent className="p-0">
           <div className="px-6 pt-6 pb-3">
             {isLoading && <div className="text-sm text-gray-600">Memuat presensi...</div>}
+            {!isLoading && loadError && <div className="text-sm text-red-600">{loadError}</div>}
           </div>
 
           <div className="overflow-hidden rounded-2xl">
@@ -320,9 +357,8 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Nama Karyawan
                     </th>
-                    {/* ✅ kolom jabatan */}
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Jabatan
+                      ID / Dept
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Tanggal
@@ -366,9 +402,9 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                         </div>
                       </td>
 
-                      {/* ✅ jabatan */}
                       <td className="px-6 py-4">
-                        <div className="text-sm text-gray-700">{r.position}</div>
+                        <div className="text-sm font-semibold text-gray-900">{r.empId}</div>
+                        <div className="text-xs text-gray-500">{r.dept || "-"}</div>
                       </td>
 
                       <td className="px-6 py-4 text-sm text-gray-700">{r.dateLabel}</td>
@@ -411,7 +447,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                 </tbody>
               </table>
 
-              {!isLoading && filteredRows.length === 0 && (
+              {!isLoading && totalItems === 0 && (
                 <div className="py-12 text-center text-sm text-gray-500">
                   Tidak ada data presensi ditemukan.
                 </div>

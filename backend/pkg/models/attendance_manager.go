@@ -11,6 +11,7 @@ type ManagerAttendanceUserAgg struct {
 	Email           string `bson:"email" json:"email"`
 	PayrollNumber   string `bson:"payroll_number" json:"payroll_number"`
 	DepartmentName  string `bson:"department_name" json:"department_name"`
+	PositionName    string `bson:"position_name" json:"position_name"`
 }
 
 type ManagerAttendanceAggRow struct {
@@ -32,6 +33,7 @@ type ManagerAttendanceRecord struct {
 	Email          string `json:"email"`
 	PayrollNumber  string `json:"payroll_number"`
 	DepartmentName string `json:"department_name"`
+	PositionName   string `json:"position_name"`
 	Date           string `json:"date"`
 	ClockInTime    string `json:"clock_in_time"`
 	ClockOutTime   string `json:"clock_out_time"`

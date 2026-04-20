@@ -79,6 +79,8 @@ func SetupRoutes(
 				attendance.GET("/schedule-info", attendanceHandler.GetScheduleInfo) // Informasi jadwal kerja
 				attendance.GET("/records", middleware.ManagerHROnly(), attendanceHandler.GetManagerAttendanceRecords)
 				attendance.GET("/records/export", middleware.ManagerHROnly(), attendanceHandler.ExportManagerAttendanceRecords)
+				attendance.GET("/records/my-department", middleware.ManagerDepartemenOnly(), attendanceHandler.GetManagerDeptAttendanceRecords)
+				attendance.GET("/records/my-department/export", middleware.ManagerDepartemenOnly(), attendanceHandler.ExportManagerDeptAttendanceRecords)
 			}
 
 			// PENGAJUAN IZIN / CUTI

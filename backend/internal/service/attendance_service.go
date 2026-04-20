@@ -124,6 +124,7 @@ func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to t
 			Email:          r.User.Email,
 			PayrollNumber:  r.User.PayrollNumber,
 			DepartmentName: r.User.DepartmentName,
+			PositionName:   r.User.PositionName,
 			Date:           r.Date.In(wib).Format("2006-01-02"),
 			ClockInTime:    clockIn,
 			ClockOutTime:   clockOut,
