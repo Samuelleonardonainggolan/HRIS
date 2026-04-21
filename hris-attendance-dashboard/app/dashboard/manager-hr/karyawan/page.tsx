@@ -45,7 +45,7 @@ export default function PegawaiPage() {
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await employeeService.getAllEmployees();
+      const data = await employeeService.getEmployeesByScope();
       const mappedEmployees = data.map(mapUserToEmployee);
       setEmployees(mappedEmployees);
     } catch (err) {

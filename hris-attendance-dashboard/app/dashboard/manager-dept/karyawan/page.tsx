@@ -61,7 +61,7 @@ export default function PegawaiManagerDepartemenPage() {
       setLoading(true);
       setError(null);
 
-      const data = await employeeService.getEmployeesMyDepartment();
+      const data = await employeeService.getEmployeesByScope();
       const mappedEmployees = data.map(mapUserToEmployee);
 
       setEmployees(mappedEmployees);

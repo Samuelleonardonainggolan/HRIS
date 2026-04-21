@@ -18,7 +18,7 @@ export default function PegawaiPage() {
     const fetchEmployees = async () => {
       try {
         setIsLoading(true);
-        const data = await employeeService.getAllEmployees();
+        const data = await employeeService.getEmployeesByScope();
 
         const mappedEmployees: Employee[] = data.map((user: User) => {
           const name = user.full_name?.trim() || user.email || "-";

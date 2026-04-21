@@ -44,6 +44,25 @@ func (h *UserHandler) CreateEmployee(c *gin.Context) {
 
 // GetAllEmployees - Get all employees
 func (h *UserHandler) GetAllEmployees(c *gin.Context) {
+	userRoleRaw, roleExists := c.Get("userRole")
+	userIDRaw, userExists := c.Get("userID")
+	if roleExists && userExists {
+		userRole, roleOk := userRoleRaw.(string)
+		userID, userOk := userIDRaw.(string)
+		if roleOk && userOk && userID != "" {
+			if userRole == models.RoleManagerDepartemen || userRole == models.RoleAdminDepartemen {
+				employees, err := h.userService.GetEmployeesMyDepartment(c.Request.Context(), userID)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+					return
+				}
+
+				c.JSON(http.StatusOK, models.SuccessResponse("Employees retrieved successfully", employees))
+				return
+			}
+		}
+	}
+
 	employees, err := h.userService.GetAllEmployees(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))

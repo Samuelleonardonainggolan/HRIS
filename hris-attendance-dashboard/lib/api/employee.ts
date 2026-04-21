@@ -46,6 +46,17 @@ export const employeeApi = {
 class EmployeeService {
   // ==================== EMPLOYEES ====================
 
+  async getEmployeesByScope(): Promise<User[]> {
+    const currentUser = authService.getUser();
+    const role = currentUser?.role;
+
+    if (role === 'manager_departemen' || role === 'admin_departemen') {
+      return this.getEmployeesMyDepartment();
+    }
+
+    return this.getAllEmployees();
+  }
+
   async getAllEmployees(): Promise<User[]> {
     try {
       const response = await fetch(`${API_BASE}/employees`, {
