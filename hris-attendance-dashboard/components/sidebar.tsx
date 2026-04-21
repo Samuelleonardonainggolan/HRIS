@@ -54,8 +54,8 @@ export function Sidebar() {
         return "/dashboard/manager-hr";
       case "manager_departemen":
         return "/dashboard/manager-dept";
-      case "admin_departemen":
-        return "/dashboard/admin-dept";
+      case "accountant":
+        return "/dashboard/accountant";
       case "staf":
         return "/dashboard/staf";
       default:
@@ -78,7 +78,7 @@ export function Sidebar() {
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
           { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
-          { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
+          { name: "Gaji Karyawan", href: `${basePath}/gaji-karyawan`, icon: "Bell" },
         ];
 
       case "manager_departemen":
@@ -95,7 +95,7 @@ export function Sidebar() {
       case "accountant":
         return [
           { name: "Dashboard", href: basePath, icon: "LayoutDashboard" },
-          { name: "Kelola Staf", href: `${basePath}/staf`, icon: "UserCog" },
+          { name: "Payroll", href: `${basePath}/payroll`, icon: "UserCog" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
@@ -133,8 +133,8 @@ export function Sidebar() {
         return "Manager HR";
       case "manager_departemen":
         return "Manager Departemen";
-      case "admin_departemen":
-        return "Admin Departemen";
+      case "accountant":
+        return "Accountant";
       case "staf":
         return "Staf";
       default:
