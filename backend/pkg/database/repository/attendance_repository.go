@@ -21,6 +21,8 @@ var wib = time.FixedZone("WIB", 7*60*60)
 type AttendanceRepository interface {
 	Create(ctx context.Context, attendance *models.Attendance) error
 	FindTodayByUserID(ctx context.Context, userID primitive.ObjectID) (*models.Attendance, error)
+	UpdateBreakStart(ctx context.Context, id primitive.ObjectID, breakStartTime time.Time) error
+	UpdateBreakEnd(ctx context.Context, id primitive.ObjectID, breakEndTime time.Time) error
 	UpdateClockOut(ctx context.Context, id primitive.ObjectID, clockOutTime time.Time, photo string, location models.GeoLocation) error
 	UpdateWorkHours(ctx context.Context, id primitive.ObjectID, workHours, overtimeHours float64, status models.AttendanceStatus) error
 	FindByUserIDAndMonth(ctx context.Context, userID primitive.ObjectID, year, month int) ([]models.Attendance, error)
@@ -98,6 +100,31 @@ func (r *attendanceRepository) UpdateClockOut(ctx context.Context, id primitive.
 	return err
 }
 
+func (r *attendanceRepository) UpdateBreakStart(ctx context.Context, id primitive.ObjectID, breakStartTime time.Time) error {
+	filter := bson.M{"_id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"break_start_time": breakStartTime,
+			"break_end_time":   nil,
+			"updated_at":       time.Now(),
+		},
+	}
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
+func (r *attendanceRepository) UpdateBreakEnd(ctx context.Context, id primitive.ObjectID, breakEndTime time.Time) error {
+	filter := bson.M{"_id": id}
+	update := bson.M{
+		"$set": bson.M{
+			"break_end_time": breakEndTime,
+			"updated_at":     time.Now(),
+		},
+	}
+	_, err := r.collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
 // UpdateWorkHours implements AttendanceRepository.UpdateWorkHours
 func (r *attendanceRepository) UpdateWorkHours(ctx context.Context, id primitive.ObjectID, workHours, overtimeHours float64, status models.AttendanceStatus) error {
 	filter := bson.M{"_id": id}
@@ -167,10 +194,22 @@ func (r *attendanceRepository) GetMonthlySummary(ctx context.Context, userID pri
 
 		// ✅ FIX: Format tanggal juga dalam WIB agar konsisten
 		records = append(records, models.AttendanceResponse{
-			ID:            att.ID.Hex(),
-			Date:          att.Date.In(wib).Format("2006-01-02"),
-			ClockInTime:   clockInStr,
-			ClockOutTime:  clockOutStr,
+			ID:           att.ID.Hex(),
+			Date:         att.Date.In(wib).Format("2006-01-02"),
+			ClockInTime:  clockInStr,
+			ClockOutTime: clockOutStr,
+			BreakStartTime: func() string {
+				if att.BreakStartTime == nil {
+					return ""
+				}
+				return att.BreakStartTime.In(wib).Format("15:04")
+			}(),
+			BreakEndTime: func() string {
+				if att.BreakEndTime == nil {
+					return ""
+				}
+				return att.BreakEndTime.In(wib).Format("15:04")
+			}(),
 			Status:        att.Status,
 			WorkHours:     att.WorkHours,
 			OvertimeHours: att.OvertimeHours,
@@ -275,8 +314,10 @@ func (r *attendanceRepository) FindManagerAttendance(ctx context.Context, from, 
 	defer cursor.Close(ctx)
 
 	var facetResults []struct {
-		Data          []models.ManagerAttendanceAggRow `bson:"data"`
-		Total         []struct{ Count int64 `bson:"count"` } `bson:"total"`
+		Data  []models.ManagerAttendanceAggRow `bson:"data"`
+		Total []struct {
+			Count int64 `bson:"count"`
+		} `bson:"total"`
 		StatusSummary []struct {
 			ID    string `bson:"_id"`
 			Count int64  `bson:"count"`

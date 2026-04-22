@@ -22,6 +22,8 @@ type Attendance struct {
 	Date             time.Time          `json:"date" bson:"date"`
 	ClockInTime      *time.Time         `json:"clock_in_time,omitempty" bson:"clock_in_time,omitempty"`
 	ClockOutTime     *time.Time         `json:"clock_out_time,omitempty" bson:"clock_out_time,omitempty"`
+	BreakStartTime   *time.Time         `json:"break_start_time,omitempty" bson:"break_start_time,omitempty"`
+	BreakEndTime     *time.Time         `json:"break_end_time,omitempty" bson:"break_end_time,omitempty"`
 	ClockInPhoto     string             `json:"clock_in_photo,omitempty" bson:"clock_in_photo,omitempty"`
 	ClockOutPhoto    string             `json:"clock_out_photo,omitempty" bson:"clock_out_photo,omitempty"`
 	ClockInLocation  GeoLocation        `json:"clock_in_location" bson:"clock_in_location"`
@@ -51,6 +53,8 @@ type AttendanceResponse struct {
 	Date           string           `json:"date"`
 	ClockInTime    string           `json:"clock_in_time"`
 	ClockOutTime   string           `json:"clock_out_time"`
+	BreakStartTime string           `json:"break_start_time,omitempty"`
+	BreakEndTime   string           `json:"break_end_time,omitempty"`
 	Status         AttendanceStatus `json:"status"`
 	WorkHours      float64          `json:"work_hours"`
 	OvertimeHours  float64          `json:"overtime_hours"`

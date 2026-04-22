@@ -96,26 +96,71 @@ class _RequestPageState extends State<RequestPage> {
     DateTime startDate = r.startDate;
     DateTime endDate = r.endDate;
     final reasonCtrl = TextEditingController(text: r.reason);
+    final isSakit = _isSickType(r.type);
+    final minStartDate = isSakit
+        ? DateTime.now()
+        : DateTime.now().add(const Duration(days: 2));
 
     final edited = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Edit Pengajuan'),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.edit_note_rounded,
+                  color: Color(0xFF135BEC),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text('Edit Pengajuan'),
+            ],
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Tanggal Mulai'),
-                  subtitle: Text(DateFormat('yyyy-MM-dd').format(startDate)),
-                  trailing: const Icon(Icons.calendar_today, size: 18),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isSakit
+                        ? const Color(0xFFDCFCE7)
+                        : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    isSakit
+                        ? 'Izin sakit dapat diajukan mulai hari ini.'
+                        : 'Untuk tipe ini, tanggal mulai minimal H-2.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isSakit
+                          ? const Color(0xFF166534)
+                          : const Color(0xFF92400E),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _buildEditableDateRow(
+                  label: 'Tanggal Mulai',
+                  value: DateFormat('yyyy-MM-dd').format(startDate),
+                  icon: Icons.calendar_today,
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: ctx,
-                      initialDate: startDate,
-                      firstDate: DateTime.now().add(const Duration(days: 2)),
+                      initialDate: startDate.isBefore(minStartDate)
+                          ? minStartDate
+                          : startDate,
+                      firstDate: minStartDate,
                       lastDate: DateTime.now().add(const Duration(days: 365)),
                     );
                     if (picked != null) {
@@ -126,11 +171,11 @@ class _RequestPageState extends State<RequestPage> {
                     }
                   },
                 ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Tanggal Selesai'),
-                  subtitle: Text(DateFormat('yyyy-MM-dd').format(endDate)),
-                  trailing: const Icon(Icons.calendar_month, size: 18),
+                const SizedBox(height: 8),
+                _buildEditableDateRow(
+                  label: 'Tanggal Selesai',
+                  value: DateFormat('yyyy-MM-dd').format(endDate),
+                  icon: Icons.calendar_month,
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: ctx,
@@ -143,6 +188,7 @@ class _RequestPageState extends State<RequestPage> {
                     }
                   },
                 ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: reasonCtrl,
                   maxLines: 3,
@@ -227,21 +273,56 @@ class _RequestPageState extends State<RequestPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(
-                r.type,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Container(
+                    height: 46,
+                    width: 46,
+                    decoration: BoxDecoration(
+                      color: _kategoriColor(r.namaKategori).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _kategoriIcon(r.namaKategori),
+                      color: _kategoriColor(r.namaKategori),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      r.type,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
-              Text('Kategori: ${r.namaKategori}'),
-              Text('Status: ${_statusLabel(r.statusFinal)}'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _detailBadge(
+                    'Kategori ${r.namaKategori}',
+                    _kategoriColor(r.namaKategori),
+                  ),
+                  _detailBadge(
+                    'Status ${_statusLabel(r.statusFinal)}',
+                    _statusColor(r.statusFinal),
+                  ),
+                  _detailBadge(
+                    'Durasi ${r.days} hari',
+                    const Color(0xFF0F766E),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               Text(
                 'Periode: ${dateFmt.format(r.startDate)} - ${dateFmt.format(r.endDate)}',
               ),
-              Text('Durasi: ${r.days} hari'),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               const Text(
                 'Alasan',
                 style: TextStyle(fontWeight: FontWeight.w700),
@@ -600,7 +681,7 @@ class _RequestPageState extends State<RequestPage> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          fmt.format(r.startDate),
+                          'Diajukan: ${fmt.format(r.createdAt)}',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey.shade400,
@@ -728,43 +809,111 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   Widget _buildApprovalChain(LeaveRequest r) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _approvalDot(r.statusKepala, 'Ka.Dept'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Container(width: 14, height: 1, color: Colors.grey.shade200),
-        ),
-        _approvalDot(r.statusManagerHr, 'Mgr HR'),
+        _approvalPill(r.statusKepala, 'Ka.Dept'),
+        const SizedBox(height: 6),
+        _approvalPill(r.statusManagerHr, 'Mgr HR'),
       ],
     );
   }
 
-  Widget _approvalDot(String status, String label) {
+  Widget _approvalPill(String status, String label) {
     final c = status == 'APPROVED'
         ? const Color(0xFF2ECC71)
         : status == 'REJECTED'
         ? const Color(0xFFEF4444)
         : const Color(0xFFF59E0B);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: c),
-        ),
-        const SizedBox(width: 3),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 9,
-            color: Colors.grey.shade400,
-            fontWeight: FontWeight.w500,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: c.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: c.withOpacity(0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.shield_rounded, size: 11, color: c),
+          const SizedBox(width: 4),
+          Text(
+            '$label: ${_statusLabel(status)}',
+            style: TextStyle(
+              fontSize: 10,
+              color: c,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  Widget _detailBadge(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEditableDateRow({
+    required String label,
+    required String value,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: const Color(0xFF135BEC)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  Text(
+                    value,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool _isSickType(String typeName) {
+    return typeName.toLowerCase().contains('sakit');
   }
 
   String _statusLabel(String s) {

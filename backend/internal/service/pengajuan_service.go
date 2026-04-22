@@ -125,17 +125,29 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 
 	// Parse tanggal
 	const layout = "2006-01-02"
-	tanggalMulai, err := time.ParseInLocation(layout, req.TanggalMulai, time.FixedZone("WIB", 7*60*60))
+	tanggalMulai, err := time.Parse(layout, req.TanggalMulai)
 	if err != nil {
 		return nil, errors.New("format tanggal_mulai tidak valid (gunakan yyyy-MM-dd)")
 	}
-	tanggalSelesai, err := time.ParseInLocation(layout, req.TanggalSelesai, time.FixedZone("WIB", 7*60*60))
+	tanggalSelesai, err := time.Parse(layout, req.TanggalSelesai)
 	if err != nil {
 		return nil, errors.New("format tanggal_selesai tidak valid (gunakan yyyy-MM-dd)")
 	}
+	tanggalMulai = dateOnlyUTC(tanggalMulai)
+	tanggalSelesai = dateOnlyUTC(tanggalSelesai)
 
 	if tanggalSelesai.Before(tanggalMulai) {
 		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
+	}
+	if isSameCalendarDate(tanggalMulai, tanggalSelesai) {
+		return nil, errors.New("tanggal_mulai dan tanggal_selesai tidak boleh sama")
+	}
+
+	if err := validateRequestLeadTime(tipe.TypeName, tanggalMulai); err != nil {
+		return nil, err
+	}
+	if err := s.ensureNoDateConflict(ctx, userObjID, tanggalMulai, tanggalSelesai, primitive.NilObjectID); err != nil {
+		return nil, err
 	}
 
 	var dept models.Department
@@ -266,22 +278,22 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 
 			set["request_type_id"] = tipeObjID
 			set["type_name"] = tipe.TypeName
+			current.TypeName = tipe.TypeName
 		}
 	}
 
 	startDate := current.StartDate
 	endDate := current.EndDate
 	const layout = "2006-01-02"
-	tz := time.FixedZone("WIB", 7*60*60)
 
 	if req.TanggalMulai != nil {
 		tanggalMulai := strings.TrimSpace(*req.TanggalMulai)
 		if tanggalMulai != "" {
-			parsed, err := time.ParseInLocation(layout, tanggalMulai, tz)
+			parsed, err := time.Parse(layout, tanggalMulai)
 			if err != nil {
 				return nil, errors.New("format tanggal_mulai tidak valid (gunakan yyyy-MM-dd)")
 			}
-			startDate = parsed
+			startDate = dateOnlyUTC(parsed)
 			set["start_date"] = parsed
 		}
 	}
@@ -289,17 +301,27 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 	if req.TanggalSelesai != nil {
 		tanggalSelesai := strings.TrimSpace(*req.TanggalSelesai)
 		if tanggalSelesai != "" {
-			parsed, err := time.ParseInLocation(layout, tanggalSelesai, tz)
+			parsed, err := time.Parse(layout, tanggalSelesai)
 			if err != nil {
 				return nil, errors.New("format tanggal_selesai tidak valid (gunakan yyyy-MM-dd)")
 			}
-			endDate = parsed
+			endDate = dateOnlyUTC(parsed)
 			set["end_date"] = parsed
 		}
 	}
 
 	if endDate.Before(startDate) {
 		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
+	}
+	if isSameCalendarDate(startDate, endDate) {
+		return nil, errors.New("tanggal_mulai dan tanggal_selesai tidak boleh sama")
+	}
+
+	if err := validateRequestLeadTime(current.TypeName, startDate); err != nil {
+		return nil, err
+	}
+	if err := s.ensureNoDateConflict(ctx, userObjID, startDate, endDate, pengajuanObjID); err != nil {
+		return nil, err
 	}
 
 	if req.TotalHari != nil {
@@ -363,6 +385,67 @@ func (s *pengajuanServiceImpl) CancelPengajuan(ctx context.Context, userID, peng
 
 	if res.MatchedCount == 0 {
 		return errors.New("pengajuan tidak ditemukan atau sudah diproses")
+	}
+
+	return nil
+}
+
+func validateRequestLeadTime(typeName string, startDate time.Time) error {
+	if isSickLeave(typeName) {
+		return nil
+	}
+
+	loc := time.FixedZone("WIB", 7*60*60)
+	now := time.Now().In(loc)
+	minStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 2)
+	startAtDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
+
+	if startAtDay.Before(minStart) {
+		return errors.New("pengajuan hanya boleh diajukan minimal H-2 (kecuali izin sakit)")
+	}
+
+	return nil
+}
+
+func isSickLeave(typeName string) bool {
+	n := strings.ToLower(strings.TrimSpace(typeName))
+	return strings.Contains(n, "sakit")
+}
+
+func dateOnlyUTC(t time.Time) time.Time {
+	local := t.In(time.FixedZone("WIB", 7*60*60))
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func isSameCalendarDate(a, b time.Time) bool {
+	aLocal := a.In(time.FixedZone("WIB", 7*60*60))
+	bLocal := b.In(time.FixedZone("WIB", 7*60*60))
+	return aLocal.Year() == bLocal.Year() && aLocal.Month() == bLocal.Month() && aLocal.Day() == bLocal.Day()
+}
+
+func (s *pengajuanServiceImpl) ensureNoDateConflict(
+	ctx context.Context,
+	userID primitive.ObjectID,
+	startDate time.Time,
+	endDate time.Time,
+	excludeID primitive.ObjectID,
+) error {
+	filter := bson.M{
+		"user_id":      userID,
+		"final_status": bson.M{"$ne": models.StatusRejected},
+		"start_date":   bson.M{"$lte": endDate},
+		"end_date":     bson.M{"$gte": startDate},
+	}
+	if !excludeID.IsZero() {
+		filter["_id"] = bson.M{"$ne": excludeID}
+	}
+
+	count, err := s.db.Collection("leave_request").CountDocuments(ctx, filter)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errors.New("sudah ada pengajuan pada tanggal tersebut")
 	}
 
 	return nil

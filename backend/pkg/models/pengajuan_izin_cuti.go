@@ -43,11 +43,11 @@ type CreatePengajuanIzinCutiRequest struct {
 }
 
 type UpdatePengajuanIzinCutiRequest struct {
-	StartDate *time.Time `json:"start_date,omitempty"`
-	EndDate   *time.Time `json:"end_date,omitempty"`
-	DaysTotal *int       `json:"days_total,omitempty"`
-	Reason    string     `json:"reason,omitempty"`
-	DocumentURL string   `json:"document_url,omitempty"`
+	StartDate   *time.Time `json:"start_date,omitempty"`
+	EndDate     *time.Time `json:"end_date,omitempty"`
+	DaysTotal   *int       `json:"days_total,omitempty"`
+	Reason      string     `json:"reason,omitempty"`
+	DocumentURL string     `json:"document_url,omitempty"`
 
 	StatusKepalaDepartemen string `json:"status_kepala_departemen,omitempty"`
 	StatusManagerHR        string `json:"status_manager_hr,omitempty"`
@@ -98,13 +98,16 @@ func (p *LeaveRequest) ToResponse() PengajuanIzinCutiResponse {
 		bal = p.LeaveBalanceID.Hex()
 	}
 
+	startDate := normalizeDateOnlyForResponse(p.StartDate)
+	endDate := normalizeDateOnlyForResponse(p.EndDate)
+
 	return PengajuanIzinCutiResponse{
 		ID:                     p.ID.Hex(),
 		UserID:                 p.UserID.Hex(),
 		RequestTypeID:          p.RequestTypeID.Hex(),
 		TypeName:               p.TypeName,
-		StartDate:              p.StartDate,
-		EndDate:                p.EndDate,
+		StartDate:              startDate,
+		EndDate:                endDate,
 		DaysTotal:              p.DaysTotal,
 		Reason:                 p.Reason,
 		DocumentURL:            p.DocumentURL,
@@ -117,6 +120,11 @@ func (p *LeaveRequest) ToResponse() PengajuanIzinCutiResponse {
 		CreatedAt:              p.CreatedAt,
 		UpdatedAt:              p.UpdatedAt,
 	}
+}
+
+func normalizeDateOnlyForResponse(t time.Time) time.Time {
+	local := t.In(time.FixedZone("WIB", 7*60*60))
+	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 // Status constants (tetap)

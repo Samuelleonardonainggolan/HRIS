@@ -35,6 +35,7 @@ func main() {
 	positionRepo := repository.NewPositionRepository(mongodb.Database)
 	faceEmbeddingRepo := repository.NewFaceEmbeddingRepository(mongodb.Database)
 	attendanceRepo := repository.NewAttendanceRepository(mongodb.Database)
+	breakTimeRepo := repository.NewBreakTimeRepository(mongodb.Database)
 	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
 	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
@@ -59,7 +60,7 @@ func main() {
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
 
 	// ✅ AttendanceService dengan jamKerjaRepo (dari kode pertama)
-	attendanceService := service.NewAttendanceService(attendanceRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
+	attendanceService := service.NewAttendanceService(attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
 
 	pengajuanService := service.NewPengajuanService(mongodb.Database)
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)

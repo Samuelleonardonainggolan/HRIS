@@ -14,6 +14,7 @@ class LeaveRequest {
   final String? startTime; // lembur: jam mulai
   final String? endTime; // lembur: jam selesai
   final String? dokumenUrl;
+  final DateTime createdAt;
 
   LeaveRequest({
     required this.id,
@@ -30,6 +31,7 @@ class LeaveRequest {
     this.startTime,
     this.endTime,
     this.dokumenUrl,
+    required this.createdAt,
   });
 
   /// Parse langsung dari response backend PengajuanIzinCuti
@@ -76,13 +78,14 @@ class LeaveRequest {
       startTime: json['start_time']?.toString(),
       endTime: json['end_time']?.toString(),
       dokumenUrl: (json['document_url'] ?? json['dokumen_url'])?.toString(),
+      createdAt: _parseDate(json['created_at']),
     );
   }
 
   static DateTime _parseDate(dynamic v) {
     if (v == null) return DateTime.now();
     try {
-      return DateTime.parse(v.toString());
+      return DateTime.parse(v.toString()).toLocal();
     } catch (_) {
       return DateTime.now();
     }
@@ -136,5 +139,6 @@ class LeaveRequest {
     'days': days,
     'start_time': startTime,
     'end_time': endTime,
+    'created_at': createdAt.toIso8601String(),
   };
 }

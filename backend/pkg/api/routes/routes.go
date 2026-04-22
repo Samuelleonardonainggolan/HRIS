@@ -74,6 +74,8 @@ func SetupRoutes(
 			attendance := protected.Group("/attendance")
 			{
 				attendance.POST("/process", attendanceHandler.ProcessAttendance)
+				attendance.POST("/break/start", attendanceHandler.StartBreak)
+				attendance.POST("/break/end", attendanceHandler.EndBreak)
 				attendance.GET("/today", attendanceHandler.GetTodayAttendance)
 				attendance.GET("/monthly", attendanceHandler.GetMonthlyAttendance)
 				attendance.GET("/schedule-info", attendanceHandler.GetScheduleInfo) // Informasi jadwal kerja

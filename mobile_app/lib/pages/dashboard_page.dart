@@ -39,9 +39,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   // Break state
   bool isOnBreak = false;
-  DateTime? _breakStartTime;
   Timer? _breakTimer;
   String breakDuration = "00:00:00";
+  bool _isBreakLoading = false;
 
   // Quick stats
   int _workDays = 0;
@@ -52,7 +52,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   List<Map<String, dynamic>> _activities = [];
 
   User? _user;
-  String? _breakEndTimeStr;
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -107,13 +106,30 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   void _startBreakTimer() {
-    _breakStartTime = DateTime.now();
+    _breakTimer?.cancel();
+    final startedAt = _todayAttendance?.breakStartTime;
+    if (startedAt == null || startedAt.isEmpty) {
+      return;
+    }
+    final parts = startedAt.split(':');
+    if (parts.length < 2) {
+      return;
+    }
+    final now = DateTime.now();
+    final breakStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      int.tryParse(parts[0]) ?? now.hour,
+      int.tryParse(parts[1]) ?? now.minute,
+    );
+
     _breakTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted || !isOnBreak) {
         _breakTimer?.cancel();
         return;
       }
-      final e = DateTime.now().difference(_breakStartTime!);
+      final e = DateTime.now().difference(breakStart);
       setState(() {
         breakDuration =
             "${e.inHours.toString().padLeft(2, '0')}:${(e.inMinutes % 60).toString().padLeft(2, '0')}:${(e.inSeconds % 60).toString().padLeft(2, '0')}";
@@ -124,13 +140,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   void _stopBreakTimer() {
     _breakTimer?.cancel();
     _breakTimer = null;
-    final now = DateTime.now();
-    _breakEndTimeStr =
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-    _breakStartTime = null;
     setState(() {
       breakDuration = "00:00:00";
-      _buildActivities();
     });
   }
 
@@ -178,11 +189,22 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
             clockOutTime = attendance.hasClockedOut
                 ? (attendance.clockOutTime ?? "--:--")
                 : "--:--";
+            isOnBreak =
+                (attendance.breakStartTime?.isNotEmpty ?? false) &&
+                (attendance.breakEndTime == null ||
+                    attendance.breakEndTime!.isEmpty);
+            if (isOnBreak) {
+              _startBreakTimer();
+            } else {
+              _stopBreakTimer();
+            }
           } else {
             isClockedIn = false;
             hasClockedOut = false;
             clockInTime = "--:--";
             clockOutTime = "--:--";
+            isOnBreak = false;
+            _stopBreakTimer();
           }
           _buildActivities();
           _isLoadingAttendance = false;
@@ -219,24 +241,21 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       });
     }
 
-    if (isOnBreak || _breakEndTimeStr != null) {
-      final breakStartStr = _breakEndTimeStr != null && _breakStartTime == null
-          ? '--:--'
-          : (_breakStartTime != null
-                ? "${_breakStartTime!.hour.toString().padLeft(2, '0')}:${_breakStartTime!.minute.toString().padLeft(2, '0')}"
-                : '--:--');
+    final breakStart = _todayAttendance?.breakStartTime;
+    final breakEnd = _todayAttendance?.breakEndTime;
+    if ((breakStart?.isNotEmpty ?? false) || (breakEnd?.isNotEmpty ?? false)) {
       _activities.add({
         'icon': Icons.coffee_rounded,
         'title': 'Istirahat Mulai',
-        'time': breakStartStr,
+        'time': (breakStart?.isNotEmpty ?? false) ? breakStart : '--:--',
         'status': isOnBreak ? 'Break' : 'Selesai',
         'color': const Color(0xFFF59E0B),
       });
-      if (!isOnBreak && _breakEndTimeStr != null) {
+      if (breakEnd?.isNotEmpty == true) {
         _activities.add({
           'icon': Icons.free_breakfast_rounded,
           'title': 'Istirahat Selesai',
-          'time': _breakEndTimeStr!,
+          'time': breakEnd,
           'status': 'Selesai',
           'color': const Color(0xFF059669),
         });
@@ -259,6 +278,31 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         'status': 'Pending',
         'color': const Color(0xFF94A3B8),
       });
+    }
+  }
+
+  Future<void> _handleBreakToggle() async {
+    if (!isClockedIn || hasClockedOut || _isBreakLoading) {
+      return;
+    }
+
+    setState(() => _isBreakLoading = true);
+    try {
+      if (isOnBreak) {
+        await ApiService.endBreak();
+        _showInfoSnackBar("Istirahat selesai");
+      } else {
+        await ApiService.startBreak();
+        _showInfoSnackBar("Istirahat dimulai");
+      }
+      await _loadTodayAttendance();
+    } catch (e) {
+      if (!mounted) return;
+      _showInfoSnackBar(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isBreakLoading = false);
+      }
     }
   }
 
@@ -645,22 +689,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: isClockedIn && !hasClockedOut
-                  ? () {
-                      setState(() {
-                        isOnBreak = !isOnBreak;
-                        if (isOnBreak) {
-                          _startBreakTimer();
-                        } else {
-                          _stopBreakTimer();
-                        }
-                        _buildActivities();
-                      });
-                      _showInfoSnackBar(
-                        isOnBreak ? "Istirahat dimulai" : "Istirahat selesai",
-                      );
-                    }
-                  : null,
+              onTap: isClockedIn && !hasClockedOut ? _handleBreakToggle : null,
               borderRadius: BorderRadius.circular(50),
               child: Container(
                 width: double.infinity,
@@ -715,7 +744,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                             const SizedBox(height: 2),
                             Text(
                               isClockedIn && !hasClockedOut
-                                  ? "Ambil istirahat singkat"
+                                    ? "Break time bisa dicatat saat istirahat"
                                   : "Tersedia saat jam kerja",
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.7),
@@ -750,23 +779,33 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                               : Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(30),
                         ),
-                        child: Text(
-                          isOnBreak ? "SELESAI" : "MULAI",
-                          style: TextStyle(
-                            color: isOnBreak
-                                ? const Color(0xFFF59E0B)
-                                : Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                        child: _isBreakLoading
+                            ? SizedBox(
+                                height: 14,
+                                width: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: isOnBreak
+                                      ? const Color(0xFFF59E0B)
+                                      : Colors.white,
+                                ),
+                              )
+                            : Text(
+                                isOnBreak ? "SELESAI" : "MULAI",
+                                style: TextStyle(
+                                  color: isOnBreak
+                                      ? const Color(0xFFF59E0B)
+                                      : Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                   ],
                 ),
               ),
             ),
           ),
-          
         ],
       ),
     );

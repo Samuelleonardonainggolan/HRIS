@@ -28,6 +28,8 @@ var wib = time.FixedZone("WIB", 7*60*60)
 type AttendanceService interface {
 	ClockIn(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
 	ClockOut(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
+	StartBreak(ctx context.Context, userID string) (*models.Attendance, error)
+	EndBreak(ctx context.Context, userID string) (*models.Attendance, error)
 	GetTodayAttendance(ctx context.Context, userID string) (*models.Attendance, error)
 	GetMonthlyAttendance(ctx context.Context, userID string, month, year int) (*models.MonthlyAttendanceResponse, error)
 	ProcessAttendanceWithFace(ctx context.Context, userID string, photo []byte, filename string, latitude, longitude float64, recordType string, verifyOnly bool) (*AttendanceProcessResult, error)
@@ -59,6 +61,17 @@ type TodaySchedule struct {
 	CanClockIn     bool   `json:"can_clock_in"`
 	CanClockOut    bool   `json:"can_clock_out"`
 	Message        string `json:"message"`
+}
+
+type BreakWindow struct {
+	StartHour int
+	EndHour   int
+}
+
+var allowedBreakWindows = []BreakWindow{
+	{StartHour: 7, EndHour: 8},
+	{StartHour: 12, EndHour: 13},
+	{StartHour: 19, EndHour: 20},
 }
 
 type AttendanceProcessResult struct {
@@ -101,6 +114,7 @@ type TodayScheduleInfoResponse struct {
 
 type attendanceService struct {
 	attendanceRepo    repository.AttendanceRepository
+	breakTimeRepo     repository.BreakTimeRepository
 	userRepo          repository.UserRepository
 	faceEmbeddingRepo repository.FaceEmbeddingRepository
 	jamKerjaRepo      repository.JamKerjaRepository
@@ -116,6 +130,7 @@ type attendanceService struct {
 
 func NewAttendanceService(
 	attendanceRepo repository.AttendanceRepository,
+	breakTimeRepo repository.BreakTimeRepository,
 	userRepo repository.UserRepository,
 	faceEmbeddingRepo repository.FaceEmbeddingRepository,
 	jamKerjaRepo repository.JamKerjaRepository,
@@ -124,6 +139,7 @@ func NewAttendanceService(
 ) AttendanceService {
 	return &attendanceService{
 		attendanceRepo:    attendanceRepo,
+		breakTimeRepo:     breakTimeRepo,
 		userRepo:          userRepo,
 		faceEmbeddingRepo: faceEmbeddingRepo,
 		jamKerjaRepo:      jamKerjaRepo,
@@ -442,6 +458,103 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 		return nil, err
 	}
 	return existing, nil
+}
+
+func (s *attendanceService) StartBreak(ctx context.Context, userID string) (*models.Attendance, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID format")
+	}
+
+	attendance, err := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
+	if attendance == nil || attendance.ClockInTime == nil {
+		return nil, errors.New("belum clock in hari ini")
+	}
+	if attendance.ClockOutTime != nil {
+		return nil, errors.New("tidak dapat memulai istirahat setelah clock out")
+	}
+	if attendance.BreakStartTime != nil && attendance.BreakEndTime == nil {
+		return nil, errors.New("sedang dalam sesi istirahat")
+	}
+	if attendance.BreakStartTime != nil && attendance.BreakEndTime != nil {
+		return nil, errors.New("istirahat hari ini sudah digunakan")
+	}
+
+	nowWIB := time.Now().In(wib)
+
+	activeBreak, err := s.breakTimeRepo.FindActiveTodayByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if activeBreak != nil {
+		return nil, errors.New("sedang dalam sesi istirahat")
+	}
+
+	breakRecord := &models.BreakTime{
+		ID:        primitive.NewObjectID(),
+		UserID:    userID,
+		Date:      time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib),
+		StartTime: nowWIB,
+		Status:    "ONGOING",
+		CreatedAt: nowWIB,
+		UpdatedAt: nowWIB,
+	}
+	if err := s.breakTimeRepo.Create(ctx, breakRecord); err != nil {
+		return nil, err
+	}
+
+	if err := s.attendanceRepo.UpdateBreakStart(ctx, attendance.ID, nowWIB); err != nil {
+		return nil, err
+	}
+
+	attendance.BreakStartTime = &nowWIB
+	attendance.BreakEndTime = nil
+	attendance.UpdatedAt = nowWIB
+	return attendance, nil
+}
+
+func (s *attendanceService) EndBreak(ctx context.Context, userID string) (*models.Attendance, error) {
+	userObjID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("invalid user ID format")
+	}
+
+	attendance, err := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
+	if attendance == nil || attendance.ClockInTime == nil {
+		return nil, errors.New("belum clock in hari ini")
+	}
+	if attendance.BreakStartTime == nil {
+		return nil, errors.New("belum memulai istirahat")
+	}
+	if attendance.BreakEndTime != nil {
+		return nil, errors.New("istirahat sudah selesai")
+	}
+
+	breakRecord, err := s.breakTimeRepo.FindActiveTodayByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if breakRecord == nil {
+		return nil, errors.New("belum memulai istirahat")
+	}
+
+	nowWIB := time.Now().In(wib)
+	if err := s.breakTimeRepo.UpdateEnd(ctx, breakRecord.ID, nowWIB, "DONE"); err != nil {
+		return nil, err
+	}
+	if err := s.attendanceRepo.UpdateBreakEnd(ctx, attendance.ID, nowWIB); err != nil {
+		return nil, err
+	}
+
+	attendance.BreakEndTime = &nowWIB
+	attendance.UpdatedAt = nowWIB
+	return attendance, nil
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -918,6 +1031,25 @@ func (s *attendanceService) getDayName(wd time.Weekday) string {
 		time.Sunday:    "Minggu",
 	}
 	return days[wd]
+}
+
+func (s *attendanceService) isWithinAllowedBreakWindow(nowWIB time.Time) bool {
+	for _, window := range allowedBreakWindows {
+		start := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), window.StartHour, 0, 0, 0, wib)
+		end := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), window.EndHour, 0, 0, 0, wib)
+		if !nowWIB.Before(start) && nowWIB.Before(end) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *attendanceService) formatAllowedBreakWindows() string {
+	parts := make([]string, 0, len(allowedBreakWindows))
+	for _, window := range allowedBreakWindows {
+		parts = append(parts, fmt.Sprintf("%02d:00-%02d:00", window.StartHour, window.EndHour))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // getDefaultJamKerja: Senin-Jumat 08:00-17:00 jika user belum punya jadwal
