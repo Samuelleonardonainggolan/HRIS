@@ -21,6 +21,7 @@ type UserService interface {
 	GetEmployeesMyDepartment(ctx context.Context, managerUserID string) ([]models.UserResponse, error)
 	GetEmployeeByID(ctx context.Context, id string) (*models.UserResponse, error)
 	UpdateEmployee(ctx context.Context, id string, req *models.UpdateUserRequest) (*models.UserResponse, error)
+	UpdateEmployeeByManagerDepartemen(ctx context.Context, managerUserID string, employeeID string, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteEmployee(ctx context.Context, id string) error
 	ImportEmployees(ctx context.Context, employees []models.CreateEmployeeRequest) (int, []string, error)
 }
@@ -289,6 +290,70 @@ func (s *userService) UpdateEmployee(ctx context.Context, id string, req *models
 
 	response := user.ToResponse()
 	return &response, nil
+}
+
+func (s *userService) UpdateEmployeeByManagerDepartemen(
+	ctx context.Context,
+	managerUserID string,
+	employeeID string,
+	req *models.UpdateUserRequest,
+) (*models.UserResponse, error) {
+	manager, err := s.userRepo.FindByID(ctx, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+	if manager == nil {
+		return nil, errors.New("user not found")
+	}
+	if manager.DepartmentID.IsZero() {
+		return nil, errors.New("department not set")
+	}
+
+	employee, err := s.userRepo.FindByID(ctx, employeeID)
+	if err != nil {
+		return nil, err
+	}
+	if employee == nil {
+		return nil, errors.New("employee not found")
+	}
+	if employee.DepartmentID != manager.DepartmentID {
+		return nil, errors.New("akses ditolak")
+	}
+
+	managerDeptID := manager.DepartmentID.Hex()
+
+	if req.DepartmentID != "" && req.DepartmentID != managerDeptID {
+		return nil, errors.New("akses ditolak")
+	}
+
+	req.DepartmentID = managerDeptID
+	req.DepartmentName = manager.DepartmentName
+
+	if req.PositionID != "" {
+		pos, posErr := s.positionRepo.FindByID(ctx, req.PositionID)
+		if posErr != nil || pos == nil {
+			return nil, errors.New("position not found")
+		}
+		if pos.DepartmentID != manager.DepartmentID {
+			return nil, errors.New("position does not belong to department")
+		}
+		req.PositionName = pos.Name
+	}
+
+	if err := s.userRepo.Update(ctx, employeeID, req); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.userRepo.FindByID(ctx, employeeID)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, errors.New("employee not found")
+	}
+
+	resp := updated.ToResponse()
+	return &resp, nil
 }
 
 func (s *userService) DeleteEmployee(ctx context.Context, id string) error {

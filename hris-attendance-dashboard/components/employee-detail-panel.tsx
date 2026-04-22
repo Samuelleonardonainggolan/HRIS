@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Employee } from "@/types";
+import { authService } from "@/lib/api/auth";
 
 interface EmployeeDetailPanelProps {
   employee: Employee | null;
@@ -19,6 +20,14 @@ export function EmployeeDetailPanel({
   const router = useRouter();
 
   if (!employee) return null;
+
+  const role = authService.getUser()?.role;
+  const canEdit =
+    role === "manager_hr" || role === "manager_departemen" || role === "admin_departemen";
+  const editPath =
+    role === "manager_hr"
+      ? `/dashboard/manager-hr/karyawan/edit-pegawai/${employee.id}`
+      : `/dashboard/manager-dept/karyawan/edit-pegawai/${employee.id}`;
 
   return (
     <Card className="h-fit overflow-hidden shadow-lg border-gray-200 sticky top-0">
@@ -140,9 +149,11 @@ export function EmployeeDetailPanel({
           <Button
             variant="outline"
             className="w-full border-gray-300 text-gray-700 hover:bg-gray-50 font-medium"
-            onClick={() =>
-              router.push(`/dashboard/manager-hr/karyawan/edit-pegawai/${employee.id}`)
-            }
+            disabled={!canEdit}
+            onClick={() => {
+              if (!canEdit) return;
+              router.push(editPath);
+            }}
           >
             Edit Data
           </Button>

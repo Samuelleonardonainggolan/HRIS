@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { employeeService } from "@/lib/api/employee";
+import { authService } from "@/lib/api/auth";
 import toast from "react-hot-toast";
 
 interface EmployeeTableProps {
@@ -38,7 +39,12 @@ export function EmployeeTable({
   );
 
   const handleAddEmployee = () => {
-    router.push("/dashboard/manager-hr/karyawan/tambah-pegawai");
+    const role = authService.getUser()?.role;
+    const path =
+      role === "manager_hr"
+        ? "/dashboard/manager-hr/karyawan/tambah-pegawai"
+        : "/dashboard/manager-dept/karyawan/tambah-pegawai";
+    router.push(path);
   };
 
   const handleToggleStatus = async (e: React.MouseEvent, employee: Employee) => {

@@ -114,9 +114,30 @@ func (h *UserHandler) UpdateEmployee(c *gin.Context) {
 		return
 	}
 
-	employee, err := h.userService.UpdateEmployee(c.Request.Context(), id, &req)
+	userRoleRaw, roleExists := c.Get("userRole")
+	userIDRaw, userExists := c.Get("userID")
+
+	var employee *models.UserResponse
+	var err error
+
+	if roleExists && userExists {
+		role, _ := userRoleRaw.(string)
+		userID, _ := userIDRaw.(string)
+		if role == models.RoleManagerDepartemen || role == models.RoleAdminDepartemen {
+			employee, err = h.userService.UpdateEmployeeByManagerDepartemen(c.Request.Context(), userID, id, &req)
+		} else {
+			employee, err = h.userService.UpdateEmployee(c.Request.Context(), id, &req)
+		}
+	} else {
+		employee, err = h.userService.UpdateEmployee(c.Request.Context(), id, &req)
+	}
+
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
+		if err.Error() == "akses ditolak" {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", err.Error()))
+			return
+		}
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
 		return
 	}
 

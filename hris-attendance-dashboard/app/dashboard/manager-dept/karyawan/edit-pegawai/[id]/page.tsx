@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { employeeService } from "@/lib/api/employee";
-import { CreateEmployeeRequest, Department, Position } from "@/types";
+import { CreateEmployeeRequest, Position } from "@/types";
 import toast from "react-hot-toast";
 
 export default function EditEmployeePage() {
@@ -27,8 +27,8 @@ export default function EditEmployeePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [departmentName, setDepartmentName] = useState("");
 
   const [formData, setFormData] = useState<CreateEmployeeRequest>({
     payroll_number: "",
@@ -51,12 +51,11 @@ export default function EditEmployeePage() {
     try {
       setIsFetching(true);
       setError(null);
-      const [deptData, empData] = await Promise.all([
-        employeeService.getAllDepartments(),
-        employeeService.getEmployeeByID(id)
-      ]);
-      
-      setDepartments(deptData);
+      const empData = await employeeService.getEmployeeByID(id);
+
+      const deptName =
+        empData.department_name || empData.department || "";
+      setDepartmentName(deptName);
 
       const birthDate = empData.birth_date
         ? new Date(empData.birth_date).toISOString().split("T")[0]
@@ -91,7 +90,7 @@ export default function EditEmployeePage() {
       console.error("Failed to fetch data:", error);
       setError("Gagal memuat data pegawai");
       toast.error("Gagal memuat data pegawai");
-      router.push("/dashboard/manager-hr/karyawan");
+      router.push("/dashboard/manager-dept/karyawan");
     } finally {
       setIsFetching(false);
     }
@@ -100,17 +99,6 @@ export default function EditEmployeePage() {
   useEffect(() => {
     fetchInitialData();
   }, [fetchInitialData]);
-
-  const handleDepartmentChange = async (value: string) => {
-    setFormData((prev) => ({ ...prev, department_id: value, position_id: "" }));
-    try {
-      const data = await employeeService.getAllPositions(value);
-      setPositions(data);
-    } catch (error) {
-      console.error("Failed to fetch positions:", error);
-      toast.error("Gagal memuat jabatan");
-    }
-  };
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -159,7 +147,7 @@ export default function EditEmployeePage() {
       });
 
       toast.success("Data pegawai berhasil diperbarui");
-      router.push("/dashboard/manager-hr/karyawan");
+      router.push("/dashboard/manager-dept/karyawan");
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Gagal memperbarui data pegawai";
@@ -183,14 +171,14 @@ export default function EditEmployeePage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
           <button
-            onClick={() => router.push("/dashboard/manager-hr")}
+            onClick={() => router.push("/dashboard/manager-dept")}
             className="hover:text-blue-600 transition-colors"
           >
             Dashboard
           </button>
           <span>/</span>
           <button
-            onClick={() => router.push("/dashboard/manager-hr/karyawan")}
+            onClick={() => router.push("/dashboard/manager-dept/karyawan")}
             className="hover:text-blue-600 transition-colors"
           >
             Manajemen Pegawai
@@ -366,18 +354,12 @@ export default function EditEmployeePage() {
                     <Label htmlFor="department_id" className="text-sm font-medium text-gray-700">
                       DEPARTEMEN <span className="text-red-500">*</span>
                     </Label>
-                    <Select value={formData.department_id} onValueChange={handleDepartmentChange}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih Departemen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.map((dept) => (
-                          <SelectItem key={dept.id} value={dept.id}>
-                            {dept.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id="department_id"
+                      value={departmentName || "-"}
+                      disabled
+                      className="w-full bg-gray-100"
+                    />
                   </div>
                 </div>
 
