@@ -22,6 +22,7 @@ func SetupRoutes(
 	pengajuanIzinCutiHandler *handler.PengajuanIzinCutiHandler,
 	pengajuanHandler *handler.PengajuanHandler,
 	jamKerjaHandler *handler.JamKerjaHandler,
+	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -166,6 +167,21 @@ func SetupRoutes(
 				geofences.GET("/active", geofenceHandler.GetActiveGeofences)
 				geofences.GET("/:id", geofenceHandler.GetGeofenceByID)
 			}
+
+			// Employee Basic Salaries (Manager HR Only)
+			basicSalaries := protected.Group("/employee-basic-salaries")
+			basicSalaries.Use(middleware.ManagerHROnly())
+			{
+				basicSalaries.GET("", employeeBasicSalaryHandler.List)
+				basicSalaries.POST("", employeeBasicSalaryHandler.Create)
+				basicSalaries.GET("/available-employees", employeeBasicSalaryHandler.AvailableEmployees)
+				basicSalaries.GET("/users/:userId/active", employeeBasicSalaryHandler.GetActiveByUser)
+				basicSalaries.PATCH("/users/:userId/active", employeeBasicSalaryHandler.UpdateActiveByUser)
+				basicSalaries.POST("/users/:userId/deactivate", employeeBasicSalaryHandler.DeactivateActiveByUser)
+				basicSalaries.GET("/users/:userId/latest", employeeBasicSalaryHandler.GetLatestByUser)
+				basicSalaries.PATCH("/:id", employeeBasicSalaryHandler.UpdateBySalaryID)
+			}
+
 
 			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)

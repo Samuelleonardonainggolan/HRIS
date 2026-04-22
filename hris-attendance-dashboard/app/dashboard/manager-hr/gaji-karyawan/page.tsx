@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, ChevronDown } from "lucide-react";
 
@@ -15,14 +15,31 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type ApiSuccess<T> = {
+  success?: boolean;
+  message?: string;
+  data: T;
+};
+
+type SalaryListItem = {
+  id: string;
+  user_id: string;
+  full_name: string;
+  payroll_number: string;
+  department: string;
+  position: string;
+  basic_salary: number;
+  effective_from: string; // ISO string from backend
+  is_active: boolean;
+};
+
 type Row = {
   id: string; // salary record id
   userId: string;
   initials: string;
   name: string;
-  nik: string;
+  payrollNumber: string;
 
-  // ✅ new
   department: string;
   position: string;
 
@@ -33,6 +50,22 @@ type Row = {
 
 function formatIDR(n: number) {
   return `Rp ${n.toLocaleString("id-ID")}`;
+}
+
+function toYYYYMMDD(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function initialsOf(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "U";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 function StatusBadge({ active }: { active: boolean }) {
@@ -50,62 +83,109 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+function getToken() {
+  // ✅ sesuaikan dengan cara Anda menyimpan token
+  return (
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("auth_token") ||
+    ""
+  );
+}
+
+/**
+ * ✅ Parser aman:
+ * - baca res.text()
+ * - coba JSON.parse
+ * - kalau gagal, tampilkan body untuk debug (biasanya HTML / text "Unauthorized")
+ */
+async function readJsonSafe<T>(res: Response): Promise<T> {
+  const text = await res.text();
+
+  try {
+    return (text ? JSON.parse(text) : null) as T;
+  } catch {
+    const snippet = text.replace(/\s+/g, " ").slice(0, 300);
+    throw new Error(
+      `Response bukan JSON valid. Status=${res.status}. Body="${snippet}"`
+    );
+  }
+}
+
 export default function MasterGajiPage() {
   const router = useRouter();
-  const [q, setQ] = useState("");
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-  // ✅ department filter state
+  const [q, setQ] = useState("");
   const [dept, setDept] = useState<string>("Semua Departemen");
 
-  // Mock: nanti dari API join (users + employee_basic_salaries aktif)
-  const rows: Row[] = useMemo(
-    () => [
-      {
-        id: "sal1",
-        userId: "u1",
-        initials: "AW",
-        name: "Arya Wijaya",
-        nik: "EMP-2023-041",
-        department: "IT",
-        position: "IT Developer",
-        basicSalary: 15_500_000,
-        effectiveFrom: "2024-06-01",
-        isActive: true,
-      },
-      {
-        id: "sal2",
-        userId: "u2",
-        initials: "BN",
-        name: "Budi Nugroho",
-        nik: "EMP-2023-089",
-        department: "Housekeeping",
-        position: "Supervisor",
-        basicSalary: 8_450_000,
-        effectiveFrom: "2024-05-01",
-        isActive: true,
-      },
-      {
-        id: "sal3",
-        userId: "u3",
-        initials: "CD",
-        name: "Citra Dewi",
-        nik: "EMP-2022-112",
-        department: "Front Office",
-        position: "Receptionist",
-        basicSalary: 7_200_000,
-        effectiveFrom: "2024-04-01",
-        isActive: false,
-      },
-    ],
-    []
-  );
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // ✅ build department list from rows
+  async function fetchRows() {
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Token tidak ditemukan. Silakan login ulang.");
+
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      if (dept && dept !== "Semua Departemen") params.set("department", dept);
+
+      const url = `${API_URL}/employee-basic-salaries?${params.toString()}`;
+
+      const res = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+
+      const json = await readJsonSafe<ApiSuccess<SalaryListItem[]>>(res);
+
+      if (!res.ok) {
+        throw new Error(json?.message || `HTTP ${res.status}`);
+      }
+
+      const mapped: Row[] = (json.data || []).map((it) => ({
+        id: it.id,
+        userId: it.user_id,
+        initials: initialsOf(it.full_name),
+        name: it.full_name,
+        payrollNumber: it.payroll_number,
+        department: it.department,
+        position: it.position,
+        basicSalary: it.basic_salary,
+        effectiveFrom: toYYYYMMDD(it.effective_from),
+        isActive: it.is_active,
+      }));
+
+      setRows(mapped);
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Gagal mengambil data gaji karyawan.");
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // initial load
+  useEffect(() => {
+    fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // dropdown departemen berasal dari rows (hasil backend)
   const departments = useMemo(() => {
     const uniq = Array.from(new Set(rows.map((r) => r.department))).sort();
     return ["Semua Departemen", ...uniq];
   }, [rows]);
 
+  // Filter client-side untuk responsif (tetap), walau server-side juga dipakai
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
@@ -113,16 +193,57 @@ export default function MasterGajiPage() {
       const matchQ =
         !qq ||
         r.name.toLowerCase().includes(qq) ||
-        r.nik.toLowerCase().includes(qq) ||
+        r.payrollNumber.toLowerCase().includes(qq) ||
         r.department.toLowerCase().includes(qq) ||
         r.position.toLowerCase().includes(qq);
 
-      const matchDept =
-        dept === "Semua Departemen" || r.department === dept;
+      const matchDept = dept === "Semua Departemen" || r.department === dept;
 
       return matchQ && matchDept;
     });
   }, [q, rows, dept]);
+
+  // Debounce fetch when q/dept changes (server-side filter)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchRows();
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, dept]);
+
+  async function onDeactivate(row: Row) {
+    if (!row.isActive) return;
+
+    const ok = window.confirm(
+      `Nonaktifkan gaji pokok aktif untuk ${row.name} (${row.payrollNumber})?`
+    );
+    if (!ok) return;
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Token tidak ditemukan. Silakan login ulang.");
+
+      const url = `${API_URL}/employee-basic-salaries/users/${row.userId}/deactivate`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await readJsonSafe<ApiSuccess<null>>(res);
+
+      if (!res.ok) {
+        throw new Error(json?.message || `HTTP ${res.status}`);
+      }
+
+      await fetchRows();
+    } catch (e: any) {
+      alert(e?.message || "Gagal menonaktifkan gaji pokok.");
+    }
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -152,13 +273,12 @@ export default function MasterGajiPage() {
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Find by name, NIK, dept, posisi..."
+                placeholder="Find by name, payroll number, dept, posisi..."
                 className="pl-9 rounded-xl"
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* ✅ Department Filter */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="rounded-xl gap-2">
@@ -175,12 +295,26 @@ export default function MasterGajiPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <Button variant="outline" className="rounded-xl gap-2">
+              <Button
+                variant="outline"
+                className="rounded-xl gap-2"
+                onClick={fetchRows}
+              >
                 <Filter className="h-4 w-4" />
-                Filter
+                Refresh
               </Button>
             </div>
           </div>
+
+          {/* Error */}
+          {errorMsg && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Loading */}
+          {loading && <div className="text-sm text-gray-500">Memuat data...</div>}
 
           {/* Table */}
           <div className="overflow-hidden rounded-xl border border-gray-100">
@@ -190,12 +324,9 @@ export default function MasterGajiPage() {
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Employee
                   </th>
-
-                  {/* ✅ new column */}
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Departemen
                   </th>
-
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Basic Salary
                   </th>
@@ -214,7 +345,6 @@ export default function MasterGajiPage() {
               <tbody className="divide-y divide-gray-100 bg-white">
                 {filtered.map((r) => (
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                    {/* Employee */}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">
@@ -224,12 +354,13 @@ export default function MasterGajiPage() {
                           <div className="text-sm font-semibold text-gray-900">
                             {r.name}
                           </div>
-                          <div className="text-xs text-gray-500">{r.nik}</div>
+                          <div className="text-xs text-gray-500">
+                            {r.payrollNumber}
+                          </div>
                         </div>
                       </div>
                     </td>
 
-                    {/* ✅ Department + position */}
                     <td className="px-6 py-4">
                       <div className="text-sm font-semibold text-gray-900">
                         {r.department}
@@ -237,7 +368,6 @@ export default function MasterGajiPage() {
                       <div className="text-xs text-gray-500">{r.position}</div>
                     </td>
 
-                    {/* Basic salary */}
                     <td className="px-6 py-4">
                       <div className="text-sm font-semibold text-gray-900">
                         {formatIDR(r.basicSalary)}
@@ -245,34 +375,47 @@ export default function MasterGajiPage() {
                       <div className="text-xs text-gray-500">/mo</div>
                     </td>
 
-                    {/* Effective from */}
                     <td className="px-6 py-4 text-sm text-gray-700">
                       {r.effectiveFrom}
                     </td>
 
-                    {/* Status */}
                     <td className="px-6 py-4">
                       <StatusBadge active={r.isActive} />
                     </td>
 
-                    {/* Actions */}
-                    <td className="px-6 py-4 text-right">
-                      <Button
-                        variant="outline"
-                        className="rounded-xl"
-                        onClick={() =>
-                          router.push(
-                            `/dashboard/manager-hr/gaji-karyawan/${r.userId}/edit`
-                          )
-                        }
-                      >
-                        Edit
-                      </Button>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/manager-hr/gaji-karyawan/${r.userId}`
+                            )
+                          }
+                        >
+                          Edit
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50"
+                          onClick={() => onDeactivate(r)}
+                          disabled={!r.isActive}
+                          title={
+                            r.isActive
+                              ? "Nonaktifkan gaji pokok aktif"
+                              : "Sudah nonaktif"
+                          }
+                        >
+                          Nonaktifkan
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
 
-                {filtered.length === 0 && (
+                {!loading && filtered.length === 0 && (
                   <tr>
                     <td
                       colSpan={6}

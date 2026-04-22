@@ -57,3 +57,25 @@ func (e *EmployeeBasicSalary) ToResponse() EmployeeBasicSalaryResponse {
 
 	return resp
 }
+
+// pkg/models/employee_basic_salary.go (tambahkan di bawah)
+
+type EmployeeBasicSalaryListItem struct {
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id"`
+	FullName      string    `json:"full_name"`
+	PayrollNumber string    `json:"payroll_number"`
+	Department    string    `json:"department"`
+	Position      string    `json:"position"`
+	BasicSalary   int64     `json:"basic_salary"`
+	EffectiveFrom time.Time `json:"effective_from"`
+	IsActive      bool      `json:"is_active"`
+}
+
+type AvailableEmployeeForBasicSalary struct {
+  ID             string `json:"id"`
+  FullName       string `json:"full_name"`
+  PayrollNumber  string `json:"payroll_number"`
+  DepartmentName string `json:"department_name"`
+  PositionName   string `json:"position_name"`
+}

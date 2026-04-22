@@ -17,6 +17,8 @@ import {
   UserCog,
   Camera,
   Calendar,
+  Wallet,
+  Receipt
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,6 +37,8 @@ const iconMap: { [key: string]: React.ElementType } = {
   UserCog,
   Camera,
   Calendar,
+  Wallet,
+  Receipt
 };
 
 interface NavItem {
@@ -78,7 +82,7 @@ export function Sidebar() {
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
           { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
-          { name: "Gaji Karyawan", href: `${basePath}/gaji-karyawan`, icon: "Bell" },
+          { name: "Gaji Karyawan", href: `${basePath}/gaji-karyawan`, icon: "Receipt" },
         ];
 
       case "manager_departemen":

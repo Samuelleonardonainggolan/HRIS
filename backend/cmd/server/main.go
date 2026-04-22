@@ -39,6 +39,7 @@ func main() {
 	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
 	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
+	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
 
 	log.Println("📦 Repositories initialized")
 
@@ -66,6 +67,7 @@ func main() {
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo)
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
+	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 
 	log.Println("⚙️  Services initialized")
 
@@ -81,6 +83,7 @@ func main() {
 	pengajuanIzinCutiHandler := handler.NewPengajuanIzinCutiHandler(pengajuanIzinCutiService)
 	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
 	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
+	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 
 	log.Println("🎯 Handlers initialized")
 
@@ -106,6 +109,7 @@ func main() {
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
 		jamKerjaHandler, // ✅ Dari kode kedua
+		employeeBasicSalaryHandler,			
 	)
 
 	log.Println("🛣️  Routes configured")
