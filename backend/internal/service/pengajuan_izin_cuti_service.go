@@ -36,8 +36,7 @@ func (s *pengajuanIzinCutiService) ListForManagerHR(ctx context.Context, status 
 
 	filter := bson.M{}
 	if status != "" && status != "ALL" {
-		filter["status_kepala_departemen"] = models.StatusApproved
-		filter["status_manager_hr"] = status
+		filter["final_status"] = status
 	}
 
 	pengajuans, err := s.pengajuanRepo.Find(ctx, filter)

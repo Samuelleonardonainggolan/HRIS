@@ -20,7 +20,7 @@ func (h *PengajuanIzinCutiHandler) ListForManagerHR(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	if status == "" {
-		status = models.StatusPending
+		status = "ALL"
 	}
 
 	items, err := h.service.ListForManagerHR(c.Request.Context(), status, search)
@@ -71,7 +71,7 @@ func (h *PengajuanIzinCutiHandler) ListForKepalaDepartemen(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	if status == "" {
-		status = models.StatusPending
+		status = "ALL"
 	}
 
 	userID := c.GetString("userID")
