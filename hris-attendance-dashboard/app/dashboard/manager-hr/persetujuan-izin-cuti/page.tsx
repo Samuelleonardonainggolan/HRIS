@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Filter, Download, Loader2, MoreVertical } from "lucide-react";
+import { Search, Loader2, MoreVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,8 +52,14 @@ function typeBadgeClass(t: RequestType) {
   }
 }
 
-function mapStatus(status: LeaveRequestStatus): RequestStatus {
-  switch (status) {
+function mapStatus(finalStatus: LeaveRequestStatus | undefined, stageStatus: LeaveRequestStatus | undefined): RequestStatus {
+  switch (finalStatus) {
+    case "APPROVED":
+      return "Disetujui";
+    case "REJECTED":
+      return "Ditolak";
+  }
+  switch (stageStatus) {
     case "APPROVED":
       return "Disetujui";
     case "REJECTED":
@@ -122,7 +128,10 @@ function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
     reason: x.pengajuan.reason || x.pengajuan.alasan || "-",
     attachmentName,
     attachmentSize: undefined,
-    status: mapStatus(x.pengajuan.status_manager_hr),
+    status: mapStatus(
+      x.pengajuan.final_status ?? x.pengajuan.status_final,
+      x.pengajuan.status_manager_hr
+    ),
     avatarUrl: "",
     avatarFallback: getInitials(employeeName),
   };
@@ -150,7 +159,7 @@ export default function PersetujuanIzinCutiPage() {
 
   const [items, setItems] = useState<LeaveApprovalItem[]>([]);
 
-  const activeStatus = "PENDING" as const;
+  const activeStatus = "ALL" as const;
 
   useEffect(() => {
     let cancelled = false;

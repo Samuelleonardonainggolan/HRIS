@@ -139,7 +139,12 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	}
 
 	var dept models.Department
-	_ = s.db.Collection("departments").FindOne(ctx, bson.M{"_id": requester.DepartmentID}).Decode(&dept)
+	if err := s.db.Collection("departments").FindOne(ctx, bson.M{"_id": requester.DepartmentID}).Decode(&dept); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("departemen user tidak ditemukan")
+		}
+		return nil, err
+	}
 
 	var managerHR struct {
 		ID primitive.ObjectID `bson:"_id"`
@@ -149,12 +154,20 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		bson.M{"role": models.RoleManagerHR},
 	).Decode(&managerHR)
 
-	kepalaDepartemenID := dept.ManagerID
+	var kepalaDeptUser struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	_ = s.db.Collection("users").FindOne(
+		ctx,
+		bson.M{"role": models.RoleManagerDepartemen, "department_id": requester.DepartmentID},
+	).Decode(&kepalaDeptUser)
+
+	kepalaDepartemenID := kepalaDeptUser.ID
 	if kepalaDepartemenID.IsZero() {
-		kepalaDepartemenID = managerHR.ID
+		kepalaDepartemenID = dept.ManagerID
 	}
 	if kepalaDepartemenID.IsZero() {
-		kepalaDepartemenID = requester.ID
+		return nil, errors.New("departemen belum memiliki kepala departemen")
 	}
 
 	managerHRID := managerHR.ID

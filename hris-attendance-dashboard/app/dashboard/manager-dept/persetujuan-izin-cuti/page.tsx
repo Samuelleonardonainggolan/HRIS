@@ -92,10 +92,13 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
       return "IZIN KHUSUS";
     };
 
-    const toStatus = (s: string): RequestStatus => {
-      const x = (s || "").toUpperCase();
-      if (x === "APPROVED") return "Disetujui";
-      if (x === "REJECTED") return "Ditolak";
+    const toStatus = (finalStatus: string, stageStatus: string): RequestStatus => {
+      const f = (finalStatus || "").toUpperCase();
+      if (f === "APPROVED") return "Disetujui";
+      if (f === "REJECTED") return "Ditolak";
+      const s = (stageStatus || "").toUpperCase();
+      if (s === "APPROVED") return "Disetujui";
+      if (s === "REJECTED") return "Ditolak";
       return "Pending";
     };
 
@@ -141,7 +144,7 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
         endTimeLabel: `Pukul ${endTime} WIB`,
         reason: r.pengajuan.reason || "-",
         attachmentName: fileNameFromUrl(r.pengajuan.document_url),
-        status: toStatus(r.pengajuan.status_kepala_departemen),
+        status: toStatus(r.pengajuan.final_status, r.pengajuan.status_kepala_departemen),
         avatarUrl: "",
         avatarFallback: empName
           .split(/\s+/)
@@ -158,7 +161,7 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
     try {
       setIsLoading(true);
       setLoadError(null);
-      const data = await deptLeaveRequestsApi.list({ status: "PENDING", search: searchEmployee || undefined });
+      const data = await deptLeaveRequestsApi.list({ status: "ALL", search: searchEmployee || undefined });
       const mapped = mapApiToUi(data);
       setItems(mapped);
       setSelectedId((prev) => {

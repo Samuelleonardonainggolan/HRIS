@@ -114,9 +114,10 @@ func (r *pengajuanIzinCutiRepository) UpdateKepalaDepartemenDecision(
 	}
 
 	now := time.Now()
-	filter := bson.M{"_id": objectID, "status_kepala_departemen": models.StatusPending, "kepala_departemen_id": kepalaDepartemenID}
+	filter := bson.M{"_id": objectID, "status_kepala_departemen": models.StatusPending}
 	update := bson.M{
 		"$set": bson.M{
+			"kepala_departemen_id":     kepalaDepartemenID,
 			"status_kepala_departemen": statusKepalaDepartemen,
 			"final_status":            finalStatus,
 			"updated_at":              now,
