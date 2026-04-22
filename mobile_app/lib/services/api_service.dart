@@ -10,7 +10,7 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.53:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.42:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
@@ -335,6 +335,52 @@ class ApiService {
     } catch (e) {
       print('[API] Get today attendance error: $e');
       return null;
+    }
+  }
+
+  static Future<void> startBreak() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(Uri.parse('$baseUrl/attendance/break/start'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      throw Exception(data['message'] ?? 'Gagal memulai break');
+    } catch (e) {
+      print('[API] startBreak error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> endBreak() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(Uri.parse('$baseUrl/attendance/break/end'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return;
+      }
+
+      final data = jsonDecode(response.body);
+      throw Exception(data['message'] ?? 'Gagal mengakhiri break');
+    } catch (e) {
+      print('[API] endBreak error: $e');
+      rethrow;
     }
   }
 

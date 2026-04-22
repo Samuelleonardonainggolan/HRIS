@@ -439,6 +439,8 @@ class TodayAttendanceDetail {
   final String status;
   final double workHours;
   final double? overtimeHours, faceSimilarity;
+  final String? breakStartTime;
+  final String? breakEndTime;
   final bool hasClockedIn, hasClockedOut;
 
   const TodayAttendanceDetail({
@@ -450,6 +452,8 @@ class TodayAttendanceDetail {
     required this.workHours,
     this.overtimeHours,
     this.faceSimilarity,
+    this.breakStartTime,
+    this.breakEndTime,
     required this.hasClockedIn,
     required this.hasClockedOut,
   });
@@ -466,6 +470,8 @@ class TodayAttendanceDetail {
       workHours: (j['work_hours'] as num?)?.toDouble() ?? 0,
       overtimeHours: (j['overtime_hours'] as num?)?.toDouble(),
       faceSimilarity: (j['face_similarity'] as num?)?.toDouble(),
+      breakStartTime: j['break_start_time']?.toString(),
+      breakEndTime: j['break_end_time']?.toString(),
       hasClockedIn: ci.isNotEmpty && ci != '--:--',
       hasClockedOut: co != null && co.isNotEmpty && co != '--:--',
     );
@@ -480,5 +486,7 @@ class TodayAttendanceDetail {
     'work_hours': workHours,
     'overtime_hours': overtimeHours,
     'face_similarity': faceSimilarity,
+    'break_start_time': breakStartTime,
+    'break_end_time': breakEndTime,
   };
 }

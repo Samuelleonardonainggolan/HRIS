@@ -208,11 +208,82 @@ func (h *AttendanceHandler) GetTodayAttendance(c *gin.Context) {
 	if attendance.ClockOutTime != nil {
 		response["clock_out_time"] = attendance.ClockOutTime.In(wib).Format("15:04")
 	}
+	if attendance.BreakStartTime != nil {
+		response["break_start_time"] = attendance.BreakStartTime.In(wib).Format("15:04")
+	}
+	if attendance.BreakEndTime != nil {
+		response["break_end_time"] = attendance.BreakEndTime.In(wib).Format("15:04")
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"status": "success",
 		"data":   response,
 	})
+}
+
+func (h *AttendanceHandler) StartBreak(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Unauthorized",
+		})
+		return
+	}
+
+	attendance, err := h.attendanceService.StartBreak(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+
+	resp := gin.H{
+		"id":            attendance.ID.Hex(),
+		"date":          attendance.Date.In(wib).Format("2006-01-02"),
+		"clock_in_time": "--:--",
+	}
+	if attendance.ClockInTime != nil {
+		resp["clock_in_time"] = attendance.ClockInTime.In(wib).Format("15:04")
+	}
+	if attendance.BreakStartTime != nil {
+		resp["break_start_time"] = attendance.BreakStartTime.In(wib).Format("15:04")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Istirahat dimulai", "data": resp})
+}
+
+func (h *AttendanceHandler) EndBreak(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"status":  "error",
+			"message": "Unauthorized",
+		})
+		return
+	}
+
+	attendance, err := h.attendanceService.EndBreak(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+
+	resp := gin.H{
+		"id":            attendance.ID.Hex(),
+		"date":          attendance.Date.In(wib).Format("2006-01-02"),
+		"clock_in_time": "--:--",
+	}
+	if attendance.ClockInTime != nil {
+		resp["clock_in_time"] = attendance.ClockInTime.In(wib).Format("15:04")
+	}
+	if attendance.BreakStartTime != nil {
+		resp["break_start_time"] = attendance.BreakStartTime.In(wib).Format("15:04")
+	}
+	if attendance.BreakEndTime != nil {
+		resp["break_end_time"] = attendance.BreakEndTime.In(wib).Format("15:04")
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Istirahat selesai", "data": resp})
 }
 
 func (h *AttendanceHandler) GetMonthlyAttendance(c *gin.Context) {
