@@ -77,7 +77,7 @@ export function Sidebar() {
           { name: "Dashboard", href: basePath, icon: "LayoutDashboard" },
           { name: "Pegawai", href: `${basePath}/karyawan`, icon: "Users" },
           { name: "Departemen", href: `${basePath}/departemen`, icon: "Building2" },
-          { name: "Biometrik", href: `${basePath}/biometrik`, icon: "Fingerprint" },
+          { name: "Biometrik", href: `${basePath}/persetujuan-registrasi-wajah`, icon: "Fingerprint" },
           { name: "Geofencing", href: `${basePath}/geofencing`, icon: "MapPin" },
           { name: "Presensi", href: `${basePath}/presensi`, icon: "ClipboardCheck" },
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
