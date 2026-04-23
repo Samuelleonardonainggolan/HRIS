@@ -227,7 +227,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         'title': 'Clock In',
         'time': clockInTime,
         'status': _todayAttendance!.status,
-        'color': _todayAttendance!.status == 'Late'
+        'color': _todayAttendance!.status == 'Terlambat'
             ? const Color(0xFFF59E0B)
             : const Color(0xFF2ECC71),
       });
@@ -248,7 +248,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         'icon': Icons.coffee_rounded,
         'title': 'Istirahat Mulai',
         'time': (breakStart?.isNotEmpty ?? false) ? breakStart : '--:--',
-        'status': isOnBreak ? 'Break' : 'Selesai',
+        'status': isOnBreak ? 'Mulai' : 'Mulai',
         'color': const Color(0xFFF59E0B),
       });
       if (breakEnd?.isNotEmpty == true) {
@@ -744,7 +744,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                             const SizedBox(height: 2),
                             Text(
                               isClockedIn && !hasClockedOut
-                                    ? "Break time bisa dicatat saat istirahat"
+                                  ? "Break time bisa dicatat saat istirahat"
                                   : "Tersedia saat jam kerja",
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.7),
@@ -1071,7 +1071,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1086,7 +1086,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   const SizedBox(height: 2),
                   Text(
                     todaySchedule?.isWorkDay ?? false
-                        ? 'Hari kerja (${schedule.hariKerja.join(", ")})'
+                        ? '${schedule.hariKerja.join(", ")}'
                         : 'Bukan hari kerja',
                     style: TextStyle(
                       fontSize: 12,

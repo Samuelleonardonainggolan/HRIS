@@ -56,7 +56,7 @@ class AttendanceRecord {
           json['clock_out_time']?.toString() ??
           json['clock_out']?.toString() ??
           '--:--',
-      status: json['status']?.toString() ?? 'Unknown',
+      status: normalizeAttendanceStatusLabel(json['status']?.toString()),
       workHours: (json['work_hours'] as num?)?.toDouble() ?? 0,
       overtimeHours: (json['overtime_hours'] as num?)?.toDouble() ?? 0,
       faceSimilarity: (json['face_similarity'] as num?)?.toDouble(),
@@ -389,7 +389,7 @@ class TodayAttendanceSummary {
       isClockedIn: co == null || co == '--:--',
       clockInTime: ci,
       clockOutTime: co,
-      status: j['status']?.toString() ?? 'Unknown',
+      status: normalizeAttendanceStatusLabel(j['status']?.toString()),
       workHours: (j['work_hours'] as num?)?.toDouble() ?? 0,
       faceSimilarity: (j['similarity'] as num?)?.toDouble(),
     );
@@ -397,8 +397,8 @@ class TodayAttendanceSummary {
 }
 
 enum AttendanceStatus {
-  onTime('On Time'),
-  late('Late'),
+  onTime('Tepat Waktu'),
+  late('Terlambat'),
   absent('Absent'),
   overtime('Overtime'),
   unknown('Unknown');
@@ -466,7 +466,7 @@ class TodayAttendanceDetail {
       date: DateTime.tryParse(j['date']?.toString() ?? '') ?? DateTime.now(),
       clockInTime: ci,
       clockOutTime: co,
-      status: j['status']?.toString() ?? 'Unknown',
+      status: normalizeAttendanceStatusLabel(j['status']?.toString()),
       workHours: (j['work_hours'] as num?)?.toDouble() ?? 0,
       overtimeHours: (j['overtime_hours'] as num?)?.toDouble(),
       faceSimilarity: (j['face_similarity'] as num?)?.toDouble(),
@@ -489,4 +489,20 @@ class TodayAttendanceDetail {
     'break_start_time': breakStartTime,
     'break_end_time': breakEndTime,
   };
+}
+
+String normalizeAttendanceStatusLabel(String? raw) {
+  final value = (raw ?? '').trim();
+  final lower = value.toLowerCase();
+
+  switch (lower) {
+    case 'on time':
+    case 'tepat waktu':
+      return 'Tepat Waktu';
+    case 'late':
+    case 'terlambat':
+      return 'Terlambat';
+    default:
+      return value.isEmpty ? 'Unknown' : value;
+  }
 }
