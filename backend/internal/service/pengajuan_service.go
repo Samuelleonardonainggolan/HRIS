@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"github.com/andikatampubolon10/hris-backend/pkg/storage"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -21,6 +24,7 @@ type PengajuanService interface {
 	GetPengajuanByUser(ctx context.Context, userID string) ([]models.PengajuanIzinCutiResponse, error)
 	UpdatePengajuan(ctx context.Context, userID, pengajuanID string, req UpdatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
 	CancelPengajuan(ctx context.Context, userID, pengajuanID string) error
+	UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error)
 }
 
 // CreatePengajuanRequest adalah request untuk membuat pengajuan baru.
@@ -61,13 +65,73 @@ type pengajuanService struct {
 // Karena repository belum tentu ada, kita buat implementasi langsung ke MongoDB
 // via db parameter untuk kesederhanaan integrasi.
 func NewPengajuanService(db *mongo.Database) PengajuanService {
-	return &pengajuanServiceImpl{db: db}
+	return NewPengajuanServiceWithConfig(db, "http://localhost:8080", filepath.Join("uploads", "pengajuan"))
+}
+
+func NewPengajuanServiceWithConfig(db *mongo.Database, publicBaseURL, documentDir string) PengajuanService {
+	baseURL := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+
+	docDir := strings.TrimSpace(documentDir)
+	if docDir == "" {
+		docDir = filepath.Join("uploads", "pengajuan")
+	}
+
+	return &pengajuanServiceImpl{
+		db:                db,
+		publicBaseURL:     baseURL,
+		documentUploadDir: docDir,
+		supabaseUploader:  nil,
+	}
+}
+
+// NewPengajuanServiceWithSupabase membuat service dengan Supabase uploader
+func NewPengajuanServiceWithSupabase(db *mongo.Database, supabaseUploader *storage.SupabaseUploader) PengajuanService {
+	return &pengajuanServiceImpl{
+		db:                db,
+		publicBaseURL:     "",
+		documentUploadDir: "",
+		supabaseUploader:  supabaseUploader,
+	}
 }
 
 // ── Implementasi konkret menggunakan MongoDB langsung ────────────────────────
 
 type pengajuanServiceImpl struct {
-	db *mongo.Database
+	db                *mongo.Database
+	publicBaseURL     string
+	documentUploadDir string
+	supabaseUploader  *storage.SupabaseUploader
+}
+
+func (s *pengajuanServiceImpl) UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error) {
+	_ = ctx
+	if len(fileBytes) == 0 {
+		return "", errors.New("file dokumen kosong")
+	}
+	// Upload ke Supabase Cloud Storage
+	if s.supabaseUploader != nil {
+		return s.supabaseUploader.UploadFile(fileBytes, originalFilename, "pengajuan")
+	}
+	if err := os.MkdirAll(s.documentUploadDir, 0o755); err != nil {
+		return "", err
+	}
+
+	ext := strings.ToLower(filepath.Ext(originalFilename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	storedName := fmt.Sprintf("dokumen_%d%s", time.Now().UnixMilli(), ext)
+	storedPath := filepath.Join(s.documentUploadDir, storedName)
+	if err := os.WriteFile(storedPath, fileBytes, 0o644); err != nil {
+		return "", err
+	}
+
+	urlPath := strings.TrimPrefix(filepath.ToSlash(storedPath), "./")
+	return fmt.Sprintf("%s/%s", s.publicBaseURL, urlPath), nil
 }
 
 func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]models.RequestTypeResponse, error) {

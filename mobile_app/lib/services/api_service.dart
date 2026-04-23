@@ -10,7 +10,7 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.42:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.70:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
@@ -467,35 +467,56 @@ class ApiService {
       final userId = await getUserId();
       if (userId == null) throw Exception('User ID tidak ditemukan');
 
-      final headers = await getHeaders();
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('Token tidak ditemukan. Silakan login ulang.');
+      }
 
-      final body = <String, dynamic>{
-        'user_id': userId,
-        'request_type_id': tipePengajuanId,
-        'tipe_pengajuan_id': tipePengajuanId,
-        'start_date': tanggalMulai,
-        'tanggal_mulai': tanggalMulai,
-        'end_date': tanggalSelesai,
-        'tanggal_selesai': tanggalSelesai,
-        'days_total': totalHari,
-        'total_hari': totalHari,
-        'reason': alasan,
-        'alasan': alasan,
-        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
-          'document_url': dokumenUrl,
-        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
-          'dokumen_url': dokumenUrl,
-        if (startTime != null) 'start_time': startTime,
-        if (endTime != null) 'end_time': endTime,
-      };
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/pengajuan'),
+      );
 
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/pengajuan'),
-            headers: headers,
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 30));
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      request.fields['user_id'] = userId;
+      request.fields['request_type_id'] = tipePengajuanId;
+      request.fields['tipe_pengajuan_id'] = tipePengajuanId;
+      request.fields['start_date'] = tanggalMulai;
+      request.fields['tanggal_mulai'] = tanggalMulai;
+      request.fields['end_date'] = tanggalSelesai;
+      request.fields['tanggal_selesai'] = tanggalSelesai;
+      request.fields['days_total'] = totalHari.toString();
+      request.fields['total_hari'] = totalHari.toString();
+      request.fields['reason'] = alasan;
+      request.fields['alasan'] = alasan;
+
+      if (startTime != null) request.fields['start_time'] = startTime;
+      if (endTime != null) request.fields['end_time'] = endTime;
+
+      if (dokumenUrl != null && dokumenUrl.isNotEmpty) {
+        final file = File(dokumenUrl);
+        if (await file.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'document',
+              dokumenUrl,
+              filename: dokumenUrl.split('/').last,
+            ),
+          );
+        } else {
+          request.fields['dokumen_url'] = dokumenUrl;
+          request.fields['document_url'] = dokumenUrl;
+        }
+      }
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
 
       print('[API] submitPengajuan status: ${response.statusCode}');
       print('[API] submitPengajuan body: ${response.body}');
@@ -568,27 +589,56 @@ class ApiService {
     try {
       if (await isTokenExpired()) await refreshToken();
 
-      final headers = await getHeaders();
-      final body = <String, dynamic>{
-        if (tipePengajuanId != null && tipePengajuanId.isNotEmpty)
-          'tipe_pengajuan_id': tipePengajuanId,
-        if (tanggalMulai != null && tanggalMulai.isNotEmpty)
-          'tanggal_mulai': tanggalMulai,
-        if (tanggalSelesai != null && tanggalSelesai.isNotEmpty)
-          'tanggal_selesai': tanggalSelesai,
-        if (totalHari != null) 'total_hari': totalHari,
-        if (alasan != null && alasan.isNotEmpty) 'alasan': alasan,
-        if (dokumenUrl != null && dokumenUrl.isNotEmpty)
-          'dokumen_url': dokumenUrl,
-      };
+      final token = await getAccessToken();
+      if (token == null || token.isEmpty) {
+        throw Exception('Token tidak ditemukan. Silakan login ulang.');
+      }
 
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/pengajuan/$pengajuanId'),
-            headers: headers,
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 30));
+      final request = http.MultipartRequest(
+        'PUT',
+        Uri.parse('$baseUrl/pengajuan/$pengajuanId'),
+      );
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      if (tipePengajuanId != null && tipePengajuanId.isNotEmpty) {
+        request.fields['tipe_pengajuan_id'] = tipePengajuanId;
+      }
+      if (tanggalMulai != null && tanggalMulai.isNotEmpty) {
+        request.fields['tanggal_mulai'] = tanggalMulai;
+      }
+      if (tanggalSelesai != null && tanggalSelesai.isNotEmpty) {
+        request.fields['tanggal_selesai'] = tanggalSelesai;
+      }
+      if (totalHari != null) {
+        request.fields['total_hari'] = totalHari.toString();
+      }
+      if (alasan != null && alasan.isNotEmpty) {
+        request.fields['alasan'] = alasan;
+      }
+
+      if (dokumenUrl != null && dokumenUrl.isNotEmpty) {
+        final file = File(dokumenUrl);
+        if (await file.exists()) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'document',
+              dokumenUrl,
+              filename: dokumenUrl.split('/').last,
+            ),
+          );
+        } else {
+          request.fields['dokumen_url'] = dokumenUrl;
+        }
+      }
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
 
       final data = jsonDecode(response.body);
       if (response.statusCode == 200) {

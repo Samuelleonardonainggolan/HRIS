@@ -2,7 +2,11 @@
 package handler
 
 import (
+	"io"
 	"net/http"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/andikatampubolon10/hris-backend/internal/service"
 	"github.com/gin-gonic/gin"
@@ -51,15 +55,66 @@ func (h *PengajuanHandler) CreatePengajuan(c *gin.Context) {
 	}
 
 	var req service.CreatePengajuanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status":  "error",
-			"message": "Request tidak valid: " + err.Error(),
-		})
-		return
-	}
+	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
+		totalHari, err := strconv.Atoi(strings.TrimSpace(formValue(c, "total_hari", "days_total")))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "total_hari wajib berupa angka",
+			})
+			return
+		}
 
-	req.UserID = userID.(string)
+		req = service.CreatePengajuanRequest{
+			UserID:          userID.(string),
+			TipePengajuanID: formValue(c, "tipe_pengajuan_id", "request_type_id"),
+			TanggalMulai:    formValue(c, "tanggal_mulai", "start_date"),
+			TanggalSelesai:  formValue(c, "tanggal_selesai", "end_date"),
+			TotalHari:       totalHari,
+			Alasan:          formValue(c, "alasan", "reason"),
+			DokumenURL:      formValue(c, "dokumen_url", "document_url"),
+		}
+
+		if fileHeader, err := c.FormFile("document"); err == nil {
+			file, err := fileHeader.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal membuka file dokumen: " + err.Error(),
+				})
+				return
+			}
+			defer file.Close()
+
+			fileBytes, err := io.ReadAll(file)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal membaca file dokumen: " + err.Error(),
+				})
+				return
+			}
+
+			docURL, err := h.pengajuanService.UploadDocument(c.Request.Context(), fileBytes, filepath.Base(fileHeader.Filename))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal upload dokumen: " + err.Error(),
+				})
+				return
+			}
+			req.DokumenURL = docURL
+		}
+	} else {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "Request tidak valid: " + err.Error(),
+			})
+			return
+		}
+		req.UserID = userID.(string)
+	}
 
 	result, err := h.pengajuanService.CreatePengajuan(c.Request.Context(), req)
 	if err != nil {
@@ -117,12 +172,72 @@ func (h *PengajuanHandler) UpdatePengajuan(c *gin.Context) {
 
 	id := c.Param("id")
 	var req service.UpdatePengajuanRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"status":  "error",
-			"message": "Request tidak valid: " + err.Error(),
-		})
-		return
+	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
+		if value := strings.TrimSpace(formValue(c, "tipe_pengajuan_id", "request_type_id")); value != "" {
+			req.TipePengajuanID = &value
+		}
+		if value := strings.TrimSpace(formValue(c, "tanggal_mulai", "start_date")); value != "" {
+			req.TanggalMulai = &value
+		}
+		if value := strings.TrimSpace(formValue(c, "tanggal_selesai", "end_date")); value != "" {
+			req.TanggalSelesai = &value
+		}
+		if value := strings.TrimSpace(formValue(c, "alasan", "reason")); value != "" {
+			req.Alasan = &value
+		}
+		if value := strings.TrimSpace(formValue(c, "dokumen_url", "document_url")); value != "" {
+			req.DokumenURL = &value
+		}
+		if value := strings.TrimSpace(formValue(c, "total_hari", "days_total")); value != "" {
+			totalHari, err := strconv.Atoi(value)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "total_hari wajib berupa angka",
+				})
+				return
+			}
+			req.TotalHari = &totalHari
+		}
+
+		if fileHeader, err := c.FormFile("document"); err == nil {
+			file, err := fileHeader.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal membuka file dokumen: " + err.Error(),
+				})
+				return
+			}
+			defer file.Close()
+
+			fileBytes, err := io.ReadAll(file)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal membaca file dokumen: " + err.Error(),
+				})
+				return
+			}
+
+			docURL, err := h.pengajuanService.UploadDocument(c.Request.Context(), fileBytes, filepath.Base(fileHeader.Filename))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"status":  "error",
+					"message": "gagal upload dokumen: " + err.Error(),
+				})
+				return
+			}
+			req.DokumenURL = &docURL
+		}
+	} else {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"status":  "error",
+				"message": "Request tidak valid: " + err.Error(),
+			})
+			return
+		}
 	}
 
 	result, err := h.pengajuanService.UpdatePengajuan(c.Request.Context(), userID.(string), id, req)
@@ -139,6 +254,16 @@ func (h *PengajuanHandler) UpdatePengajuan(c *gin.Context) {
 		"message": "Pengajuan berhasil diperbarui",
 		"data":    result,
 	})
+}
+
+func formValue(c *gin.Context, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(c.PostForm(key)); value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
 
 // CancelPengajuan - DELETE /api/v1/pengajuan/:id
