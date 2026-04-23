@@ -13,6 +13,7 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/api/routes"
 	"github.com/andikatampubolon10/hris-backend/pkg/database"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
+	"github.com/andikatampubolon10/hris-backend/pkg/storage"
 	"github.com/gin-gonic/gin"
 )
 
@@ -54,16 +55,39 @@ func main() {
 
 	// ==================== Initialize Services ====================
 	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
+	// Initialize Supabase uploader if configured
+	var supabaseUploader *storage.SupabaseUploader
+	storageKey := cfg.SupabaseServiceRoleKey
+	if storageKey == "" {
+		storageKey = cfg.SupabaseAPIKey
+	}
+
+	if cfg.SupabaseURL != "" && storageKey != "" {
+		supabaseUploader = storage.NewSupabaseUploader(cfg.SupabaseURL, storageKey, cfg.SupabaseBucket)
+		log.Println("☁️  Supabase uploader initialized")
+	} else {
+		log.Println("⚠️  Supabase not configured, using local file storage")
+	}
+
 	authService := service.NewAuthService(userRepo, faceEmbeddingRepo, cfg.JWTSecret, jwtExpiryStr)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	positionService := service.NewPositionService(positionRepo)
-	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient)
+
+	// FaceService dengan parameter lengkap (dari kode kedua)
+	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient, cfg.PublicBaseURL, cfg.FaceImageDir, supabaseUploader)
 
 	// ✅ AttendanceService dengan jamKerjaRepo (dari kode pertama)
 	attendanceService := service.NewAttendanceService(attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
 
-	pengajuanService := service.NewPengajuanService(mongodb.Database)
+	// PengajuanService dengan konfigurasi lengkap (dari kode kedua)
+	var pengajuanService service.PengajuanService
+	if supabaseUploader != nil {
+		pengajuanService = service.NewPengajuanServiceWithSupabase(mongodb.Database, supabaseUploader)
+	} else {
+		pengajuanService = service.NewPengajuanServiceWithConfig(mongodb.Database, cfg.PublicBaseURL, cfg.PengajuanDocDir)
+	}
+
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo)
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
@@ -109,7 +133,7 @@ func main() {
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
 		jamKerjaHandler, // ✅ Dari kode kedua
-		employeeBasicSalaryHandler,			
+		employeeBasicSalaryHandler,
 	)
 
 	log.Println("🛣️  Routes configured")

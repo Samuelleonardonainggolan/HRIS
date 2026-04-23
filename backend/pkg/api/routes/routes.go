@@ -41,6 +41,7 @@ func SetupRoutes(
 
 	// ==================== HEALTH CHECK ====================
 	router.GET("/health", healthHandler.HealthCheck)
+	router.Static("/uploads", "./uploads")
 
 	// ==================== API V1 ====================
 	v1 := router.Group("/api/v1")
@@ -181,7 +182,6 @@ func SetupRoutes(
 				basicSalaries.GET("/users/:userId/latest", employeeBasicSalaryHandler.GetLatestByUser)
 				basicSalaries.PATCH("/:id", employeeBasicSalaryHandler.UpdateBySalaryID)
 			}
-
 
 			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)

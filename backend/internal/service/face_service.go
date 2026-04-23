@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/internal/faceclient"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"github.com/andikatampubolon10/hris-backend/pkg/storage"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -31,17 +35,36 @@ type faceService struct {
 	userRepo          repository.UserRepository
 	faceEmbeddingRepo repository.FaceEmbeddingRepository
 	faceClient        *faceclient.Client
+	publicBaseURL     string
+	faceImageDir      string
+	supabaseUploader  *storage.SupabaseUploader
 }
 
 func NewFaceService(
 	userRepo repository.UserRepository,
 	faceEmbeddingRepo repository.FaceEmbeddingRepository,
 	faceClient *faceclient.Client,
+	publicBaseURL string,
+	faceImageDir string,
+	supabaseUploader *storage.SupabaseUploader,
 ) FaceService {
+	baseURL := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+
+	imageDir := strings.TrimSpace(faceImageDir)
+	if imageDir == "" {
+		imageDir = filepath.Join("uploads", "face")
+	}
+
 	return &faceService{
 		userRepo:          userRepo,
 		faceEmbeddingRepo: faceEmbeddingRepo,
 		faceClient:        faceClient,
+		publicBaseURL:     baseURL,
+		faceImageDir:      imageDir,
+		supabaseUploader:  supabaseUploader,
 	}
 }
 
@@ -90,11 +113,15 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 
 	now := time.Now()
 	userOID, _ := primitive.ObjectIDFromHex(userID)
+	faceImageURL, err := s.saveFaceImageAndBuildURL(photo, filename)
+	if err != nil {
+		return fmt.Errorf("gagal menyimpan foto wajah: %w", err)
+	}
 
 	if existingEmbedding != nil {
 		// Update embedding yang sudah ada
 		existingEmbedding.FaceEmbedding = embedding32
-		existingEmbedding.FaceImageURL = filename
+		existingEmbedding.FaceImageURL = faceImageURL
 		existingEmbedding.UpdatedAt = now
 		existingEmbedding.IsFirstLogin = false
 		log.Printf("[FaceService] Updating existing embedding for user: %s", userID)
@@ -106,7 +133,7 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 		ID:                primitive.NewObjectID(),
 		UserID:            userOID,
 		FaceEmbedding:     embedding32,
-		FaceImageURL:      filename,
+		FaceImageURL:      faceImageURL,
 		IsActive:          true,
 		IsFirstLogin:      true,
 		RegisteredAt:      now,
@@ -117,6 +144,34 @@ func (s *faceService) ExtractAndSaveEmbedding(ctx context.Context, userID string
 
 	log.Printf("[FaceService] Creating new embedding for user: %s", userID)
 	return s.faceEmbeddingRepo.Create(ctx, newEmbedding)
+}
+
+func (s *faceService) saveFaceImageAndBuildURL(photo []byte, originalFilename string) (string, error) {
+	// Upload ke Supabase Cloud Storage
+	if s.supabaseUploader != nil {
+		return s.supabaseUploader.UploadFile(photo, originalFilename, "face")
+	}
+
+	// Fallback ke local storage jika Supabase tidak dikonfigurasi
+	if err := os.MkdirAll(s.faceImageDir, 0o755); err != nil {
+		return "", err
+	}
+
+	ext := strings.ToLower(filepath.Ext(originalFilename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	storedName := fmt.Sprintf("face_%d%s", time.Now().UnixMilli(), ext)
+	filePath := filepath.Join(s.faceImageDir, storedName)
+	if err := os.WriteFile(filePath, photo, 0o644); err != nil {
+		return "", err
+	}
+
+	urlPath := strings.ReplaceAll(filepath.ToSlash(filePath), "\\", "/")
+	urlPath = strings.TrimPrefix(urlPath, "./")
+
+	return fmt.Sprintf("%s/%s", s.publicBaseURL, urlPath), nil
 }
 
 // ─── ExtractEmbeddingOnly ─────────────────────────────────────────────────────
