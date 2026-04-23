@@ -170,7 +170,7 @@ export default function GeofencingPage() {
       <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-3">
           <MapPinIcon className="w-6 h-6 text-gray-700" />
-          <h1 className="text-xl font-semibold text-gray-900">Manajemen Biometrik</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Manajemen Geofencing</h1>
         </div>
       </div>
 
