@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Search, Loader2, MoreVertical } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Loader2, MoreVertical, X, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -159,6 +159,12 @@ export default function PersetujuanIzinCutiPage() {
 
   const [items, setItems] = useState<LeaveApprovalItem[]>([]);
 
+  // Modal penolakan
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  const rejectTextareaRef = useRef<HTMLTextAreaElement>(null);
+
   const activeStatus = "ALL" as const;
 
   useEffect(() => {
@@ -230,12 +236,33 @@ export default function PersetujuanIzinCutiPage() {
     }
   };
 
+  const openRejectModal = () => {
+    if (!selected || isActing) return;
+    setRejectionReason("");
+    setRejectError(null);
+    setShowRejectModal(true);
+    setTimeout(() => rejectTextareaRef.current?.focus(), 100);
+  };
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false);
+    setRejectionReason("");
+    setRejectError(null);
+  };
+
   const handleReject = async () => {
     if (!selected || isActing) return;
+    const trimmed = rejectionReason.trim();
+    if (!trimmed) {
+      setRejectError("Alasan penolakan wajib diisi.");
+      rejectTextareaRef.current?.focus();
+      return;
+    }
     try {
       setIsActing(true);
-      await leaveRequestsApi.reject(selected.id);
+      await leaveRequestsApi.reject(selected.id, trimmed);
       toast.success("Pengajuan ditolak");
+      closeRejectModal();
       const res = await leaveRequestsApi.listForManagerHR({
         status: activeStatus,
         search: searchEmployee.trim() || undefined,
@@ -248,6 +275,11 @@ export default function PersetujuanIzinCutiPage() {
     } finally {
       setIsActing(false);
     }
+  };
+
+  // Tutup modal jika klik di luar overlay
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) closeRejectModal();
   };
 
   if (isLoading) {
@@ -276,6 +308,7 @@ export default function PersetujuanIzinCutiPage() {
   }
 
   return (
+    <>
     <div className="flex h-full gap-6 p-6">
       {/* LEFT: list */}
       <div className="flex-1 min-w-0">
@@ -519,7 +552,7 @@ export default function PersetujuanIzinCutiPage() {
                   <Button
                     variant="outline"
                     className="border-red-200 text-red-600 hover:bg-red-50"
-                    onClick={handleReject}
+                    onClick={openRejectModal}
                     disabled={selected.status !== "Pending" || isActing}
                   >
                     Tolak
@@ -538,5 +571,95 @@ export default function PersetujuanIzinCutiPage() {
         </Card>
       </div>
     </div>
+
+    {/* ===== MODAL ALASAN PENOLAKAN ===== */}
+    {showRejectModal && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        onClick={handleOverlayClick}
+      >
+        <div className="relative w-full max-w-md mx-4 bg-white rounded-2xl shadow-xl p-6 animate-in fade-in zoom-in-95 duration-200">
+          {/* Close button */}
+          <button
+            onClick={closeRejectModal}
+            className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          {/* Icon + Judul */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 shrink-0">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Tolak Pengajuan</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Pengajuan atas nama <span className="font-medium text-gray-700">{selected?.employeeName}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Form alasan */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Alasan Penolakan <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              ref={rejectTextareaRef}
+              value={rejectionReason}
+              onChange={(e) => {
+                setRejectionReason(e.target.value);
+                if (rejectError) setRejectError(null);
+              }}
+              placeholder="Tuliskan alasan penolakan pengajuan izin/cuti ini..."
+              rows={4}
+              className={[
+                "w-full rounded-xl border px-4 py-3 text-sm text-gray-700 leading-relaxed resize-none",
+                "focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent",
+                "placeholder:text-gray-400 transition-colors",
+                rejectError ? "border-red-400 bg-red-50" : "border-gray-200 bg-white",
+              ].join(" ")}
+            />
+            {rejectError && (
+              <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {rejectError}
+              </p>
+            )}
+            <p className="mt-1.5 text-xs text-gray-400">
+              {rejectionReason.trim().length} karakter (minimal 5 karakter)
+            </p>
+          </div>
+
+          {/* Tombol aksi */}
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              onClick={closeRejectModal}
+              disabled={isActing}
+              className="border-gray-200 text-gray-700 hover:bg-gray-50"
+            >
+              Batal
+            </Button>
+            <Button
+              onClick={handleReject}
+              disabled={isActing || rejectionReason.trim().length < 5}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+            >
+              {isActing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Memproses...
+                </span>
+              ) : (
+                "Tolak Pengajuan"
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

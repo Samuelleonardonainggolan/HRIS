@@ -15,11 +15,11 @@ type PengajuanIzinCutiService interface {
 	ListForManagerHR(ctx context.Context, status string, search string) ([]models.PengajuanIzinCutiApprovalResponse, error)
 	GetForManagerHR(ctx context.Context, id string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	ApproveByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
-	RejectByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	RejectByManagerHR(ctx context.Context, id string, managerHRUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaDepartemenUserID string) ([]models.PengajuanIzinCutiApprovalResponse, error)
 	GetForKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
-	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error)
 }
 
 type pengajuanIzinCutiService struct {
@@ -94,11 +94,11 @@ func (s *pengajuanIzinCutiService) GetForManagerHR(ctx context.Context, id strin
 }
 
 func (s *pengajuanIzinCutiService) ApproveByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
-	return s.decideByManagerHR(ctx, id, managerHRUserID, models.StatusApproved)
+	return s.decideByManagerHR(ctx, id, managerHRUserID, models.StatusApproved, "")
 }
 
-func (s *pengajuanIzinCutiService) RejectByManagerHR(ctx context.Context, id string, managerHRUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
-	return s.decideByManagerHR(ctx, id, managerHRUserID, models.StatusRejected)
+func (s *pengajuanIzinCutiService) RejectByManagerHR(ctx context.Context, id string, managerHRUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	return s.decideByManagerHR(ctx, id, managerHRUserID, models.StatusRejected, rejectionReason)
 }
 
 func (s *pengajuanIzinCutiService) ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaDepartemenUserID string) ([]models.PengajuanIzinCutiApprovalResponse, error) {
@@ -180,14 +180,14 @@ func (s *pengajuanIzinCutiService) GetForKepalaDepartemen(ctx context.Context, i
 }
 
 func (s *pengajuanIzinCutiService) ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
-	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusApproved)
+	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusApproved, "")
 }
 
-func (s *pengajuanIzinCutiService) RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error) {
-	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusRejected)
+func (s *pengajuanIzinCutiService) RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+	return s.decideByKepalaDepartemen(ctx, id, kepalaDepartemenUserID, models.StatusRejected, rejectionReason)
 }
 
-func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, statusKepalaDepartemen string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, statusKepalaDepartemen string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error) {
 	if statusKepalaDepartemen != models.StatusApproved && statusKepalaDepartemen != models.StatusRejected {
 		return nil, errors.New("status tidak valid")
 	}
@@ -221,7 +221,7 @@ func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context,
 	}
 
 	finalStatus := computeFinalStatus(statusKepalaDepartemen, strings.ToUpper(current.StatusManagerHR))
-	updated, err := s.pengajuanRepo.UpdateKepalaDepartemenDecision(ctx, id, kepalaOID, statusKepalaDepartemen, finalStatus)
+	updated, err := s.pengajuanRepo.UpdateKepalaDepartemenDecision(ctx, id, kepalaOID, statusKepalaDepartemen, finalStatus, rejectionReason)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context,
 	return &resp, nil
 }
 
-func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id string, managerHRUserID string, statusManagerHR string) (*models.PengajuanIzinCutiApprovalResponse, error) {
+func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id string, managerHRUserID string, statusManagerHR string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error) {
 	if statusManagerHR != models.StatusApproved && statusManagerHR != models.StatusRejected {
 		return nil, errors.New("status tidak valid")
 	}
@@ -257,7 +257,7 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 	}
 
 	finalStatus := computeFinalStatus(strings.ToUpper(current.StatusKepalaDepartemen), statusManagerHR)
-	updated, err := s.pengajuanRepo.UpdateManagerHRDecision(ctx, id, managerOID, statusManagerHR, finalStatus)
+	updated, err := s.pengajuanRepo.UpdateManagerHRDecision(ctx, id, managerOID, statusManagerHR, finalStatus, rejectionReason)
 	if err != nil {
 		return nil, err
 	}

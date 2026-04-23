@@ -28,6 +28,9 @@ type LeaveRequest struct {
 	StatusManagerHR string             `json:"status_manager_hr" bson:"status_manager_hr"`
 	FinalStatus     string             `json:"final_status" bson:"final_status"`
 
+	RejectionReasonKepalaDept string `json:"rejection_reason_kepala_dept,omitempty" bson:"rejection_reason_kepala_dept,omitempty"`
+	RejectionReasonManagerHR  string `json:"rejection_reason_manager_hr,omitempty" bson:"rejection_reason_manager_hr,omitempty"`
+
 	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
@@ -52,6 +55,11 @@ type UpdatePengajuanIzinCutiRequest struct {
 	StatusKepalaDepartemen string `json:"status_kepala_departemen,omitempty"`
 	StatusManagerHR        string `json:"status_manager_hr,omitempty"`
 	FinalStatus            string `json:"final_status,omitempty"`
+	RejectionReason        string `json:"rejection_reason,omitempty"`
+}
+
+type RejectLeaveRequest struct {
+	RejectionReason string `json:"rejection_reason" binding:"required"`
 }
 
 type PengajuanIzinCutiResponse struct {
@@ -74,6 +82,9 @@ type PengajuanIzinCutiResponse struct {
 	ManagerHRID     string `json:"manager_hr_id"`
 	StatusManagerHR string `json:"status_manager_hr"`
 	FinalStatus     string `json:"final_status"`
+
+	RejectionReasonKepalaDept string `json:"rejection_reason_kepala_dept,omitempty"`
+	RejectionReasonManagerHR  string `json:"rejection_reason_manager_hr,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -112,13 +123,15 @@ func (p *LeaveRequest) ToResponse() PengajuanIzinCutiResponse {
 		Reason:                 p.Reason,
 		DocumentURL:            p.DocumentURL,
 		LeaveBalanceID:         bal,
-		StatusKepalaDepartemen: p.StatusKepalaDepartemen,
-		KepalaDepartemenID:     p.KepalaDepartemenID.Hex(),
-		ManagerHRID:            p.ManagerHRID.Hex(),
-		StatusManagerHR:        p.StatusManagerHR,
-		FinalStatus:            p.FinalStatus,
-		CreatedAt:              p.CreatedAt,
-		UpdatedAt:              p.UpdatedAt,
+		StatusKepalaDepartemen:    p.StatusKepalaDepartemen,
+		KepalaDepartemenID:        p.KepalaDepartemenID.Hex(),
+		ManagerHRID:               p.ManagerHRID.Hex(),
+		StatusManagerHR:           p.StatusManagerHR,
+		FinalStatus:               p.FinalStatus,
+		RejectionReasonKepalaDept: p.RejectionReasonKepalaDept,
+		RejectionReasonManagerHR:  p.RejectionReasonManagerHR,
+		CreatedAt:                 p.CreatedAt,
+		UpdatedAt:                 p.UpdatedAt,
 	}
 }
 

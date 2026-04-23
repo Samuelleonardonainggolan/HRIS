@@ -22,6 +22,7 @@ export interface DeptLeaveRequestApprovalResponse {
     kepala_departemen_id: string;
     status_manager_hr: LeaveRequestStatus;
     final_status: LeaveRequestStatus;
+    rejection_reason_kepala_dept?: string;
     created_at: string;
     updated_at: string;
   };
@@ -70,10 +71,14 @@ class DeptLeaveRequestsApi {
     return data.data as DeptLeaveRequestApprovalResponse;
   }
 
-  async reject(id: string): Promise<DeptLeaveRequestApprovalResponse> {
+  async reject(id: string, rejectionReason: string): Promise<DeptLeaveRequestApprovalResponse> {
     const res = await fetch(`${API_BASE}/dept-leave-requests/${id}/reject`, {
       method: "POST",
-      headers: authService.getAuthHeaders(),
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rejection_reason: rejectionReason }),
     });
     const data = await this.safeJson(res);
     if (!res.ok) throw new Error(data.error || data.message || "Gagal menolak pengajuan");
@@ -82,4 +87,3 @@ class DeptLeaveRequestsApi {
 }
 
 export const deptLeaveRequestsApi = new DeptLeaveRequestsApi();
-

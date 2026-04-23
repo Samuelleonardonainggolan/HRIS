@@ -24,6 +24,8 @@ export interface LeaveRequestApprovalResponse {
     manager_hr_id: string;
     status_manager_hr: LeaveRequestStatus;
     final_status: LeaveRequestStatus;
+    rejection_reason_kepala_dept?: string;
+    rejection_reason_manager_hr?: string;
     created_at: string;
     updated_at: string;
 
@@ -101,10 +103,14 @@ class LeaveRequestsApi {
     return data.data as LeaveRequestApprovalResponse;
   }
 
-  async reject(id: string): Promise<LeaveRequestApprovalResponse> {
+  async reject(id: string, rejectionReason: string): Promise<LeaveRequestApprovalResponse> {
     const res = await fetch(buildUrl(`/leave-requests/${id}/reject`), {
       method: "POST",
-      headers: authService.getAuthHeaders(),
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rejection_reason: rejectionReason }),
     });
     const data = await readJsonSafely(res);
     if (!res.ok) throw new Error(data.error || data.message || "Failed to reject leave request");

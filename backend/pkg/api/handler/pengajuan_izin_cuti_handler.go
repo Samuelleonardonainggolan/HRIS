@@ -58,7 +58,14 @@ func (h *PengajuanIzinCutiHandler) ApproveByManagerHR(c *gin.Context) {
 func (h *PengajuanIzinCutiHandler) RejectByManagerHR(c *gin.Context) {
 	id := c.Param("id")
 	userID := c.GetString("userID")
-	item, err := h.service.RejectByManagerHR(c.Request.Context(), id, userID)
+
+	var req models.RejectLeaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Alasan penolakan wajib diisi", err.Error()))
+		return
+	}
+
+	item, err := h.service.RejectByManagerHR(c.Request.Context(), id, userID, req.RejectionReason)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to reject pengajuan", err.Error()))
 		return
@@ -111,7 +118,14 @@ func (h *PengajuanIzinCutiHandler) ApproveByKepalaDepartemen(c *gin.Context) {
 func (h *PengajuanIzinCutiHandler) RejectByKepalaDepartemen(c *gin.Context) {
 	id := c.Param("id")
 	userID := c.GetString("userID")
-	item, err := h.service.RejectByKepalaDepartemen(c.Request.Context(), id, userID)
+
+	var req models.RejectLeaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Alasan penolakan wajib diisi", err.Error()))
+		return
+	}
+
+	item, err := h.service.RejectByKepalaDepartemen(c.Request.Context(), id, userID, req.RejectionReason)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to reject pengajuan", err.Error()))
 		return
