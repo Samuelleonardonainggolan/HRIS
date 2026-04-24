@@ -1,3 +1,6 @@
+"use client";
+
+import { useRouter } from "next/navigation";
 import {
   MapPin,
   Calendar,
@@ -15,7 +18,17 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
-export function ManagementPanel() {
+interface ManagementPanelProps {
+  pendingLeaveCount?: number;
+  loadingLeave?: boolean;
+}
+
+export function ManagementPanel({
+  pendingLeaveCount = 0,
+  loadingLeave = false,
+}: ManagementPanelProps) {
+  const router = useRouter();
+
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-gray-900">Manajemen</h2>
@@ -38,7 +51,11 @@ export function ManagementPanel() {
           <CardDescription className="mb-4">
             Atur lokasi yang sah untuk absensi dengan radius lokasi wilayah
           </CardDescription>
-          <Button variant="primary" className="w-full">
+          <Button
+            variant="primary"
+            className="w-full"
+            onClick={() => router.push("/dashboard/geofencing")}
+          >
             Konfigurasi Zona
           </Button>
         </CardContent>
@@ -58,9 +75,19 @@ export function ManagementPanel() {
         </CardHeader>
         <CardContent>
           <CardDescription className="mb-4">
-            6 pengajuan menunggu yang membutuhkan persetujuan segera Anda
+            {loadingLeave ? (
+              <span className="inline-block h-4 w-40 bg-gray-200 animate-pulse rounded" />
+            ) : pendingLeaveCount > 0
+              ? `${pendingLeaveCount} pengajuan menunggu yang membutuhkan persetujuan segera Anda`
+              : "Tidak ada pengajuan yang menunggu saat ini"}
           </CardDescription>
-          <Button variant="success" className="w-full">
+          <Button
+            variant="success"
+            className="w-full"
+            onClick={() =>
+              router.push("/dashboard/manager-hr/persetujuan-izin-cuti")
+            }
+          >
             Tinjau Pengajuan
           </Button>
         </CardContent>
@@ -76,6 +103,9 @@ export function ManagementPanel() {
             <Button
               variant="dark"
               className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700"
+              onClick={() =>
+                router.push("/dashboard/manager-hr/karyawan/tambah-pegawai")
+              }
             >
               <UserPlus className="h-5 w-5" />
               <span className="text-xs">Tambah User</span>
