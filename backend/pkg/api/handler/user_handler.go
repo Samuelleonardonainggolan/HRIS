@@ -94,6 +94,18 @@ func (h *UserHandler) GetEmployeesMyDepartment(c *gin.Context) {
 }
 
 // GetEmployeeByID - Get employee by ID
+func (h *UserHandler) GetNextPayrollNumber(c *gin.Context) {
+	next, err := h.userService.GenerateNextPayrollNumber(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Next payroll number generated", gin.H{
+		"payroll_number": next,
+	}))
+}
+
 func (h *UserHandler) GetEmployeeByID(c *gin.Context) {
 	id := c.Param("id")
 	employee, err := h.userService.GetEmployeeByID(c.Request.Context(), id)

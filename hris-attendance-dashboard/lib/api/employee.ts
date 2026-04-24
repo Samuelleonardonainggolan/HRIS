@@ -41,10 +41,42 @@ export const employeeApi = {
 
     return (json?.data || []) as Employee[];
   },
+
+  async getNextPayrollNumber(): Promise<string> {
+    const res = await fetch(`${API_BASE}/payroll/next-number`, {
+      method: "GET",
+      headers: authService.getAuthHeaders(),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error || json?.message || "Gagal mengambil nomor payroll");
+    }
+    return (json?.data?.payroll_number ?? "") as string;
+  },
 };
 
 class EmployeeService {
   // ==================== EMPLOYEES ====================
+
+  async getNextPayrollNumber(): Promise<string> {
+    try {
+      const response = await fetch(`${API_BASE}/payroll/next-number`, {
+        method: "GET",
+        headers: authService.getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Gagal mengambil nomor payroll");
+      }
+
+      return (data?.data?.payroll_number ?? "") as string;
+    } catch (error) {
+      console.error("Get next payroll number error:", error);
+      throw error;
+    }
+  }
 
   async getEmployeesByScope(): Promise<User[]> {
     const currentUser = authService.getUser();
@@ -196,7 +228,7 @@ class EmployeeService {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Note: Do not set Content-Type header manually for FormData, 
+      // Note: Do not set Content-Type header manually for FormData,
       // let the browser set it with boundary
       const headers = authService.getAuthHeaders();
       delete headers['Content-Type'];

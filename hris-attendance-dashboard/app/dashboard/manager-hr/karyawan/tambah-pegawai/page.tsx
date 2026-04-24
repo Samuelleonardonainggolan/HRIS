@@ -28,6 +28,7 @@ export default function AddEmployeePage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingPayroll, setLoadingPayroll] = useState(true);
 
   const [formData, setFormData] = useState<CreateEmployeeRequest>({
     payroll_number: "",
@@ -47,6 +48,7 @@ export default function AddEmployeePage() {
 
   useEffect(() => {
     fetchDepartments();
+    fetchNextPayrollNumber();
   }, []);
 
   useEffect(() => {
@@ -56,6 +58,18 @@ export default function AddEmployeePage() {
       setPositions([]);
     }
   }, [formData.department_id]);
+
+  const fetchNextPayrollNumber = async () => {
+    try {
+      setLoadingPayroll(true);
+      const nextNumber = await employeeService.getNextPayrollNumber();
+      setFormData((prev) => ({ ...prev, payroll_number: nextNumber }));
+    } catch (err) {
+      console.error("Failed to fetch next payroll number:", err);
+    } finally {
+      setLoadingPayroll(false);
+    }
+  };
 
   const fetchDepartments = async () => {
     try {
@@ -280,16 +294,23 @@ export default function AddEmployeePage() {
                       <Label htmlFor="payroll_number" className="text-sm font-medium text-gray-700">
                         NOMOR PAYROLL <span className="text-red-500">*</span>
                       </Label>
-                      <Input
-                        id="payroll_number"
-                        required
-                        placeholder="Contoh: PAY001"
-                        value={formData.payroll_number}
-                        onChange={(e) =>
-                          setFormData({ ...formData, payroll_number: e.target.value })
-                        }
-                        className="w-full"
-                      />
+                      <div className="relative">
+                        <Input
+                          id="payroll_number"
+                          required
+                          value={formData.payroll_number}
+                          onChange={(e) =>
+                            setFormData({ ...formData, payroll_number: e.target.value })
+                          }
+                          className={`w-full ${loadingPayroll ? "bg-gray-50 text-gray-400" : ""}`}
+                          disabled={loadingPayroll}
+                        />
+                        {loadingPayroll && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2">

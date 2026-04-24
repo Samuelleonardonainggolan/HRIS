@@ -4,7 +4,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +26,7 @@ type UserService interface {
 	UpdateEmployeeByManagerDepartemen(ctx context.Context, managerUserID string, employeeID string, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteEmployee(ctx context.Context, id string) error
 	ImportEmployees(ctx context.Context, employees []models.CreateEmployeeRequest) (int, []string, error)
+	GenerateNextPayrollNumber(ctx context.Context) (string, error)
 }
 
 type userService struct {
@@ -377,4 +380,25 @@ func (s *userService) ImportEmployees(ctx context.Context, employees []models.Cr
 	}
 
 	return created, failures, nil
+}
+
+func (s *userService) GenerateNextPayrollNumber(ctx context.Context) (string, error) {
+	existing, err := s.userRepo.FindAllPayrollNumbers(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	re := regexp.MustCompile(`^PAY(\d+)$`)
+	maxNum := 0
+	for _, p := range existing {
+		matches := re.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(p)))
+		if len(matches) == 2 {
+			n, err := strconv.Atoi(matches[1])
+			if err == nil && n > maxNum {
+				maxNum = n
+			}
+		}
+	}
+
+	return fmt.Sprintf("PAY%03d", maxNum+1), nil
 }
