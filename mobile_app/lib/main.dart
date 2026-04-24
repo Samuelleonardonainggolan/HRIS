@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 import 'package:mobile_app/login.dart';
 import 'package:mobile_app/splash.dart';
@@ -18,6 +19,16 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'HRIS Mobile',
       theme: AppTheme.lightTheme,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('id', 'ID'),
+        Locale('en', 'US'),
+      ],
+      locale: const Locale('id', 'ID'),
       initialRoute: '/',
       routes: {
         '/': (context) => const SplashScreen(),

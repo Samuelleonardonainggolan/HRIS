@@ -10,7 +10,7 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.152:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.173:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',

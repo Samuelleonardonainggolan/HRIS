@@ -566,25 +566,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  "Waktu Saat Ini",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
               if (isClockedIn || hasClockedOut) ...[
                 const SizedBox(height: 8),
                 Wrap(

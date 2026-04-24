@@ -338,10 +338,71 @@ class _RequestPageState extends State<RequestPage> {
               _approvalRow('Kepala Departemen', r.statusKepala),
               const SizedBox(height: 6),
               _approvalRow('Manager HR', r.statusManagerHr),
+              if (r.statusFinal == 'REJECTED') ...[
+                const SizedBox(height: 14),
+                const Text(
+                  'Alasan Penolakan',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                if ((r.rejectionReasonKepalaDept ?? '').trim().isNotEmpty)
+                  _rejectionReasonBox(
+                    label: 'Kepala Departemen',
+                    reason: r.rejectionReasonKepalaDept!.trim(),
+                  ),
+                if ((r.rejectionReasonKepalaDept ?? '').trim().isNotEmpty &&
+                    (r.rejectionReasonManagerHr ?? '').trim().isNotEmpty)
+                  const SizedBox(height: 8),
+                if ((r.rejectionReasonManagerHr ?? '').trim().isNotEmpty)
+                  _rejectionReasonBox(
+                    label: 'Manager HR',
+                    reason: r.rejectionReasonManagerHr!.trim(),
+                  ),
+                if ((r.rejectionReasonKepalaDept ?? '').trim().isEmpty &&
+                    (r.rejectionReasonManagerHr ?? '').trim().isEmpty)
+                  _rejectionReasonBox(
+                    label: 'Keterangan',
+                    reason: 'Pengajuan ditolak.',
+                  ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _rejectionReasonBox({required String label, required String reason}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFB91C1C),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            reason,
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF7F1D1D),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

@@ -122,8 +122,8 @@ func (r *pengajuanIzinCutiRepository) UpdateKepalaDepartemenDecision(
 	setFields := bson.M{
 		"kepala_departemen_id":     kepalaDepartemenID,
 		"status_kepala_departemen": statusKepalaDepartemen,
-		"final_status":            finalStatus,
-		"updated_at":              now,
+		"final_status":             finalStatus,
+		"updated_at":               now,
 	}
 	if statusKepalaDepartemen == models.StatusRejected && rejectionReason != "" {
 		setFields["rejection_reason_kepala_dept"] = rejectionReason

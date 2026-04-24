@@ -10,6 +10,8 @@ class LeaveRequest {
   final String statusFinal; // raw: PENDING/APPROVED/REJECTED
   final String statusKepala; // status_kepala_departemen
   final String statusManagerHr; // status_manager_hr
+  final String? rejectionReasonKepalaDept;
+  final String? rejectionReasonManagerHr;
   final int days; // total_hari
   final String? startTime; // lembur: jam mulai
   final String? endTime; // lembur: jam selesai
@@ -27,6 +29,8 @@ class LeaveRequest {
     required this.statusFinal,
     required this.statusKepala,
     required this.statusManagerHr,
+    this.rejectionReasonKepalaDept,
+    this.rejectionReasonManagerHr,
     required this.days,
     this.startTime,
     this.endTime,
@@ -74,6 +78,15 @@ class LeaveRequest {
       statusManagerHr: (json['status_manager_hr'] ?? 'PENDING')
           .toString()
           .toUpperCase(),
+        rejectionReasonKepalaDept:
+          (json['rejection_reason_kepala_dept'] ??
+              json['rejectionReasonKepalaDept'])
+            ?.toString(),
+        rejectionReasonManagerHr:
+          (json['rejection_reason_manager_hr'] ??
+              json['rejectionReasonManagerHr'] ??
+              json['rejection_reason'])
+            ?.toString(),
       days: _toInt(daysRaw),
       startTime: json['start_time']?.toString(),
       endTime: json['end_time']?.toString(),
@@ -129,6 +142,14 @@ class LeaveRequest {
   /// Apakah pengajuan ini sudah disetujui
   bool get isApproved => statusFinal == 'APPROVED';
 
+  String? get primaryRejectionReason {
+    final hr = rejectionReasonManagerHr?.trim();
+    if (hr != null && hr.isNotEmpty) return hr;
+    final kepala = rejectionReasonKepalaDept?.trim();
+    if (kepala != null && kepala.isNotEmpty) return kepala;
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'type': type,
@@ -136,6 +157,11 @@ class LeaveRequest {
     'end_date': endDate.toIso8601String(),
     'reason': reason,
     'status': status,
+    'status_final': statusFinal,
+    'status_kepala_departemen': statusKepala,
+    'status_manager_hr': statusManagerHr,
+    'rejection_reason_kepala_dept': rejectionReasonKepalaDept,
+    'rejection_reason_manager_hr': rejectionReasonManagerHr,
     'days': days,
     'start_time': startTime,
     'end_time': endTime,

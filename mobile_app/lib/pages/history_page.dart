@@ -16,6 +16,7 @@ class HistoryPage extends StatefulWidget {
 
 class _HistoryPageState extends State<HistoryPage> {
   DateTime _selectedMonth = DateTime.now();
+  DateTime? _selectedDate;
   String _selectedFilter = 'Semua';
 
   /// Gabungan record absensi real + sintetis dari pengajuan APPROVED
@@ -176,6 +177,7 @@ class _HistoryPageState extends State<HistoryPage> {
         final mOk =
             r.date.month == _selectedMonth.month &&
             r.date.year == _selectedMonth.year;
+        final dOk = _selectedDate == null || _isSameDay(r.date, _selectedDate!);
         // Filter 'Lembur' cocok dengan status 'Lembur' ATAU 'Overtime'
         bool sOk;
         if (statusFilter == null) {
@@ -185,7 +187,7 @@ class _HistoryPageState extends State<HistoryPage> {
         } else {
           sOk = r.status == statusFilter;
         }
-        return mOk && sOk;
+        return mOk && dOk && sOk;
       }).toList())..sort((a, b) => b.date.compareTo(a.date));
     });
   }
@@ -197,8 +199,183 @@ class _HistoryPageState extends State<HistoryPage> {
         _selectedMonth.month + delta,
         1,
       );
+      _selectedDate = null;
     });
     _loadData();
+  }
+
+  Future<void> _pickMonthYear() async {
+    final picked = await showModalBottomSheet<DateTime>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        var tempYear = _selectedMonth.year;
+        var tempMonth = _selectedMonth.month;
+        final monthLabels = List.generate(
+          12,
+          (i) => DateFormat('MMM', 'id').format(DateTime(2000, i + 1, 1)).toUpperCase(),
+        );
+
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pilih Periode',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => setModalState(() => tempYear -= 1),
+                          icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                          label: const Text(''),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF334155),
+                          ),
+                        ),
+                        Text(
+                          '$tempYear',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => setModalState(() => tempYear += 1),
+                          label: const Text(''),
+                          icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF334155),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: 12,
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        mainAxisSpacing: 8,
+                        crossAxisSpacing: 8,
+                        childAspectRatio: 2.4,
+                      ),
+                      itemBuilder: (_, i) {
+                        final month = i + 1;
+                        final selected = month == tempMonth;
+                        return InkWell(
+                          onTap: () => setModalState(() => tempMonth = month),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? const Color(0xFF135BEC).withOpacity(0.1)
+                                  : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: selected
+                                    ? const Color(0xFF135BEC).withOpacity(0.3)
+                                    : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Text(
+                              monthLabels[i],
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: selected
+                                    ? const Color(0xFF135BEC)
+                                    : const Color(0xFF475569),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop(DateTime(tempYear, tempMonth, 1));
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF135BEC),
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Pilih Periode'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedMonth = DateTime(picked.year, picked.month, 1);
+      _selectedDate = null;
+    });
+    _loadData();
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Future<void> _pickDateFilter() async {
+    final firstDay = DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+    final lastDay = DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+    final initialDate = _selectedDate ?? _selectedMonth;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate.isBefore(firstDay)
+          ? firstDay
+          : (initialDate.isAfter(lastDay) ? lastDay : initialDate),
+      firstDate: firstDay,
+      lastDate: lastDay,
+      helpText: 'Pilih hanya tanggal di ${_fmt(_selectedMonth, 'MMMM yyyy')}',
+      locale: const Locale('id', 'ID'),
+    );
+
+    if (picked == null || !mounted) return;
+    setState(() {
+      _selectedDate = DateTime(picked.year, picked.month, picked.day);
+    });
+    _applyFilter();
+  }
+
+  void _clearDateFilter() {
+    if (_selectedDate == null) return;
+    setState(() {
+      _selectedDate = null;
+    });
+    _applyFilter();
   }
 
   // ── Statistik banner (dari _all yang sudah merged) ────────────────────────
@@ -415,42 +592,81 @@ class _HistoryPageState extends State<HistoryPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              IconButton(
-                icon: const Icon(
-                  Icons.chevron_left,
-                  color: Colors.white,
-                  size: 22,
+              InkWell(
+                onTap: () => _changeMonth(-1),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Column(
+                    children: const [
+                      Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ],
+                  ),
                 ),
-                onPressed: () => _changeMonth(-1),
-                padding: EdgeInsets.zero,
               ),
-              Column(
-                children: [
-                  Text(
-                    'Periode Saat Ini',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
-                      fontSize: 11,
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _pickMonthYear,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Periode Saat Ini',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 11,
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _fmt(_selectedMonth, 'MMMM yyyy'),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  Text(
-                    _fmt(_selectedMonth, 'MMMM yyyy'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
+                ),
+              ),
+              InkWell(
+                onTap: isCurrent ? null : () => _changeMonth(1),
+                borderRadius: BorderRadius.circular(10),
+                child: Opacity(
+                  opacity: isCurrent ? 0.4 : 1,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Column(
+                      children: const [
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+
+                      ],
                     ),
                   ),
-                ],
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.chevron_right,
-                  color: isCurrent ? Colors.white30 : Colors.white,
-                  size: 22,
                 ),
-                onPressed: isCurrent ? null : () => _changeMonth(1),
-                padding: EdgeInsets.zero,
               ),
             ],
           ),
@@ -501,50 +717,170 @@ class _HistoryPageState extends State<HistoryPage> {
 
   // ── Filter chips ──────────────────────────────────────────────────────────
   Widget _buildFilterChips() {
+    final hasDateFilter = _selectedDate != null;
+
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: _filters.map((f) {
-            final sel = _selectedFilter == f;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedFilter = f);
-                  _applyFilter();
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 9,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Row(
+                    children: _filters.map((f) {
+                      final sel = _selectedFilter == f;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _selectedFilter = f);
+                            _applyFilter();
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? const Color(0xFF135BEC).withOpacity(0.08)
+                                  : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: sel
+                                    ? const Color(0xFF135BEC).withOpacity(0.25)
+                                    : Colors.grey.shade200,
+                              ),
+                            ),
+                            child: Text(
+                              f,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: sel
+                                    ? const Color(0xFF135BEC)
+                                    : Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
-                  decoration: BoxDecoration(
-                    color: sel ? const Color(0xFF135BEC) : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
+                ),
+                Positioned(
+                  left: 0,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                    ],
-                  ),
-                  child: Text(
-                    f,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: sel ? Colors.white : Colors.grey.shade600,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_back_ios_new_rounded,
+                            color: Colors.grey.shade500,
+                            size: 12,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
+                Positioned(
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: Colors.grey.shade500,
+                            size: 12,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Material(
+            color: hasDateFilter
+                ? const Color(0xFF135BEC).withOpacity(0.08)
+                : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              onTap: _pickDateFilter,
+              onLongPress: hasDateFilter ? _clearDateFilter : null,
+              borderRadius: BorderRadius.circular(14),
+              child: Tooltip(
+                message: hasDateFilter
+                    ? 'Tanggal: ${_fmt(_selectedDate!, 'dd MMM yyyy')} (tekan lama untuk reset)'
+                    : 'Filter tanggal',
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: hasDateFilter
+                          ? const Color(0xFF135BEC).withOpacity(0.3)
+                          : Colors.grey.shade200,
+                    ),
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        size: 16,
+                        color: hasDateFilter
+                            ? const Color(0xFF135BEC)
+                            : const Color(0xFF475569),
+                      ),
+                      if (hasDateFilter)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF135BEC),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-            );
-          }).toList(),
-        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -584,6 +920,9 @@ class _HistoryPageState extends State<HistoryPage> {
     }
 
     if (_filtered.isEmpty) {
+      final dateLabel = _selectedDate == null
+          ? ''
+          : ' pada ${_fmt(_selectedDate!, 'dd MMM yyyy')}';
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -595,7 +934,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Tidak ada data "$_selectedFilter"\nuntuk ${_fmt(_selectedMonth, 'MMMM yyyy')}',
+              'Tidak ada data "$_selectedFilter"$dateLabel\nuntuk ${_fmt(_selectedMonth, 'MMMM yyyy')}',
               style: TextStyle(color: Colors.grey.shade500),
               textAlign: TextAlign.center,
             ),
@@ -630,11 +969,12 @@ class _HistoryPageState extends State<HistoryPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -683,16 +1023,16 @@ class _HistoryPageState extends State<HistoryPage> {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: sc.withOpacity(0.1),
+                    color: sc.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: sc.withOpacity(0.3)),
+                    border: Border.all(color: sc.withOpacity(0.16)),
                   ),
                   child: Text(
                     sl,
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: sc,
+                      color: sc.withOpacity(0.85),
                     ),
                   ),
                 ),
@@ -838,12 +1178,12 @@ class _HistoryPageState extends State<HistoryPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: sc.withOpacity(0.25), width: 1.5),
+        border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: sc.withOpacity(0.07),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -859,7 +1199,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   height: 44,
                   width: 44,
                   decoration: BoxDecoration(
-                    color: sc.withOpacity(0.1),
+                    color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: sc, size: 22),
@@ -891,7 +1231,7 @@ class _HistoryPageState extends State<HistoryPage> {
                       Text(
                         r.leaveType ?? r.status,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF0F172A),
                         ),
@@ -917,10 +1257,10 @@ class _HistoryPageState extends State<HistoryPage> {
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2ECC71).withOpacity(0.1),
+                          color: const Color(0xFF2ECC71).withOpacity(0.08),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: const Color(0xFF2ECC71).withOpacity(0.3),
+                            color: const Color(0xFF2ECC71).withOpacity(0.16),
                           ),
                         ),
                         child: Row(
@@ -953,16 +1293,16 @@ class _HistoryPageState extends State<HistoryPage> {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: sc.withOpacity(0.1),
+                    color: sc.withOpacity(0.07),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: sc.withOpacity(0.3)),
+                    border: Border.all(color: sc.withOpacity(0.16)),
                   ),
                   child: Text(
                     sl,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: sc,
+                      color: sc.withOpacity(0.85),
                     ),
                   ),
                 ),
@@ -972,7 +1312,7 @@ class _HistoryPageState extends State<HistoryPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             decoration: BoxDecoration(
-              color: sc.withOpacity(0.04),
+              color: Colors.grey.shade50,
               borderRadius: const BorderRadius.vertical(
                 bottom: Radius.circular(18),
               ),
@@ -982,14 +1322,14 @@ class _HistoryPageState extends State<HistoryPage> {
                 Icon(
                   Icons.assignment_turned_in_outlined,
                   size: 13,
-                  color: sc.withOpacity(0.7),
+                  color: Colors.grey.shade500,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'Tidak hadir · Pengajuan telah disetujui',
                   style: TextStyle(
                     fontSize: 11,
-                    color: sc.withOpacity(0.8),
+                    color: Colors.grey.shade600,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1006,8 +1346,9 @@ class _HistoryPageState extends State<HistoryPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: Colors.grey.shade50,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1020,7 +1361,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 label,
                 style: TextStyle(
                   fontSize: 9,
-                  color: color,
+                  color: Colors.grey.shade600,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.3,
                 ),
@@ -1033,7 +1374,7 @@ class _HistoryPageState extends State<HistoryPage> {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.bold,
-              color: color,
+              color: const Color(0xFF0F172A),
             ),
           ),
         ],
@@ -1044,19 +1385,19 @@ class _HistoryPageState extends State<HistoryPage> {
   Color _statusColor(String s) {
     switch (s) {
       case 'Tepat Waktu':
-        return const Color(0xFF2ECC71);
+        return const Color(0xFF059669);
       case 'Terlambat':
-        return const Color(0xFFF59E0B);
+        return const Color(0xFFD97706);
       case 'Absent':
         return const Color(0xFF94A3B8);
       case 'Overtime':
-        return const Color(0xFF8B5CF6);
+        return const Color(0xFF7C3AED);
       case 'Izin':
-        return const Color(0xFF135BEC);
+        return const Color(0xFF2563EB);
       case 'Cuti':
-        return const Color(0xFF8B5CF6);
+        return const Color(0xFF6366F1);
       case 'Lembur':
-        return const Color(0xFFF59E0B);
+        return const Color(0xFFD97706);
       default:
         return Colors.grey;
     }
