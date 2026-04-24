@@ -74,6 +74,29 @@ var allowedBreakWindows = []BreakWindow{
 	{StartHour: 19, EndHour: 20},
 }
 
+func formatBreakWindowRange(w BreakWindow) string {
+	return fmt.Sprintf("%02d:00-%02d:00", w.StartHour, w.EndHour)
+}
+
+func formatAllowedBreakWindows() string {
+	parts := make([]string, 0, len(allowedBreakWindows))
+	for _, w := range allowedBreakWindows {
+		parts = append(parts, formatBreakWindowRange(w))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func isInAllowedBreakWindow(nowWIB time.Time) (bool, string) {
+	for _, w := range allowedBreakWindows {
+		start := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), w.StartHour, 0, 0, 0, wib)
+		end := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), w.EndHour, 0, 0, 0, wib)
+		if !nowWIB.Before(start) && nowWIB.Before(end) {
+			return true, formatBreakWindowRange(w)
+		}
+	}
+	return false, ""
+}
+
 type AttendanceProcessResult struct {
 	Success           bool               `json:"success"`
 	Message           string             `json:"message"`
@@ -484,6 +507,10 @@ func (s *attendanceService) StartBreak(ctx context.Context, userID string) (*mod
 	}
 
 	nowWIB := time.Now().In(wib)
+	inWindow, _ := isInAllowedBreakWindow(nowWIB)
+	if !inWindow {
+		return nil, fmt.Errorf("break hanya dapat dimulai pada jam %s WIB", formatAllowedBreakWindows())
+	}
 
 	activeBreak, err := s.breakTimeRepo.FindActiveTodayByUserID(ctx, userID)
 	if err != nil {
@@ -545,6 +572,11 @@ func (s *attendanceService) EndBreak(ctx context.Context, userID string) (*model
 	}
 
 	nowWIB := time.Now().In(wib)
+	inWindow, _ := isInAllowedBreakWindow(nowWIB)
+	if !inWindow {
+		return nil, fmt.Errorf("break hanya dapat diakhiri pada jam %s WIB", formatAllowedBreakWindows())
+	}
+
 	if err := s.breakTimeRepo.UpdateEnd(ctx, breakRecord.ID, nowWIB, "DONE"); err != nil {
 		return nil, err
 	}
@@ -566,7 +598,28 @@ func (s *attendanceService) GetTodayAttendance(ctx context.Context, userID strin
 	if err != nil {
 		return nil, errors.New("invalid user ID format")
 	}
-	return s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	attendance, err := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	if err != nil || attendance == nil {
+		return attendance, err
+	}
+
+	if attendance.BreakStartTime == nil || attendance.BreakEndTime == nil {
+		breakRecord, breakErr := s.breakTimeRepo.FindTodayByUserID(ctx, userID)
+		if breakErr == nil && breakRecord != nil {
+			if attendance.BreakStartTime == nil {
+				start := breakRecord.StartTime
+				if !start.IsZero() {
+					attendance.BreakStartTime = &start
+				}
+			}
+			if attendance.BreakEndTime == nil && !breakRecord.EndTime.IsZero() {
+				end := breakRecord.EndTime
+				attendance.BreakEndTime = &end
+			}
+		}
+	}
+
+	return attendance, nil
 }
 
 func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID string, month, year int) (*models.MonthlyAttendanceResponse, error) {
@@ -574,7 +627,43 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 	if err != nil {
 		return nil, errors.New("invalid user ID format")
 	}
-	return s.attendanceRepo.GetMonthlySummary(ctx, userObjID, year, month)
+
+	summary, err := s.attendanceRepo.GetMonthlySummary(ctx, userObjID, year, month)
+	if err != nil || summary == nil {
+		return summary, err
+	}
+
+	breakRecords, breakErr := s.breakTimeRepo.FindByUserIDAndMonth(ctx, userID, year, month)
+	if breakErr != nil || len(breakRecords) == 0 {
+		return summary, nil
+	}
+
+	breakByDate := make(map[string]models.BreakTime)
+	for _, br := range breakRecords {
+		dateKey := br.Date.In(wib).Format("2006-01-02")
+		if _, exists := breakByDate[dateKey]; !exists {
+			breakByDate[dateKey] = br
+		}
+	}
+
+	for i := range summary.Records {
+		rec := &summary.Records[i]
+		if rec.BreakStartTime != "" && rec.BreakEndTime != "" {
+			continue
+		}
+		br, ok := breakByDate[rec.Date]
+		if !ok {
+			continue
+		}
+		if rec.BreakStartTime == "" && !br.StartTime.IsZero() {
+			rec.BreakStartTime = br.StartTime.In(wib).Format("15:04")
+		}
+		if rec.BreakEndTime == "" && !br.EndTime.IsZero() {
+			rec.BreakEndTime = br.EndTime.In(wib).Format("15:04")
+		}
+	}
+
+	return summary, nil
 }
 
 func (s *attendanceService) resolveUserFromIdentifier(ctx context.Context, identifier string) (*models.User, string, error) {

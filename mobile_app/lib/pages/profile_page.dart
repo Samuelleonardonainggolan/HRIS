@@ -133,17 +133,17 @@ class _ProfilePageState extends State<ProfilePage> {
                       onRefresh: _loadProfile,
                       child: SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                         child: Column(
                           children: [
                             _buildProfileCard(),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 16),
                             _buildPersonalInfo(),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 16),
                             _buildEmploymentInfo(),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 16),
                             _buildSettings(),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 32),
                           ],
                         ),
                       ),
@@ -294,170 +294,257 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Profile Card — compact horizontal ─────────────────────────────────────
+  // ── Profile Hero Card — centered, full-width ──────────────────────────────
   Widget _buildProfileCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      width: double.infinity,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF135BEC), Color(0xFF2563EB)],
+          colors: [Color(0xFF135BEC), Color(0xFF1E40AF), Color(0xFF1D4ED8)],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF135BEC).withOpacity(0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: const Color(0xFF135BEC).withOpacity(0.4),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          // Avatar kecil di card
-          GestureDetector(
-            onTap: _isEditing ? _pickImage : null,
-            child: Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                Container(
-                  height: 64,
-                  width: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.8),
-                      width: 2.5,
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: _profileImage != null
-                        ? Image.file(_profileImage!, fit: BoxFit.cover)
-                        : Image.network(
-                            _avatarUrl(),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
-                              color: Colors.white,
-                              child: const Icon(
-                                Icons.person,
-                                color: Color(0xFF135BEC),
-                                size: 32,
-                              ),
-                            ),
-                          ),
-                  ),
-                ),
-                if (_isEditing)
-                  Container(
-                    height: 22,
-                    width: 22,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 13,
-                      color: Color(0xFF135BEC),
-                    ),
-                  ),
-              ],
+          // Decorative circles background
+          Positioned(
+            top: -30,
+            right: -30,
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.06),
+              ),
             ),
           ),
-          const SizedBox(width: 14),
-          // Info nama, jabatan, dept
-          Expanded(
+          Positioned(
+            bottom: -20,
+            left: -20,
+            child: Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.05),
+              ),
+            ),
+          ),
+          // Content
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Avatar
+                GestureDetector(
+                  onTap: _isEditing ? _pickImage : null,
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Container(
+                        height: 90,
+                        width: 90,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: _profileImage != null
+                              ? Image.file(_profileImage!, fit: BoxFit.cover)
+                              : Image.network(
+                                  _avatarUrl(),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: Colors.white,
+                                    child: const Icon(
+                                      Icons.person,
+                                      color: Color(0xFF135BEC),
+                                      size: 44,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      if (_isEditing)
+                        Container(
+                          height: 26,
+                          width: 26,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.15),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt,
+                            size: 14,
+                            color: Color(0xFF135BEC),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Name
                 Text(
                   _user?.fullName ?? '-',
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
+                    letterSpacing: 0.3,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
+                // Position
                 Text(
                   _user?.position ?? '-',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.white.withOpacity(0.85),
+                    fontSize: 13,
+                    color: Colors.white.withOpacity(0.8),
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 6),
-                Row(
+                const SizedBox(height: 12),
+                // Department badge + Status badge
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _user?.department ?? '-',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                    _chip(Icons.business_outlined, _user?.department ?? '-'),
+                    _chip(
+                      Icons.circle,
+                      (_user?.isActive ?? false) ? 'Aktif' : 'Non-Aktif',
+                      color: (_user?.isActive ?? false)
+                          ? const Color(0xFF2ECC71)
+                          : const Color(0xFFEF4444),
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          // Edit button compact
-          GestureDetector(
-            onTap: _isSaving
-                ? null
-                : () {
-                    if (_isEditing)
-                      _saveChanges();
-                    else
-                      setState(() => _isEditing = true);
-                  },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.4)),
-              ),
-              child: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2,
-                      ),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _isEditing ? Icons.check : Icons.edit_outlined,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _isEditing ? 'Simpan' : 'Edit',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
+                const SizedBox(height: 20),
+                // Divider
+                Divider(color: Colors.white.withOpacity(0.15), height: 1),
+                const SizedBox(height: 16),
+                // Stats row: NIK | Join date
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _statItem('NIK', _user?.nik ?? '-'),
+                    _verticalDivider(),
+                    _statItem('Bergabung', _fmtDateShort(_user?.joinDate)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Edit / Save button
+                GestureDetector(
+                  onTap: _isSaving
+                      ? null
+                      : () {
+                          if (_isEditing)
+                            _saveChanges();
+                          else
+                            setState(() => _isEditing = true);
+                        },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
+                    child: _isSaving
+                        ? const Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Color(0xFF135BEC),
+                              ),
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _isEditing
+                                    ? Icons.check_circle_outline
+                                    : Icons.edit_outlined,
+                                color: const Color(0xFF135BEC),
+                                size: 17,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isEditing ? 'Simpan Perubahan' : 'Edit Profil',
+                                style: const TextStyle(
+                                  color: Color(0xFF135BEC),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                if (_isEditing) ...[
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _isEditing = false;
+                      _phoneCtrl.text = _user?.phone ?? '';
+                      _addressCtrl.text = _user?.address ?? '';
+                    }),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white.withOpacity(0.4)),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Batal',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
@@ -465,8 +552,80 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Widget _chip(IconData icon, String label, {Color? color}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 10,
+            color: color ?? Colors.white,
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Colors.white,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: Colors.white.withOpacity(0.7),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _verticalDivider() {
+    return Container(
+      height: 28,
+      width: 1,
+      color: Colors.white.withOpacity(0.2),
+    );
+  }
+
+  String _fmtDateShort(DateTime? dt) {
+    if (dt == null) return '-';
+    try {
+      return DateFormat('MMM yyyy', 'id').format(dt);
+    } catch (_) {
+      return '-';
+    }
+  }
+
   Widget _buildPersonalInfo() {
-    return _card('Informasi Pribadi', Icons.person_outline, [
+    return _card('Informasi Pribadi', Icons.person_outline, const Color(0xFF6366F1), [
       _row(Icons.email_outlined, 'Email', _user?.email ?? '-'),
       _div(),
       _row(
@@ -509,14 +668,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildEmploymentInfo() {
-    return _card('Detail Kepegawaian', Icons.work_outline, [
+    return _card('Detail Kepegawaian', Icons.work_outline, const Color(0xFF0EA5E9), [
       _row(Icons.badge_outlined, 'NIK / Payroll', _user?.nik ?? '-'),
       _div(),
       _row(Icons.assignment_ind_outlined, 'Jabatan', _user?.position ?? '-'),
       _div(),
       _row(Icons.business_outlined, 'Departemen', _user?.department ?? '-'),
-      _div(),
-      _row(Icons.verified_user_outlined, 'Role', _user?.role ?? '-'),
       _div(),
       _row(
         Icons.toggle_on_outlined,
@@ -527,7 +684,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildSettings() {
-    return _card('Pengaturan', Icons.settings_outlined, [
+    return _card('Pengaturan', Icons.settings_outlined, const Color(0xFF64748B), [
       _settingTile(
         Icons.lock_outlined,
         'Ganti Password',
@@ -536,40 +693,59 @@ class _ProfilePageState extends State<ProfilePage> {
     ]);
   }
 
-  Widget _card(String title, IconData icon, List<Widget> children) {
+  Widget _card(String title, IconData icon, Color accentColor, List<Widget> children) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: const Color(0xFF135BEC)),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF0F172A),
-                ),
+          // Card header with accent color bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.06),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              border: Border(
+                bottom: BorderSide(color: accentColor.withOpacity(0.1)),
               ),
-            ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 17, color: accentColor),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: accentColor,
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 14),
-          ...children,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            child: Column(children: children),
+          ),
         ],
       ),
     );
@@ -584,12 +760,20 @@ class _ProfilePageState extends State<ProfilePage> {
     bool multi = false,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            (editable && _isEditing) || multi ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 17, color: Colors.grey.shade400),
-          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 15, color: const Color(0xFF475569)),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,27 +783,45 @@ class _ProfilePageState extends State<ProfilePage> {
                   style: TextStyle(
                     fontSize: 10,
                     color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
                   ),
                 ),
-                const SizedBox(height: 2),
-                if (editable && ctrl != null)
+                const SizedBox(height: 3),
+                if (editable && _isEditing && ctrl != null)
                   TextField(
                     controller: ctrl,
                     maxLines: multi ? 3 : 1,
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFF0F172A),
                     ),
                     decoration: InputDecoration(
                       isDense: true,
-                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: Color(0xFF135BEC), width: 1.5),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide:
+                            const BorderSide(color: Color(0xFF135BEC), width: 1.5),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: Colors.grey.shade300),
+                      ),
                       hintText: 'Masukkan $label',
                       hintStyle: TextStyle(
                         color: Colors.grey.shade400,
                         fontSize: 13,
                       ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
                     ),
                   )
                 else
@@ -627,7 +829,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     value,
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontWeight: FontWeight.w600,
                       color: Color(0xFF0F172A),
                     ),
                   ),
@@ -639,36 +841,65 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _div() => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
-    child: Divider(color: Colors.grey.shade100, height: 1),
-  );
+  Widget _div() => Divider(
+        color: const Color(0xFFF1F5F9),
+        height: 1,
+        thickness: 1,
+      );
 
   Widget _settingTile(
     IconData icon,
     String title, {
     Widget? trailing,
     VoidCallback? onTap,
+    Color? iconColor,
   }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: 16, color: Colors.grey.shade600),
-      ),
-      title: Text(
-        title,
-        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-      ),
-      trailing:
-          trailing ??
-          const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
+    return InkWell(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
-      dense: true,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(
+                color: (iconColor ?? const Color(0xFF135BEC)).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                size: 17,
+                color: iconColor ?? const Color(0xFF135BEC),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+            trailing ??
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF94A3B8),
+                    size: 16,
+                  ),
+                ),
+          ],
+        ),
+      ),
     );
   }
 
