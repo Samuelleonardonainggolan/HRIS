@@ -3,10 +3,13 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Upload, Loader2 } from "lucide-react";
+import { toast, Toaster } from "react-hot-toast";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import {
   Select,
   SelectContent,
@@ -25,7 +28,7 @@ export default function AddEmployeePage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const [formData, setFormData] = useState<CreateEmployeeRequest>({
     payroll_number: "",
     full_name: "",
@@ -60,6 +63,7 @@ export default function AddEmployeePage() {
       setDepartments(data);
     } catch (err) {
       console.error("Failed to fetch departments:", err);
+      toast.error("Gagal memuat data departemen");
     }
   };
 
@@ -69,16 +73,12 @@ export default function AddEmployeePage() {
       setPositions(data);
     } catch (err) {
       console.error("Failed to fetch positions:", err);
+      toast.error("Gagal memuat data jabatan");
     }
   };
 
-  const handleBack = () => {
-    router.back();
-  };
-
-  const handleCancel = () => {
-    router.back();
-  };
+  const handleBack = () => router.back();
+  const handleCancel = () => router.back();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,31 +100,80 @@ export default function AddEmployeePage() {
       if (!formData.email) missing.push("Email Kantor");
       if (!formData.phone) missing.push("Nomor Telepon");
       if (!formData.address) missing.push("Alamat");
-      
+
       if (missing.length > 0) {
-        setError(`Field wajib belum diisi: ${missing.join(", ")}`);
+        const msg = `Field wajib belum diisi: ${missing.join(", ")}`;
+        setError(msg);
+        toast.error(msg);
         return;
       }
 
       const response = await employeeService.createEmployee(formData);
-      
-      if (response.temporary_password) {
-        alert(
-          `Pegawai berhasil dibuat!\n\n` +
-          `Email: ${formData.email}\n` +
-          `Password Sementara: ${response.temporary_password}\n\n` +
-          `Mohon catat password ini dan berikan kepada karyawan.`
+
+      // ✅ toast success like geofencing
+      toast.success("Pegawai berhasil dibuat");
+
+      // ✅ show temporary password (if any) using custom toast (no alert)
+      if (response?.temporary_password) {
+        const tempPass = response.temporary_password;
+
+        toast.custom(
+          (t) => (
+            <div className="rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-[360px]">
+              <div className="text-sm font-semibold text-gray-900 mb-1">
+                Akun berhasil dibuat
+              </div>
+
+              <div className="text-xs text-gray-600">
+                Email: <span className="font-medium">{formData.email}</span>
+              </div>
+
+              <div className="text-xs text-gray-600 mt-1">
+                Password sementara:{" "}
+                <span className="font-mono font-semibold text-gray-900">
+                  {tempPass}
+                </span>
+              </div>
+
+              <div className="text-xs text-gray-500 mt-2">
+                Mohon catat password ini dan berikan kepada karyawan.
+              </div>
+
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                  onClick={() => {
+                    navigator.clipboard
+                      .writeText(tempPass)
+                      .then(() => toast.success("Password disalin"))
+                      .catch(() => toast.error("Gagal menyalin password"));
+                  }}
+                >
+                  Salin
+                </button>
+
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                  onClick={() => toast.dismiss(t.id)}
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          ),
+          { duration: 9000 }
         );
-      } else {
-        alert("Pegawai berhasil dibuat!");
       }
-      
+
       router.push("/dashboard/manager-hr/karyawan");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal membuat pegawai. Silakan coba lagi.";
       console.error("Failed to create employee:", err);
       setError(message);
+      toast.error(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -134,25 +183,27 @@ export default function AddEmployeePage() {
     try {
       const blob = await employeeService.downloadTemplate();
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = 'employee_template.xlsx';
+      a.download = "employee_template.xlsx";
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      toast.success("Template berhasil diunduh");
     } catch (err) {
       console.error("Failed to download template:", err);
-      alert("Gagal mengunduh template");
+      toast.error("Gagal mengunduh template");
     }
   };
 
-  const handleImportExcel = () => {
-    setIsImportModalOpen(true);
-  };
+  const handleImportExcel = () => setIsImportModalOpen(true);
 
   return (
     <>
+      {/* ✅ Toast container */}
+      <Toaster position="top-right" />
+
       <div className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-5xl mx-auto">
           {/* Breadcrumb */}
@@ -197,6 +248,7 @@ export default function AddEmployeePage() {
                       variant="outline"
                       onClick={handleDownloadTemplate}
                       className="flex items-center gap-2"
+                      disabled={isSubmitting}
                     >
                       <Download className="h-4 w-4" />
                       Unduh Template
@@ -204,6 +256,7 @@ export default function AddEmployeePage() {
                     <Button
                       onClick={handleImportExcel}
                       className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                      disabled={isSubmitting}
                     >
                       <Upload className="h-4 w-4" />
                       Import Excel
@@ -219,9 +272,9 @@ export default function AddEmployeePage() {
                     {error}
                   </div>
                 )}
-                
+
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Row 1: Payroll Number & Nama Lengkap */}
+                  {/* Row 1 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="payroll_number" className="text-sm font-medium text-gray-700">
@@ -256,7 +309,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 2: Tanggal Lahir & Agama */}
+                  {/* Row 2 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="birth_date" className="text-sm font-medium text-gray-700">
@@ -299,7 +352,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 3: Pendidikan & Tahun Masuk */}
+                  {/* Row 3 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="last_education" className="text-sm font-medium text-gray-700">
@@ -343,7 +396,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 4: Status Kepegawaian & Departemen */}
+                  {/* Row 4 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="employment_status" className="text-sm font-medium text-gray-700">
@@ -391,7 +444,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 5: Jabatan & Email Kantor */}
+                  {/* Row 5 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="position_id" className="text-sm font-medium text-gray-700">
@@ -405,7 +458,13 @@ export default function AddEmployeePage() {
                         disabled={!formData.department_id}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder={formData.department_id ? "Pilih Jabatan" : "Pilih Departemen Terlebih Dahulu"} />
+                          <SelectValue
+                            placeholder={
+                              formData.department_id
+                                ? "Pilih Jabatan"
+                                : "Pilih Departemen Terlebih Dahulu"
+                            }
+                          />
                         </SelectTrigger>
                         <SelectContent>
                           {positions.map((pos) => (
@@ -435,7 +494,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 6: Nomor Telepon & Role */}
+                  {/* Row 6 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label htmlFor="phone" className="text-sm font-medium text-gray-700">
@@ -468,8 +527,12 @@ export default function AddEmployeePage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="staf">Staf</SelectItem>
-                          <SelectItem value="manager_departemen">Manager Departemen</SelectItem>
-                          <SelectItem value="admin_departemen">Admin Departemen</SelectItem>
+                          <SelectItem value="manager_departemen">
+                            Manager Departemen
+                          </SelectItem>
+                          <SelectItem value="admin_departemen">
+                            Admin Departemen
+                          </SelectItem>
                           <SelectItem value="accountant">Accountant</SelectItem>
                           <SelectItem value="manager_hr">Manager HR</SelectItem>
                         </SelectContent>
@@ -477,7 +540,7 @@ export default function AddEmployeePage() {
                     </div>
                   </div>
 
-                  {/* Row 7: Alamat Lengkap */}
+                  {/* Row 7 */}
                   <div className="space-y-2">
                     <Label htmlFor="address" className="text-sm font-medium text-gray-700">
                       ALAMAT LENGKAP <span className="text-red-500">*</span>
@@ -529,10 +592,7 @@ export default function AddEmployeePage() {
       </div>
 
       {/* Import Excel Modal */}
-      <ImportExcelModal
-        open={isImportModalOpen}
-        onOpenChange={setIsImportModalOpen}
-      />
+      <ImportExcelModal open={isImportModalOpen} onOpenChange={setIsImportModalOpen} />
     </>
   );
 }

@@ -1,14 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Eye, Check, X } from "lucide-react";
+import { Search, Eye, X } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-type Status = "Menunggu" | "Disetujui" | "Ditolak";
 
 type FaceRequestRow = {
   id: string;
@@ -22,33 +19,9 @@ type FaceRequestRow = {
   submittedAt: string; // display "12 Okt 2023"
   submittedAtTime: string; // "09:41"
 
-  status: Status;
-
   email: string;
   faceImageUrl: string; // preview image
 };
-
-function StatusBadge({ status }: { status: Status }) {
-  if (status === "Menunggu") {
-    return (
-      <Badge className="rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
-        Menunggu
-      </Badge>
-    );
-  }
-  if (status === "Disetujui") {
-    return (
-      <Badge className="rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200">
-        Disetujui
-      </Badge>
-    );
-  }
-  return (
-    <Badge className="rounded-lg bg-rose-50 text-rose-700 border border-rose-200">
-      Ditolak
-    </Badge>
-  );
-}
 
 function Avatar({ name }: { name: string }) {
   const initials = useMemo(() => {
@@ -86,14 +59,11 @@ function ImagePreviewModal({
       aria-modal="true"
       role="dialog"
       onMouseDown={(e) => {
-        // close on backdrop click
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" />
 
-      {/* Modal */}
       <div className="relative h-full w-full flex items-center justify-center p-4">
         <Card className="w-full max-w-2xl rounded-2xl shadow-xl">
           <CardContent className="p-0">
@@ -137,13 +107,12 @@ function ImagePreviewModal({
 export default function PersetujuanRegistrasiWajahPage() {
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("Semua Departemen");
-  const [status, setStatus] = useState<Status | "Semua Status">("Semua Status");
 
   // ✅ state modal
   const [openModal, setOpenModal] = useState(false);
   const [modalRowId, setModalRowId] = useState<string>("");
 
-  // mock data (ganti ke fetch API nanti)
+  // mock data (nanti ganti ke fetch API)
   const rows: FaceRequestRow[] = useMemo(
     () => [
       {
@@ -154,7 +123,6 @@ export default function PersetujuanRegistrasiWajahPage() {
         positionName: "Senior Developer",
         submittedAt: "12 Okt 2023",
         submittedAtTime: "09:41",
-        status: "Menunggu",
         email: "siti.rahmawati@sapphire.id",
         faceImageUrl: "https://picsum.photos/seed/face-1/800/800",
       },
@@ -166,7 +134,6 @@ export default function PersetujuanRegistrasiWajahPage() {
         positionName: "Marketing Specialist",
         submittedAt: "11 Okt 2023",
         submittedAtTime: "10:05",
-        status: "Disetujui",
         email: "andi.pratama@sapphire.id",
         faceImageUrl: "https://picsum.photos/seed/face-2/800/800",
       },
@@ -178,7 +145,6 @@ export default function PersetujuanRegistrasiWajahPage() {
         positionName: "Sales Manager",
         submittedAt: "10 Okt 2023",
         submittedAtTime: "15:20",
-        status: "Ditolak",
         email: "budi.wijaya@sapphire.id",
         faceImageUrl: "https://picsum.photos/seed/face-3/800/800",
       },
@@ -203,11 +169,10 @@ export default function PersetujuanRegistrasiWajahPage() {
         r.positionName.toLowerCase().includes(qq);
 
       const matchDept = dept === "Semua Departemen" || r.departmentName === dept;
-      const matchStatus = status === "Semua Status" || r.status === status;
 
-      return matchQ && matchDept && matchStatus;
+      return matchQ && matchDept;
     });
-  }, [rows, q, dept, status]);
+  }, [rows, q, dept]);
 
   const [selectedId, setSelectedId] = useState<string>(() => rows[0]?.id ?? "");
   const selected = useMemo(
@@ -219,14 +184,6 @@ export default function PersetujuanRegistrasiWajahPage() {
     () => rows.find((r) => r.id === modalRowId) ?? null,
     [rows, modalRowId]
   );
-
-  function onApprove() {
-    alert("Setujui (mock)");
-  }
-
-  function onReject() {
-    alert("Tolak (mock)");
-  }
 
   function openDetailModal(rowId: string) {
     setModalRowId(rowId);
@@ -282,17 +239,6 @@ export default function PersetujuanRegistrasiWajahPage() {
                   </option>
                 ))}
               </select>
-
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
-                className="h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700"
-              >
-                <option value="Semua Status">Semua Status</option>
-                <option value="Menunggu">Menunggu</option>
-                <option value="Disetujui">Disetujui</option>
-                <option value="Ditolak">Ditolak</option>
-              </select>
             </div>
 
             {/* table */}
@@ -308,9 +254,6 @@ export default function PersetujuanRegistrasiWajahPage() {
                     </th>
                     <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Tanggal Pengajuan
-                    </th>
-                    <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Status
                     </th>
                     <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Aksi
@@ -360,10 +303,6 @@ export default function PersetujuanRegistrasiWajahPage() {
                         </td>
 
                         <td className="px-5 py-4">
-                          <StatusBadge status={r.status} />
-                        </td>
-
-                        <td className="px-5 py-4">
                           <div className="flex items-center justify-end gap-2">
                             <Button
                               variant="outline"
@@ -371,7 +310,7 @@ export default function PersetujuanRegistrasiWajahPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedId(r.id);
-                                openDetailModal(r.id); // ✅ buka modal
+                                openDetailModal(r.id);
                               }}
                               title="Lihat detail"
                             >
@@ -386,7 +325,7 @@ export default function PersetujuanRegistrasiWajahPage() {
                   {filtered.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={4}
                         className="px-6 py-10 text-center text-sm text-gray-500"
                       >
                         Tidak ada data.
@@ -422,12 +361,8 @@ export default function PersetujuanRegistrasiWajahPage() {
                     <div className="font-semibold text-gray-900">
                       {selected.fullName}
                     </div>
-                    <div className="text-sm text-gray-600">
-                      {selected.positionName}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {selected.departmentName}
-                    </div>
+                    <div className="text-sm text-gray-600">{selected.positionName}</div>
+                    <div className="text-xs text-gray-500">{selected.departmentName}</div>
                   </div>
                 </div>
 
@@ -450,14 +385,10 @@ export default function PersetujuanRegistrasiWajahPage() {
                   </div>
                 </div>
 
+                {/* ✅ tidak ada tombol Setujui / Tolak / Minta Unggah Ulang */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-gray-900">
-                      Verifikasi Wajah
-                    </div>
-                    <Badge className="rounded-lg bg-amber-50 text-amber-700 border border-amber-200">
-                      Menunggu Audit
-                    </Badge>
+                  <div className="text-sm font-semibold text-gray-900">
+                    Foto Registrasi Wajah
                   </div>
 
                   <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
@@ -468,28 +399,12 @@ export default function PersetujuanRegistrasiWajahPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
-                      onClick={onApprove}
-                      disabled={selected.status !== "Menunggu"}
-                    >
-                      <Check className="h-4 w-4" />
-                      Setujui
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 gap-2"
-                      onClick={onReject}
-                      disabled={selected.status !== "Menunggu"}
-                    >
-                      <X className="h-4 w-4" />
-                      Tolak
-                    </Button>
-                  </div>
-
-                  <Button variant="ghost" className="w-full rounded-xl text-gray-600">
-                    Minta Unggah Ulang
+                  <Button
+                    variant="outline"
+                    className="w-full rounded-xl"
+                    onClick={() => openDetailModal(selected.id)}
+                  >
+                    Lihat Detail Gambar
                   </Button>
                 </div>
               </div>
