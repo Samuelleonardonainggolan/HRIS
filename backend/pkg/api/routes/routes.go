@@ -116,6 +116,9 @@ func SetupRoutes(
 			{
 				positions.GET("", positionHandler.GetAllPositions)
 				positions.GET("/:id", positionHandler.GetPositionByID)
+				positions.POST("", positionHandler.CreatePosition)
+				positions.PUT("/:id", positionHandler.UpdatePosition)
+				positions.DELETE("/:id", positionHandler.DeletePosition)
 			}
 
 			protected.GET("/employees/my-department", middleware.ManagerDepartemenOnly(), userHandler.GetEmployeesMyDepartment)

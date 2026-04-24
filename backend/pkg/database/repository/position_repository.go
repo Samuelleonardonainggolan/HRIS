@@ -17,6 +17,8 @@ type PositionRepository interface {
 	FindAll(ctx context.Context) ([]models.Position, error)
 	FindByDepartment(ctx context.Context, departmentID string) ([]models.Position, error)
 	Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error
+	Create(ctx context.Context, position *models.Position) error
+	Delete(ctx context.Context, id string) error
 }
 
 type positionRepository struct {
@@ -79,6 +81,32 @@ func (r *positionRepository) FindByDepartment(ctx context.Context, departmentID 
 		return nil, err
 	}
 	return positions, nil
+}
+
+func (r *positionRepository) Create(ctx context.Context, position *models.Position) error {
+	position.ID = primitive.NewObjectID()
+	position.CreatedAt = time.Now()
+	position.UpdatedAt = time.Now()
+	position.IsActive = true
+
+	_, err := r.collection.InsertOne(ctx, position)
+	return err
+}
+
+func (r *positionRepository) Delete(ctx context.Context, id string) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid position ID")
+	}
+
+	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objectID})
+	if err != nil {
+		return err
+	}
+	if result.DeletedCount == 0 {
+		return errors.New("position not found")
+	}
+	return nil
 }
 
 func (r *positionRepository) Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error {

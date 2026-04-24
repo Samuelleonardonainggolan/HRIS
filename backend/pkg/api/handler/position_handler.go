@@ -41,6 +41,33 @@ func (h *PositionHandler) GetPositionByID(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Position retrieved successfully", position))
 }
 
+func (h *PositionHandler) CreatePosition(c *gin.Context) {
+	var req models.CreatePositionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+		return
+	}
+
+	position, err := h.positionService.CreatePosition(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to create position", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.SuccessResponse("Position created successfully", position))
+}
+
+func (h *PositionHandler) DeletePosition(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := h.positionService.DeletePosition(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Failed to delete position", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Position deleted successfully", nil))
+}
+
 func (h *PositionHandler) UpdatePosition(c *gin.Context) {
 	id := c.Param("id")
 

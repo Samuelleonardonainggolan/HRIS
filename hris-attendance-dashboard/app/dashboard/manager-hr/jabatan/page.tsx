@@ -8,9 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
 
-// TODO: sesuaikan dengan API Anda
 import { departmentApi } from "@/lib/api/department";
-// Jika ada: import { positionApi } from "@/lib/api/position";
+import { positionApi } from "@/lib/api/position";
 import { employeeService } from "@/lib/api/employee";
 
 type Status = "Aktif" | "Nonaktif";
@@ -68,15 +67,14 @@ export default function DepartmentPositionsPage() {
       });
 
       // 2) Get positions by department
-      // Sesuaikan: kalau Anda punya positionApi.getByDepartment(departmentId)
-      const allPositions = await employeeService.getAllPositions(departmentId);
+      const allPositions = await positionApi.getAll(departmentId);
 
       // 3) (Opsional) hitung staf per posisi dari employees
       let staffByPosition: Record<string, number> = {};
       try {
         const employees = await employeeService.getAllEmployees();
         staffByPosition = employees.reduce<Record<string, number>>((acc, emp) => {
-          const posId = emp.position_id;
+          const posId = (emp as { position_id?: string }).position_id;
           if (!posId) return acc;
           acc[posId] = (acc[posId] || 0) + 1;
           return acc;
@@ -91,7 +89,7 @@ export default function DepartmentPositionsPage() {
         name: p.name ?? "-",
         subTitle: p.description ?? "",
         staffCount: staffByPosition[p.id] ?? 0,
-        status: p.isActive ? "Aktif" : "Nonaktif",
+        status: p.is_active ? "Aktif" : "Nonaktif",
       }));
 
       setPositions(mapped);
@@ -123,24 +121,23 @@ export default function DepartmentPositionsPage() {
   }, [page, totalPages]);
 
   const handleAddPosition = () => {
-    // contoh route add posisi pada departemen ini
-    router.push(`/dashboard/manager-hr/departemen/${departmentId}/posisi/tambah`);
+    const qs = departmentId ? `?departmentId=${departmentId}` : "";
+    router.push(`/dashboard/manager-hr/jabatan/tambah-jabatan${qs}`);
   };
 
   const handleEditPosition = (id: string) => {
-    router.push(`/dashboard/manager-hr/departemen/${departmentId}/posisi/tambah?edit=${id}`);
+    router.push(`/dashboard/manager-hr/jabatan/tambah-jabatan?edit=${id}`);
   };
 
   const handleDeletePosition = async (id: string) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus posisi ini?")) return;
+    if (!confirm("Apakah Anda yakin ingin menghapus jabatan ini?")) return;
     try {
-      // TODO: ganti sesuai API Anda
-      // await positionApi.delete(id);
-      toast.success(`Posisi ${id} berhasil dihapus`);
+      await positionApi.delete(id);
+      toast.success("Jabatan berhasil dihapus");
       await loadData();
     } catch (e) {
       console.error(e);
-      toast.error("Gagal menghapus posisi");
+      toast.error(e instanceof Error ? e.message : "Gagal menghapus jabatan");
     }
   };
 
@@ -151,7 +148,7 @@ export default function DepartmentPositionsPage() {
       : "Apakah Anda yakin ingin menonaktifkan jabatan ini?";
     if (!confirm(confirmText)) return;
     try {
-      await employeeService.updatePosition(pos.id, { is_active: willActivate });
+      await positionApi.update(pos.id, { is_active: willActivate });
       toast.success(willActivate ? "Jabatan berhasil diaktifkan" : "Jabatan berhasil dinonaktifkan");
       await loadData();
     } catch (e) {
