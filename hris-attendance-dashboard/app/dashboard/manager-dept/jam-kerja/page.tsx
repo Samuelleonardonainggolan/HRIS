@@ -337,7 +337,7 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">{r.name}</div>
-                            <div className="text-xs text-gray-500">NIK: {r.nik}</div>
+                            <div className="text-xs text-gray-500">{r.nik}</div>
                           </div>
                         </div>
                       </td>

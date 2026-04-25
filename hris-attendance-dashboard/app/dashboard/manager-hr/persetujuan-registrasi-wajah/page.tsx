@@ -1,11 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Eye, X } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+
+type ApiSuccess<T> = {
+  success?: boolean;
+  message?: string;
+  data: T;
+};
+
+type FaceEmbeddingApprovalItem = {
+  id: string;
+  user_id: string;
+  face_image_url?: string;
+
+  full_name?: string;
+  payroll_number?: string;
+  department_name?: string;
+  position_name?: string;
+  email?: string;
+
+  registered_at?: string; // ISO
+  updated_at?: string; // ISO
+};
 
 type FaceRequestRow = {
   id: string;
@@ -16,12 +37,68 @@ type FaceRequestRow = {
   departmentName: string;
   positionName: string;
 
-  submittedAt: string; // display "12 Okt 2023"
-  submittedAtTime: string; // "09:41"
+  submittedAt: string;
+  submittedAtTime: string;
 
   email: string;
-  faceImageUrl: string; // preview image
+  faceImageUrl: string;
 };
+
+function getToken() {
+  return (
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("auth_token") ||
+    ""
+  );
+}
+
+function joinUrl(base: string, path: string) {
+  const b = base.replace(/\/+$/, "");
+  const p = path.replace(/^\/+/, "");
+  return `${b}/${p}`;
+}
+
+// same helper style you used before
+function apiUrl(base: string, endpoint: string) {
+  const normalized = base.replace(/\/+$/, "");
+  const hasV1 = /\/api\/v1$/.test(normalized);
+  return hasV1 ? joinUrl(normalized, endpoint) : joinUrl(normalized, `api/v1/${endpoint}`);
+}
+
+async function readJsonSafe<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  try {
+    return (text ? JSON.parse(text) : null) as T;
+  } catch {
+    const snippet = text.replace(/\s+/g, " ").slice(0, 300);
+    throw new Error(`Response bukan JSON valid. Status=${res.status}. Body="${snippet}"`);
+  }
+}
+
+function resolveImageUrl(baseApiUrl: string, faceImageUrl?: string) {
+  if (!faceImageUrl) return "";
+  // already absolute
+  if (/^https?:\/\//i.test(faceImageUrl)) return faceImageUrl;
+
+  // if backend returns "/uploads/xxx.jpg", join with BASE_URL
+  return joinUrl(baseApiUrl, faceImageUrl);
+}
+
+function formatDateTime(iso?: string): { date: string; time: string } {
+  if (!iso) return { date: "-", time: "" };
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: "-", time: "" };
+
+  // simple formatting (ID style)
+  const date = d.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+  const time = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  return { date, time };
+}
 
 function Avatar({ name }: { name: string }) {
   const initials = useMemo(() => {
@@ -72,23 +149,32 @@ function ImagePreviewModal({
                 <div className="text-base font-semibold text-gray-900">{title}</div>
                 {subtitle && <div className="text-sm text-gray-600">{subtitle}</div>}
               </div>
-              <Button
-                variant="outline"
-                className="rounded-xl"
-                onClick={onClose}
-                aria-label="Tutup"
-              >
+              <Button variant="outline" className="rounded-xl" onClick={onClose} aria-label="Tutup">
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             <div className="p-5">
               <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-                <img
-                  src={imageUrl}
-                  alt="Registrasi wajah"
-                  className="w-full max-h-[70vh] object-contain"
-                />
+                {imageUrl ? (
+                  imageUrl.toLowerCase().endsWith('.pdf') ? (
+                    <iframe
+                      src={imageUrl}
+                      title="Registrasi wajah PDF"
+                      className="w-full h-[70vh]"
+                    />
+                  ) : (
+                    <img
+                      src={imageUrl}
+                      alt="Registrasi wajah"
+                      className="w-full max-h-[70vh] object-contain"
+                    />
+                  )
+                ) : (
+                  <div className="p-10 text-center text-sm text-gray-500">
+                    Gambar tidak tersedia
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex justify-end">
@@ -105,76 +191,95 @@ function ImagePreviewModal({
 }
 
 export default function PersetujuanRegistrasiWajahPage() {
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("Semua Departemen");
+
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // ✅ state modal
   const [openModal, setOpenModal] = useState(false);
   const [modalRowId, setModalRowId] = useState<string>("");
 
-  // mock data (nanti ganti ke fetch API)
-  const rows: FaceRequestRow[] = useMemo(
-    () => [
-      {
-        id: "req1",
-        fullName: "Siti Rahmawati",
-        payrollNumber: "EMP-2023-089",
-        departmentName: "Engineering",
-        positionName: "Senior Developer",
-        submittedAt: "12 Okt 2023",
-        submittedAtTime: "09:41",
-        email: "siti.rahmawati@sapphire.id",
-        faceImageUrl: "https://picsum.photos/seed/face-1/800/800",
-      },
-      {
-        id: "req2",
-        fullName: "Andi Pratama",
-        payrollNumber: "EMP-2022-142",
-        departmentName: "Marketing",
-        positionName: "Marketing Specialist",
-        submittedAt: "11 Okt 2023",
-        submittedAtTime: "10:05",
-        email: "andi.pratama@sapphire.id",
-        faceImageUrl: "https://picsum.photos/seed/face-2/800/800",
-      },
-      {
-        id: "req3",
-        fullName: "Budi Wijaya",
-        payrollNumber: "EMP-2021-085",
-        departmentName: "Sales",
-        positionName: "Sales Manager",
-        submittedAt: "10 Okt 2023",
-        submittedAtTime: "15:20",
-        email: "budi.wijaya@sapphire.id",
-        faceImageUrl: "https://picsum.photos/seed/face-3/800/800",
-      },
-    ],
-    []
-  );
+  // ✅ fetched rows
+  const [rows, setRows] = useState<FaceRequestRow[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+
+  async function fetchRows() {
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const token = getToken();
+      if (!token) throw new Error("Token tidak ditemukan. Silakan login ulang.");
+
+      const endpoint = `face-embeddings/detail?q=${encodeURIComponent(q)}&department=${encodeURIComponent(
+        dept
+      )}`;
+
+      const url = apiUrl(BASE_URL, endpoint);
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await readJsonSafe<ApiSuccess<FaceEmbeddingApprovalItem[]>>(res);
+      if (!res.ok) throw new Error(json?.message || "Gagal memuat data registrasi wajah");
+
+      const mapped: FaceRequestRow[] = (json.data || []).map((it) => {
+        const dt = formatDateTime(it.registered_at || it.updated_at);
+        return {
+          id: it.id,
+          fullName: it.full_name || "-",
+          payrollNumber: it.payroll_number || "-",
+          departmentName: it.department_name || "-",
+          positionName: it.position_name || "-",
+          submittedAt: dt.date,
+          submittedAtTime: dt.time,
+          email: it.email || "-",
+          faceImageUrl: resolveImageUrl(BASE_URL, it.face_image_url),
+        };
+      });
+
+      setRows(mapped);
+
+      // auto select first row if current selected missing
+      setSelectedId((prev) => {
+        if (prev && mapped.some((r) => r.id === prev)) return prev;
+        return mapped[0]?.id || "";
+      });
+    } catch (e: any) {
+      setErrorMsg(e?.message || "Gagal memuat data.");
+      setRows([]);
+      setSelectedId("");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // fetch on mount + when dept/q changes (debounce untuk q)
+  useEffect(() => {
+    fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dept]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      fetchRows();
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   const departments = useMemo(() => {
-    const uniq = Array.from(new Set(rows.map((r) => r.departmentName))).sort();
+    const uniq = Array.from(new Set(rows.map((r) => r.departmentName)))
+      .filter((d) => d && d !== "-")
+      .sort();
     return ["Semua Departemen", ...uniq];
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-
-    return rows.filter((r) => {
-      const matchQ =
-        !qq ||
-        r.fullName.toLowerCase().includes(qq) ||
-        r.payrollNumber.toLowerCase().includes(qq) ||
-        r.departmentName.toLowerCase().includes(qq) ||
-        r.positionName.toLowerCase().includes(qq);
-
-      const matchDept = dept === "Semua Departemen" || r.departmentName === dept;
-
-      return matchQ && matchDept;
-    });
-  }, [rows, q, dept]);
-
-  const [selectedId, setSelectedId] = useState<string>(() => rows[0]?.id ?? "");
   const selected = useMemo(
     () => rows.find((r) => r.id === selectedId) ?? null,
     [rows, selectedId]
@@ -192,7 +297,6 @@ export default function PersetujuanRegistrasiWajahPage() {
 
   return (
     <div className="p-6">
-      {/* ✅ Modal preview gambar registrasi wajah */}
       {modalRow && (
         <ImagePreviewModal
           open={openModal}
@@ -208,12 +312,8 @@ export default function PersetujuanRegistrasiWajahPage() {
         <Card className="lg:col-span-8 rounded-2xl">
           <CardContent className="p-5 space-y-4">
             <div>
-              <h1 className="text-lg font-bold text-gray-900">
-                Persetujuan Registrasi Wajah
-              </h1>
-              <p className="text-sm text-gray-600">
-                Kelola permintaan registrasi wajah karyawan
-              </p>
+              <h1 className="text-lg font-bold text-gray-900">Persetujuan Registrasi Wajah</h1>
+              <p className="text-sm text-gray-600">Kelola permintaan registrasi wajah karyawan</p>
             </div>
 
             {/* toolbar */}
@@ -239,7 +339,22 @@ export default function PersetujuanRegistrasiWajahPage() {
                   </option>
                 ))}
               </select>
+
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => fetchRows()}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
             </div>
+
+            {errorMsg && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                {errorMsg}
+              </div>
+            )}
 
             {/* table */}
             <div className="overflow-hidden rounded-xl border border-gray-100">
@@ -262,75 +377,66 @@ export default function PersetujuanRegistrasiWajahPage() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100 bg-white">
-                  {filtered.map((r) => {
-                    const active = r.id === selectedId;
-                    return (
-                      <tr
-                        key={r.id}
-                        className={[
-                          "cursor-pointer transition-colors",
-                          active ? "bg-blue-50/40" : "hover:bg-gray-50",
-                        ].join(" ")}
-                        onClick={() => setSelectedId(r.id)}
-                      >
-                        {/* ✅ Nama + payroll di bawah */}
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={r.fullName} />
-                            <div>
-                              <div className="text-sm font-semibold text-gray-900">
-                                {r.fullName}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {r.payrollNumber}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* ✅ Departemen + jabatan di bawah */}
-                        <td className="px-5 py-4">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {r.departmentName}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {r.positionName}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4 text-sm text-gray-700">
-                          {r.submittedAt}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              className="rounded-xl"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedId(r.id);
-                                openDetailModal(r.id);
-                              }}
-                              title="Lihat detail"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {filtered.length === 0 && (
+                  {loading ? (
                     <tr>
-                      <td
-                        colSpan={4}
-                        className="px-6 py-10 text-center text-sm text-gray-500"
-                      >
+                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
+                        Memuat data...
+                      </td>
+                    </tr>
+                  ) : rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
                         Tidak ada data.
                       </td>
                     </tr>
+                  ) : (
+                    rows.map((r) => {
+                      const active = r.id === selectedId;
+                      return (
+                        <tr
+                          key={r.id}
+                          className={[
+                            "cursor-pointer transition-colors",
+                            active ? "bg-blue-50/40" : "hover:bg-gray-50",
+                          ].join(" ")}
+                          onClick={() => setSelectedId(r.id)}
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar name={r.fullName} />
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">{r.fullName}</div>
+                                <div className="text-xs text-gray-500">{r.payrollNumber}</div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="text-sm font-semibold text-gray-900">{r.departmentName}</div>
+                            <div className="text-xs text-gray-500">{r.positionName}</div>
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-gray-700">{r.submittedAt}</td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                className="rounded-xl"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedId(r.id);
+                                  openDetailModal(r.id);
+                                }}
+                                title="Lihat detail"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -346,21 +452,31 @@ export default function PersetujuanRegistrasiWajahPage() {
             </div>
 
             {!selected ? (
-              <div className="mt-4 text-sm text-gray-500">Pilih data di tabel.</div>
+              <div className="mt-4 text-sm text-gray-500">
+                {loading ? "Memuat..." : "Pilih data di tabel."}
+              </div>
             ) : (
               <div className="mt-4 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="h-12 w-12 rounded-xl overflow-hidden bg-gray-100">
-                    <img
-                      src={selected.faceImageUrl}
-                      alt="preview"
-                      className="h-12 w-12 object-cover"
-                    />
+                  <div className="h-12 w-12 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center">
+                    {selected.faceImageUrl ? (
+                      selected.faceImageUrl.toLowerCase().endsWith('.pdf') ? (
+                        <div className="text-xs font-bold text-gray-500">PDF</div>
+                      ) : (
+                        <img
+                          src={selected.faceImageUrl}
+                          alt="preview"
+                          className="h-12 w-12 object-cover"
+                        />
+                      )
+                    ) : (
+                      <div className="text-xs text-gray-400">
+                        N/A
+                      </div>
+                    )}
                   </div>
                   <div>
-                    <div className="font-semibold text-gray-900">
-                      {selected.fullName}
-                    </div>
+                    <div className="font-semibold text-gray-900">{selected.fullName}</div>
                     <div className="text-sm text-gray-600">{selected.positionName}</div>
                     <div className="text-xs text-gray-500">{selected.departmentName}</div>
                   </div>
@@ -369,14 +485,13 @@ export default function PersetujuanRegistrasiWajahPage() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div className="text-xs text-gray-500">No Payroll</div>
-                    <div className="font-medium text-gray-900">
-                      {selected.payrollNumber}
-                    </div>
+                    <div className="font-medium text-gray-900">{selected.payrollNumber}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-500">Tanggal Pengajuan</div>
                     <div className="font-medium text-gray-900">
-                      {selected.submittedAt}, {selected.submittedAtTime}
+                      {selected.submittedAt}
+                      {selected.submittedAtTime ? `, ${selected.submittedAtTime}` : ""}
                     </div>
                   </div>
                   <div className="col-span-2">
@@ -385,24 +500,36 @@ export default function PersetujuanRegistrasiWajahPage() {
                   </div>
                 </div>
 
-                {/* ✅ tidak ada tombol Setujui / Tolak / Minta Unggah Ulang */}
                 <div className="space-y-2">
-                  <div className="text-sm font-semibold text-gray-900">
-                    Foto Registrasi Wajah
-                  </div>
+                  <div className="text-sm font-semibold text-gray-900">Foto Registrasi Wajah</div>
 
                   <div className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-                    <img
-                      src={selected.faceImageUrl}
-                      alt="face"
-                      className="w-full aspect-square object-cover"
-                    />
+                    {selected.faceImageUrl ? (
+                      selected.faceImageUrl.toLowerCase().endsWith('.pdf') ? (
+                        <iframe
+                          src={selected.faceImageUrl}
+                          title="face"
+                          className="w-full aspect-square"
+                        />
+                      ) : (
+                        <img
+                          src={selected.faceImageUrl}
+                          alt="face"
+                          className="w-full aspect-square object-cover"
+                        />
+                      )
+                    ) : (
+                      <div className="p-10 text-center text-sm text-gray-500">
+                        Gambar tidak tersedia
+                      </div>
+                    )}
                   </div>
 
                   <Button
                     variant="outline"
                     className="w-full rounded-xl"
                     onClick={() => openDetailModal(selected.id)}
+                    disabled={!selected.faceImageUrl}
                   >
                     Lihat Detail Gambar
                   </Button>

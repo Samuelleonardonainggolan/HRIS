@@ -23,6 +23,7 @@ func SetupRoutes(
 	pengajuanHandler *handler.PengajuanHandler,
 	jamKerjaHandler *handler.JamKerjaHandler,
 	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
+	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -157,6 +158,14 @@ func SetupRoutes(
 
 				// Get available employees without work schedule (Manager/HR only)
 				jamKerja.GET("/available-employees", middleware.ManagerHROnly(), jamKerjaHandler.GetAvailableEmployees)
+			}
+
+			// FACE EMBEDDING APPROVAL (Manager HR Only) - READ ONLY
+			faceEmbeddingApproval := protected.Group("/face-embeddings/detail")
+			faceEmbeddingApproval.Use(middleware.ManagerHROnly())
+			{
+				faceEmbeddingApproval.GET("", faceEmbeddingApprovalHandler.List)
+				faceEmbeddingApproval.GET("/:id", faceEmbeddingApprovalHandler.GetByID)
 			}
 
 			// GEOFENCING

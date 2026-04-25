@@ -558,13 +558,18 @@ export default function PersetujuanIzinCutiPage() {
                     >
                       {/* Thumbnail preview */}
                       <div className="relative h-36 bg-gray-50 flex items-center justify-center overflow-hidden">
-                        {/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(selected.attachmentUrl) ? (
+                        {/\.(png|jpe?g|gif|webp|bmp|svg)($|\?)/i.test(selected.attachmentUrl) ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={selected.attachmentUrl}
                             alt={selected.attachmentName ?? "Dokumen"}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                           />
+                        ) : /\.pdf($|\?)/i.test(selected.attachmentUrl) ? (
+                          <div className="flex flex-col items-center gap-2 text-gray-400">
+                            <div className="flex items-center justify-center bg-red-100 text-red-600 font-bold text-xs px-2 py-1 rounded">PDF</div>
+                            <span className="text-xs">Klik untuk pratinjau</span>
+                          </div>
                         ) : (
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <FileText className="h-10 w-10" />
@@ -659,14 +664,14 @@ export default function PersetujuanIzinCutiPage() {
 
           {/* Content */}
           <div className="flex-1 overflow-auto bg-gray-50 flex items-center justify-center min-h-[400px]">
-            {/\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(previewUrl) ? (
+            {/\.(png|jpe?g|gif|webp|bmp|svg)($|\?)/i.test(previewUrl) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={previewUrl}
                 alt="Dokumen Pendukung"
                 className="max-w-full max-h-[75vh] object-contain p-4"
               />
-            ) : /\.pdf$/i.test(previewUrl) ? (
+            ) : /\.pdf($|\?)/i.test(previewUrl) ? (
               <iframe
                 src={previewUrl}
                 className="w-full h-[75vh]"

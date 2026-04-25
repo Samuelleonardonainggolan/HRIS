@@ -107,7 +107,7 @@ export function EmployeeTable({
                   Nama Lengkap
                 </th>
                 <th className="pb-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  NIK
+                  No Payroll
                 </th>
                 <th className="pb-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Departemen

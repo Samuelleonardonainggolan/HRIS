@@ -209,11 +209,10 @@ function GeofencingMap({
                   📍 {selectedMarker.latitude.toFixed(4)}, {selectedMarker.longitude.toFixed(4)}
                 </span>
               </div>
-              <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                selectedMarker.is_active 
-                  ? 'bg-green-100 text-green-700' 
+              <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${selectedMarker.is_active
+                  ? 'bg-green-100 text-green-700'
                   : 'bg-red-100 text-red-700'
-              }`}>
+                }`}>
                 {selectedMarker.is_active ? '✓ Active' : '✗ Inactive'}
               </div>
             </div>

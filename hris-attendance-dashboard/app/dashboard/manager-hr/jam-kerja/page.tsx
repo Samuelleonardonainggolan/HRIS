@@ -30,6 +30,7 @@ interface WorkScheduleRow {
   position: string;
 
   // ✅ dari backend
+  day_of_week?: string[];
   hari_kerja?: string[];
 
   // fallback (kalau masih ada)
@@ -267,7 +268,7 @@ export default function ManajemenJamKerjaPage() {
                   </tr>
                 ) : (
                   paged.map((r) => {
-                    const hari = sortHariKerja(r.hari_kerja);
+                    const hari = sortHariKerja(r.day_of_week || r.hari_kerja);
 
                     return (
                       <tr key={r.id} className="hover:bg-gray-50 transition-colors">

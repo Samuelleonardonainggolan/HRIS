@@ -92,7 +92,7 @@ func main() {
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo)
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
-
+	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
 	log.Println("⚙️  Services initialized")
 
 	// ==================== Initialize Handlers ====================
@@ -108,7 +108,7 @@ func main() {
 	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
 	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
-
+	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
 	log.Println("🎯 Handlers initialized")
 
 	// ==================== Setup Gin ====================
@@ -134,6 +134,7 @@ func main() {
 		pengajuanHandler,
 		jamKerjaHandler, // ✅ Dari kode kedua
 		employeeBasicSalaryHandler,
+		faceEmbeddingApprovalHandler,
 	)
 
 	log.Println("🛣️  Routes configured")
