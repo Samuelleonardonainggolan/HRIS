@@ -223,4 +223,13 @@ func registerMigrations(manager *migration.Manager) {
 		Up:          up,
 		Down:        down,
 	})
+
+	version, name, desc, up, down = migrations.CreateOvertimeRequests()
+	manager.Register(migration.Migration{
+		Version:     version,
+		Name:        name,
+		Description: desc,
+		Up:          up,
+		Down:        down,
+	})
 }
