@@ -117,10 +117,23 @@ class FaceService:
             transforms.Normalize([0.5]*3, [0.5]*3),
         ])
 
+    def _decode_image(self, image_bytes: bytes) -> np.ndarray:
+        """
+        Decode bytes gambar ke array RGB uint8 yang eksplisit.
+        Menghindari jalur dtype inference yang kadang bermasalah saat pakai PIL langsung.
+        """
+        image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+        image_bgr = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+
+        if image_bgr is None:
+            raise ValueError("File gambar tidak valid atau rusak")
+
+        return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+
     def load(self):
         try:
-            # Inisialisasi MTCNN untuk deteksi wajah
-            self.mtcnn = MTCNN(keep_all=True)
+            # Inisialisasi MTCNN untuk deteksi wajah yang lebih stabil pada selfie
+            self.mtcnn = MTCNN(keep_all=True, device="cpu")
             logger.info("MTCNN loaded successfully")
 
             # Inisialisasi extractor
@@ -152,21 +165,19 @@ class FaceService:
         """
         try:
             if self.mtcnn is None:
-                self.mtcnn = MTCNN(keep_all=True)
+                self.mtcnn = MTCNN(keep_all=True, device="cpu")
 
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            img = Image.fromarray(self._decode_image(image_bytes))
             boxes, _ = self.mtcnn.detect(img)
 
             if boxes is None or len(boxes) == 0:
                 return False, 0, []
 
-            # Validasi ukuran wajah (minimal 50x50 pixel)
             valid_boxes = []
             for box in boxes:
-                width = box[2] - box[0]
-                height = box[3] - box[1]
-                if width >= 50 and height >= 50:
-                    valid_boxes.append(box)
+                x1, y1, x2, y2 = [float(v) for v in box]
+                if (x2 - x1) >= 50 and (y2 - y1) >= 50:
+                    valid_boxes.append([x1, y1, x2, y2])
 
             return len(valid_boxes) > 0, len(valid_boxes), valid_boxes
         except Exception as e:
@@ -592,8 +603,7 @@ class FaceService:
         Returns: (is_valid, message)
         """
         try:
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-            img_array = np.array(img)
+            img_array = self._decode_image(image_bytes)
             
             if len(boxes) == 0:
                 return False, "Tidak ada wajah terdeteksi"
@@ -653,14 +663,20 @@ class FaceService:
         if not is_valid:
             raise ValueError(message)
 
-        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        full_image = self._decode_image(image_bytes)
+        x1, y1, x2, y2 = [max(0, int(v)) for v in boxes[0]]
+        face_crop = full_image[y1:y2, x1:x2]
+        if face_crop.size == 0:
+            raise ValueError("Region wajah tidak valid")
+
+        img = Image.fromarray(face_crop)
         tensor = self.transform(img).unsqueeze(0)
 
         if self.extractor is None:
             raise ValueError("Extractor belum diinisialisasi")
 
         emb = self.extractor(tensor)
-        return emb[0].cpu().numpy().tolist()
+        return emb[0].detach().cpu().tolist()
 
     def cosine_similarity(self, emb1: list, emb2: list) -> float:
         a = np.array(emb1, dtype=np.float32)
@@ -688,7 +704,14 @@ class FaceService:
         # Confidence dari classifier jika tersedia
         confidence = similarity
         if self.classifier and self.class_names:
-            img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+            full_image = self._decode_image(image_bytes)
+            has_face, _, boxes = self.detect_faces(image_bytes)
+            if has_face and boxes:
+                x1, y1, x2, y2 = [max(0, int(v)) for v in boxes[0]]
+                face_crop = full_image[y1:y2, x1:x2]
+                img = Image.fromarray(face_crop if face_crop.size > 0 else full_image)
+            else:
+                img = Image.fromarray(full_image)
             tensor = self.transform(img).unsqueeze(0)
             emb_t = self.extractor(tensor)
             logits = self.classifier(emb_t)

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type PengajuanIzinCutiService interface {
@@ -20,15 +22,17 @@ type PengajuanIzinCutiService interface {
 	GetForKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error)
+	GetLeaveBalance(ctx context.Context, userID string) (*models.LeaveBalanceResponse, error)
 }
 
 type pengajuanIzinCutiService struct {
 	pengajuanRepo repository.PengajuanIzinCutiRepository
 	userRepo      repository.UserRepository
+	db            *mongo.Database
 }
 
-func NewPengajuanIzinCutiService(pengajuanRepo repository.PengajuanIzinCutiRepository, userRepo repository.UserRepository) PengajuanIzinCutiService {
-	return &pengajuanIzinCutiService{pengajuanRepo: pengajuanRepo, userRepo: userRepo}
+func NewPengajuanIzinCutiService(pengajuanRepo repository.PengajuanIzinCutiRepository, userRepo repository.UserRepository, db *mongo.Database) PengajuanIzinCutiService {
+	return &pengajuanIzinCutiService{pengajuanRepo: pengajuanRepo, userRepo: userRepo, db: db}
 }
 
 func (s *pengajuanIzinCutiService) ListForManagerHR(ctx context.Context, status string, search string) ([]models.PengajuanIzinCutiApprovalResponse, error) {
@@ -262,6 +266,27 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 		return nil, err
 	}
 
+	if strings.ToUpper(updated.FinalStatus) == models.StatusApproved && !updated.UserID.IsZero() {
+		leaveBalance, err := syncLeaveBalanceForYear(ctx, s.db, updated.UserID, updated.StartDate.Year())
+		if err != nil {
+			return nil, err
+		}
+		if updated.DaysTotal > leaveBalance.RemainingKuota {
+			return nil, errors.New("sisa kuota cuti tidak mencukupi")
+		}
+		if updated.LeaveBalanceID == nil || updated.LeaveBalanceID.IsZero() {
+			_, err = s.db.Collection("leave_request").UpdateOne(
+				ctx,
+				bson.M{"_id": updated.ID},
+				bson.M{"$set": bson.M{"leave_balance_id": leaveBalance.ID, "updated_at": time.Now()}},
+			)
+			if err != nil {
+				return nil, err
+			}
+			updated.LeaveBalanceID = &leaveBalance.ID
+		}
+	}
+
 	u, err := s.userRepo.FindByID(ctx, updated.UserID.Hex())
 	if err != nil {
 		resp := models.PengajuanIzinCutiApprovalResponse{Pengajuan: updated.ToResponse()}
@@ -295,6 +320,21 @@ func (s *pengajuanIzinCutiService) toApprovalResponse(p models.LeaveRequest, has
 	}
 	resp.Employee = &emp
 	return resp
+}
+
+func (s *pengajuanIzinCutiService) GetLeaveBalance(ctx context.Context, userID string) (*models.LeaveBalanceResponse, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
+	}
+
+	balance, err := syncLeaveBalanceForYear(ctx, s.db, userOID, time.Now().Year())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := balance.ToResponse()
+	return &resp, nil
 }
 
 func uniqueStrings(values []string) []string {

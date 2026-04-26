@@ -113,16 +113,16 @@ func (p *LeaveRequest) ToResponse() PengajuanIzinCutiResponse {
 	endDate := normalizeDateOnlyForResponse(p.EndDate)
 
 	return PengajuanIzinCutiResponse{
-		ID:                     p.ID.Hex(),
-		UserID:                 p.UserID.Hex(),
-		RequestTypeID:          p.RequestTypeID.Hex(),
-		TypeName:               p.TypeName,
-		StartDate:              startDate,
-		EndDate:                endDate,
-		DaysTotal:              p.DaysTotal,
-		Reason:                 p.Reason,
-		DocumentURL:            p.DocumentURL,
-		LeaveBalanceID:         bal,
+		ID:                        p.ID.Hex(),
+		UserID:                    p.UserID.Hex(),
+		RequestTypeID:             p.RequestTypeID.Hex(),
+		TypeName:                  p.TypeName,
+		StartDate:                 startDate,
+		EndDate:                   endDate,
+		DaysTotal:                 p.DaysTotal,
+		Reason:                    p.Reason,
+		DocumentURL:               p.DocumentURL,
+		LeaveBalanceID:            bal,
 		StatusKepalaDepartemen:    p.StatusKepalaDepartemen,
 		KepalaDepartemenID:        p.KepalaDepartemenID.Hex(),
 		ManagerHRID:               p.ManagerHRID.Hex(),
@@ -142,7 +142,8 @@ func normalizeDateOnlyForResponse(t time.Time) time.Time {
 
 // Status constants (tetap)
 const (
-	StatusPending  = "PENDING"
-	StatusApproved = "APPROVED"
-	StatusRejected = "REJECTED"
+	StatusPending   = "PENDING"
+	StatusApproved  = "APPROVED"
+	StatusRejected  = "REJECTED"
+	StatusCancelled = "CANCELLED"
 )

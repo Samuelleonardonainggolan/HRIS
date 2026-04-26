@@ -28,6 +28,8 @@ class _NewRequestPageState extends State<NewRequestPage> {
   final _reasonCtrl = TextEditingController();
   PlatformFile? _file;
   bool _submitting = false;
+  bool _isLoadingLeaveQuota = true;
+  int _remainingLeaveQuota = 0;
 
   // Lembur-only
   TimeOfDay _startTime = const TimeOfDay(hour: 17, minute: 0);
@@ -67,6 +69,24 @@ class _NewRequestPageState extends State<NewRequestPage> {
   void initState() {
     super.initState();
     _loadTipes();
+    _loadLeaveQuota();
+  }
+
+  Future<void> _loadLeaveQuota() async {
+    setState(() => _isLoadingLeaveQuota = true);
+    try {
+      final remaining = await ApiService.getLeaveBalance();
+      if (mounted) {
+        setState(() {
+          _remainingLeaveQuota = remaining;
+          _isLoadingLeaveQuota = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingLeaveQuota = false);
+      }
+    }
   }
 
   // ✅ Load tipe pengajuan dari backend (GET /api/v1/pengajuan/tipe)
@@ -181,6 +201,14 @@ class _NewRequestPageState extends State<NewRequestPage> {
     // Jika tipe wajib lampiran tapi belum upload
     if (_selectedTipe?.wajibLampiran == true && _file == null) {
       _showSnack('Lampiran dokumen wajib untuk tipe ini', isError: true);
+      return;
+    }
+
+    if (_requiresQuotaDeduction && _days > _remainingLeaveQuota) {
+      _showSnack(
+        'Sisa cuti tidak cukup. Tersisa $_remainingLeaveQuota hari.',
+        isError: true,
+      );
       return;
     }
 
@@ -316,6 +344,11 @@ class _NewRequestPageState extends State<NewRequestPage> {
             if (_category != 'Lembur') ...[
               _sectionLabel('Tipe Pengajuan'),
               _tipeSelector(),
+              const SizedBox(height: 20),
+            ],
+
+            if (_requiresQuotaDeduction) ...[
+              _quotaInfoCard(),
               const SizedBox(height: 20),
             ],
 
@@ -691,6 +724,100 @@ class _NewRequestPageState extends State<NewRequestPage> {
           ),
         ),
       ],
+    );
+  }
+
+  bool get _requiresQuotaDeduction {
+    return _category != 'Lembur' && (_selectedTipe?.potongKuota ?? false);
+  }
+
+  Widget _quotaInfoCard() {
+    final overLimit = _days > _remainingLeaveQuota;
+    final consumesQuota = _selectedTipe?.potongKuota ?? false;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: overLimit
+            ? const Color(0xFFFFF1F2)
+            : consumesQuota
+                ? const Color(0xFFF0FDF4)
+                : const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: overLimit
+              ? const Color(0xFFFCA5A5)
+              : consumesQuota
+                  ? const Color(0xFF86EFAC)
+                  : const Color(0xFFBFDBFE),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: overLimit
+                  ? const Color(0xFFFEE2E2)
+                  : consumesQuota
+                      ? const Color(0xFFDCFCE7)
+                      : const Color(0xFFE0F2FE),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              overLimit
+                  ? Icons.warning_amber_rounded
+                  : consumesQuota
+                      ? Icons.beach_access
+                      : Icons.info_outline_rounded,
+              color: overLimit
+                  ? const Color(0xFFB91C1C)
+                  : consumesQuota
+                      ? const Color(0xFF15803D)
+                      : const Color(0xFF135BEC),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _isLoadingLeaveQuota
+                      ? 'Memuat sisa cuti...'
+                      : 'Sisa cuti tahun ini: $_remainingLeaveQuota hari',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: overLimit
+                        ? const Color(0xFFB91C1C)
+                        : consumesQuota
+                            ? const Color(0xFF166534)
+                            : const Color(0xFF135BEC),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  overLimit
+                      ? 'Jumlah hari pengajuan melebihi sisa kuota cuti.'
+                      : consumesQuota
+                          ? 'Pengajuan ini akan mengurangi kuota cuti setelah approved.'
+                          : 'Tipe yang dipilih tidak mengurangi kuota cuti.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: overLimit
+                        ? const Color(0xFFB91C1C)
+                        : consumesQuota
+                            ? const Color(0xFF166534)
+                            : const Color(0xFF135BEC),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1117,12 +1244,15 @@ class _NewRequestPageState extends State<NewRequestPage> {
   }
 
   Widget _submitBtn() {
+    final quotaBlocked = _requiresQuotaDeduction && _days > _remainingLeaveQuota;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _submitting ? null : _submit,
+        onPressed: (_submitting || quotaBlocked) ? null : _submit,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF135BEC),
+          backgroundColor: quotaBlocked
+              ? const Color(0xFF94A3B8)
+              : const Color(0xFF135BEC),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(

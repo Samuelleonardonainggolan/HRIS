@@ -93,6 +93,7 @@ func SetupRoutes(
 			pengajuan := protected.Group("/pengajuan")
 			{
 				pengajuan.GET("/tipe", pengajuanHandler.GetTipePengajuan)
+				pengajuan.GET("/leave-balance", pengajuanIzinCutiHandler.GetLeaveBalance)
 				pengajuan.GET("", pengajuanHandler.GetMyPengajuan)
 				pengajuan.POST("", pengajuanHandler.CreatePengajuan)
 				// ✅ Tambahan: Update dan Cancel pengajuan (dari kode kedua)

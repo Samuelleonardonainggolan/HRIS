@@ -10,7 +10,7 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.173:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.107:8080/api/v1';
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
@@ -732,6 +732,57 @@ class ApiService {
     }
   }
 
+  static Future<int> getLeaveBalance() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/pengajuan/leave-balance'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getLeaveBalance status: ${response.statusCode}');
+      print('[API] getLeaveBalance body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final payload = data['data'] ?? data['balance'] ?? data;
+        if (payload is Map<String, dynamic>) {
+          final remaining = payload['remaining_kuota'] ?? payload['remainingQuota'] ?? 0;
+          return int.tryParse(remaining.toString()) ?? 0;
+        }
+      }
+
+      final results = await Future.wait([
+        getTipePengajuan(),
+        getMyPengajuan(),
+      ]);
+
+      final types = results[0] as List<TipePengajuan>;
+      final requests = results[1] as List<LeaveRequest>;
+
+      final deductingTypes = types
+          .where((type) => type.potongKuota)
+          .map((type) => type.namaTipe.trim().toLowerCase())
+          .where((name) => name.isNotEmpty)
+          .toSet();
+
+      final currentYear = DateTime.now().year;
+      final usedQuota = requests.where((request) {
+        if (request.statusFinal != 'APPROVED') return false;
+        if (request.startDate.year != currentYear) return false;
+        return deductingTypes.contains(request.type.trim().toLowerCase());
+      }).fold<int>(0, (sum, request) => sum + (request.days > 0 ? request.days : 1));
+
+      const annualQuota = 12;
+      final remaining = annualQuota - usedQuota;
+      return remaining < 0 ? 0 : remaining;
+    } catch (e) {
+      print('[API] getLeaveBalance error: $e');
+      rethrow;
+    }
+  }
+
   // ─── Face Registration ──────────────────────────────────────────────────────
 
   static Future<void> registerFace({
@@ -1140,15 +1191,20 @@ class TipePengajuan {
   });
 
   factory TipePengajuan.fromJson(Map<String, dynamic> json) {
+    final categoryName = (json['category_name'] ?? json['nama_kategori'] ?? '')
+      .toString();
+    final normalizedCategory = categoryName.trim().toLowerCase();
+
     return TipePengajuan(
       id: (json['id'] ?? '').toString(),
       namaTipe: (json['type_name'] ?? json['nama_tipe'] ?? '').toString(),
-      namaKategori: (json['category_name'] ?? json['nama_kategori'] ?? '')
-          .toString(),
-      potongKuota:
-          json['quota_deduction'] == true || json['potong_kuota'] == true,
+      namaKategori: categoryName,
+      potongKuota: json['quota_deduction'] == true ||
+        json['potong_kuota'] == true ||
+        normalizedCategory == 'izin' ||
+        normalizedCategory == 'cuti',
       wajibLampiran:
-          json['attachment_required'] == true || json['wajib_lampiran'] == true,
+        json['attachment_required'] == true || json['wajib_lampiran'] == true,
     );
   }
 

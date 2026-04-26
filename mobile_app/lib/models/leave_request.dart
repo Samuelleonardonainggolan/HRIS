@@ -6,10 +6,13 @@ class LeaveRequest {
   final DateTime startDate; // tanggal_mulai
   final DateTime endDate; // tanggal_selesai
   final String reason; // alasan
-  final String status; // sudah di-map ke Indonesia: Menunggu/Disetujui/Ditolak
-  final String statusFinal; // raw: PENDING/APPROVED/REJECTED
+  final String
+  status; // sudah di-map ke Indonesia: Menunggu/Disetujui/Ditolak/Dibatalkan
+  final String statusFinal; // raw: PENDING/APPROVED/REJECTED/CANCELLED
   final String statusKepala; // status_kepala_departemen
   final String statusManagerHr; // status_manager_hr
+  final String? kepalaDepartemenName;
+  final String? managerHrName;
   final String? rejectionReasonKepalaDept;
   final String? rejectionReasonManagerHr;
   final int days; // total_hari
@@ -29,6 +32,8 @@ class LeaveRequest {
     required this.statusFinal,
     required this.statusKepala,
     required this.statusManagerHr,
+    this.kepalaDepartemenName,
+    this.managerHrName,
     this.rejectionReasonKepalaDept,
     this.rejectionReasonManagerHr,
     required this.days,
@@ -78,15 +83,19 @@ class LeaveRequest {
       statusManagerHr: (json['status_manager_hr'] ?? 'PENDING')
           .toString()
           .toUpperCase(),
-        rejectionReasonKepalaDept:
+      kepalaDepartemenName: _normalizeApproverDisplay(
+        json['kepala_departemen_id'],
+      ),
+      managerHrName: _normalizeApproverDisplay(json['manager_hr_id']),
+      rejectionReasonKepalaDept:
           (json['rejection_reason_kepala_dept'] ??
-              json['rejectionReasonKepalaDept'])
-            ?.toString(),
-        rejectionReasonManagerHr:
+                  json['rejectionReasonKepalaDept'])
+              ?.toString(),
+      rejectionReasonManagerHr:
           (json['rejection_reason_manager_hr'] ??
-              json['rejectionReasonManagerHr'] ??
-              json['rejection_reason'])
-            ?.toString(),
+                  json['rejectionReasonManagerHr'] ??
+                  json['rejection_reason'])
+              ?.toString(),
       days: _toInt(daysRaw),
       startTime: json['start_time']?.toString(),
       endTime: json['end_time']?.toString(),
@@ -116,6 +125,8 @@ class LeaveRequest {
         return 'Disetujui';
       case 'REJECTED':
         return 'Ditolak';
+      case 'CANCELLED':
+        return 'Dibatalkan';
       default:
         return 'Menunggu';
     }
@@ -127,6 +138,8 @@ class LeaveRequest {
         return 'APPROVED';
       case 'ditolak':
         return 'REJECTED';
+      case 'dibatalkan':
+        return 'CANCELLED';
       default:
         return 'PENDING';
     }
@@ -137,6 +150,18 @@ class LeaveRequest {
     if (n.contains('cuti')) return 'Cuti';
     if (n.contains('lembur')) return 'Lembur';
     return 'Izin';
+  }
+
+  static String? _normalizeApproverDisplay(dynamic rawValue) {
+    final value = (rawValue ?? '').toString().trim();
+    if (value.isEmpty) return null;
+
+    final objectIdPattern = RegExp(r'^[a-fA-F0-9]{24}$');
+    if (objectIdPattern.hasMatch(value)) {
+      return null;
+    }
+
+    return value;
   }
 
   /// Apakah pengajuan ini sudah disetujui
@@ -160,6 +185,8 @@ class LeaveRequest {
     'status_final': statusFinal,
     'status_kepala_departemen': statusKepala,
     'status_manager_hr': statusManagerHr,
+    'kepala_departemen_id': kepalaDepartemenName,
+    'manager_hr_id': managerHrName,
     'rejection_reason_kepala_dept': rejectionReasonKepalaDept,
     'rejection_reason_manager_hr': rejectionReasonManagerHr,
     'days': days,

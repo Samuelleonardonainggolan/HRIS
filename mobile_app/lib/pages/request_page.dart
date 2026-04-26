@@ -335,9 +335,17 @@ class _RequestPageState extends State<RequestPage> {
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
-              _approvalRow('Kepala Departemen', r.statusKepala),
+              _approvalRow(
+                'Kepala Departemen',
+                r.statusKepala,
+                actorName: r.kepalaDepartemenName,
+              ),
               const SizedBox(height: 6),
-              _approvalRow('Manager HR', r.statusManagerHr),
+              _approvalRow(
+                'Manager HR',
+                r.statusManagerHr,
+                actorName: r.managerHrName,
+              ),
               if (r.statusFinal == 'REJECTED') ...[
                 const SizedBox(height: 14),
                 const Text(
@@ -406,13 +414,34 @@ class _RequestPageState extends State<RequestPage> {
     );
   }
 
-  Widget _approvalRow(String label, String status) {
+  Widget _approvalRow(String label, String status, {String? actorName}) {
     final c = _statusColor(status);
+    final actor = (actorName ?? '').trim();
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(Icons.circle, size: 10, color: c),
         const SizedBox(width: 8),
-        Expanded(child: Text(label)),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label),
+              if (actor.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    actor,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
         Text(
           _statusLabel(status),
           style: TextStyle(color: c, fontWeight: FontWeight.w700, fontSize: 12),
@@ -885,6 +914,8 @@ class _RequestPageState extends State<RequestPage> {
         ? const Color(0xFF2ECC71)
         : status == 'REJECTED'
         ? const Color(0xFFEF4444)
+        : status == 'CANCELLED'
+        ? const Color(0xFF64748B)
         : const Color(0xFFF59E0B);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -983,6 +1014,8 @@ class _RequestPageState extends State<RequestPage> {
         return 'DISETUJUI';
       case 'REJECTED':
         return 'DITOLAK';
+      case 'CANCELLED':
+        return 'DIBATALKAN';
       default:
         return 'MENUNGGU';
     }
@@ -1034,6 +1067,8 @@ class _RequestPageState extends State<RequestPage> {
         return const Color(0xFFF59E0B);
       case 'REJECTED':
         return const Color(0xFFEF4444);
+      case 'CANCELLED':
+        return const Color(0xFF64748B);
       default:
         return Colors.grey;
     }

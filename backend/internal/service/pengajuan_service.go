@@ -156,6 +156,10 @@ func (s *pengajuanServiceImpl) GetAllTipePengajuan(ctx context.Context) ([]model
 }
 
 func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error) {
+	if req.TotalHari <= 0 {
+		return nil, errors.New("total_hari harus lebih dari 0")
+	}
+
 	// Validasi user ID
 	userObjID, err := primitive.ObjectIDFromHex(req.UserID)
 	if err != nil {
@@ -214,6 +218,18 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		return nil, err
 	}
 
+	var leaveBalanceID *primitive.ObjectID
+	if categoryConsumesQuota(tipe.CategoryName) || tipe.QuotaDeduction || tipe.PotongKuota {
+		leaveBalance, err := syncLeaveBalanceForYear(ctx, s.db, userObjID, tanggalMulai.Year())
+		if err != nil {
+			return nil, err
+		}
+		if req.TotalHari > leaveBalance.RemainingKuota {
+			return nil, errors.New("sisa kuota cuti tidak mencukupi")
+		}
+		leaveBalanceID = &leaveBalance.ID
+	}
+
 	var dept models.Department
 	if err := s.db.Collection("departments").FindOne(ctx, bson.M{"_id": requester.DepartmentID}).Decode(&dept); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -262,6 +278,7 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		DaysTotal:              req.TotalHari,
 		Reason:                 req.Alasan,
 		DocumentURL:            req.DokumenURL,
+		LeaveBalanceID:         leaveBalanceID,
 		StatusKepalaDepartemen: models.StatusPending,
 		KepalaDepartemenID:     kepalaDepartemenID,
 		ManagerHRID:            managerHRID,
@@ -300,9 +317,61 @@ func (s *pengajuanServiceImpl) GetPengajuanByUser(ctx context.Context, userID st
 		return nil, err
 	}
 
+	approverIDSet := make(map[primitive.ObjectID]struct{})
+	for _, p := range list {
+		if !p.KepalaDepartemenID.IsZero() {
+			approverIDSet[p.KepalaDepartemenID] = struct{}{}
+		}
+		if !p.ManagerHRID.IsZero() {
+			approverIDSet[p.ManagerHRID] = struct{}{}
+		}
+	}
+
+	approverNameByID := make(map[string]string)
+	if len(approverIDSet) > 0 {
+		approverIDs := make([]primitive.ObjectID, 0, len(approverIDSet))
+		for oid := range approverIDSet {
+			approverIDs = append(approverIDs, oid)
+		}
+
+		type approverUser struct {
+			ID       primitive.ObjectID `bson:"_id"`
+			FullName string             `bson:"full_name"`
+		}
+
+		approverCursor, err := s.db.Collection("users").Find(
+			ctx,
+			bson.M{"_id": bson.M{"$in": approverIDs}},
+		)
+		if err != nil {
+			return nil, err
+		}
+		defer approverCursor.Close(ctx)
+
+		var approvers []approverUser
+		if err := approverCursor.All(ctx, &approvers); err != nil {
+			return nil, err
+		}
+
+		for _, u := range approvers {
+			name := strings.TrimSpace(u.FullName)
+			if name == "" {
+				continue
+			}
+			approverNameByID[u.ID.Hex()] = name
+		}
+	}
+
 	result := make([]models.PengajuanIzinCutiResponse, 0, len(list))
 	for _, p := range list {
-		result = append(result, p.ToResponse())
+		resp := p.ToResponse()
+		if name, ok := approverNameByID[p.KepalaDepartemenID.Hex()]; ok {
+			resp.KepalaDepartemenID = name
+		}
+		if name, ok := approverNameByID[p.ManagerHRID.Hex()]; ok {
+			resp.ManagerHRID = name
+		}
+		result = append(result, resp)
 	}
 	return result, nil
 }
@@ -334,7 +403,19 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 		return nil, errors.New("pengajuan sudah diproses, tidak dapat diubah")
 	}
 
+	currentType := models.RequestType{}
+	if err := s.db.Collection("request_type").FindOne(ctx, bson.M{"_id": current.RequestTypeID}).Decode(&currentType); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("tipe pengajuan tidak ditemukan")
+		}
+		return nil, err
+	}
+	targetTypeID := current.RequestTypeID
+	targetTypeName := current.TypeName
+	targetQuotaDeduction := categoryConsumesQuota(currentType.CategoryName) || currentType.QuotaDeduction || currentType.PotongKuota
+
 	set := bson.M{"updated_at": time.Now()}
+	unset := bson.M{}
 
 	if req.TipePengajuanID != nil {
 		tipeID := strings.TrimSpace(*req.TipePengajuanID)
@@ -353,6 +434,9 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 				return nil, err
 			}
 
+			targetTypeID = tipeObjID
+			targetTypeName = tipe.TypeName
+			targetQuotaDeduction = categoryConsumesQuota(tipe.CategoryName) || tipe.QuotaDeduction || tipe.PotongKuota
 			set["request_type_id"] = tipeObjID
 			set["type_name"] = tipe.TypeName
 			current.TypeName = tipe.TypeName
@@ -416,10 +500,34 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 		set["document_url"] = strings.TrimSpace(*req.DokumenURL)
 	}
 
+	if targetQuotaDeduction {
+		leaveBalance, err := syncLeaveBalanceForYear(ctx, s.db, userObjID, startDate.Year())
+		if err != nil {
+			return nil, err
+		}
+		if current.DaysTotal > leaveBalance.RemainingKuota {
+			return nil, errors.New("sisa kuota cuti tidak mencukupi")
+		}
+		set["leave_balance_id"] = leaveBalance.ID
+	} else if req.TipePengajuanID != nil {
+		unset["leave_balance_id"] = ""
+	}
+
+	if targetTypeID != current.RequestTypeID {
+		set["request_type_id"] = targetTypeID
+	}
+	if targetTypeName != current.TypeName {
+		set["type_name"] = targetTypeName
+	}
+
+	update := bson.M{"$set": set}
+	if len(unset) > 0 {
+		update["$unset"] = unset
+	}
 	_, err = s.db.Collection("leave_request").UpdateOne(
 		ctx,
 		bson.M{"_id": pengajuanObjID, "user_id": userObjID, "final_status": models.StatusPending},
-		bson.M{"$set": set},
+		update,
 	)
 	if err != nil {
 		return nil, err
@@ -450,9 +558,9 @@ func (s *pengajuanServiceImpl) CancelPengajuan(ctx context.Context, userID, peng
 		ctx,
 		bson.M{"_id": pengajuanObjID, "user_id": userObjID, "final_status": models.StatusPending},
 		bson.M{"$set": bson.M{
-			"status_kepala_departemen": models.StatusRejected,
-			"status_manager_hr":        models.StatusRejected,
-			"final_status":             models.StatusRejected,
+			"status_kepala_departemen": models.StatusCancelled,
+			"status_manager_hr":        models.StatusCancelled,
+			"final_status":             models.StatusCancelled,
 			"updated_at":               time.Now(),
 		}},
 	)
@@ -509,7 +617,7 @@ func (s *pengajuanServiceImpl) ensureNoDateConflict(
 ) error {
 	filter := bson.M{
 		"user_id":      userID,
-		"final_status": bson.M{"$ne": models.StatusRejected},
+		"final_status": bson.M{"$nin": bson.A{models.StatusRejected, models.StatusCancelled}},
 		"start_date":   bson.M{"$lte": endDate},
 		"end_date":     bson.M{"$gte": startDate},
 	}

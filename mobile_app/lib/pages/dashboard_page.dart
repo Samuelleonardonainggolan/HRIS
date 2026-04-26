@@ -15,7 +15,7 @@ class EmployeeDashboardPage extends StatefulWidget {
 }
 
 class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
-    with SingleTickerProviderStateMixin {
+  with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -36,6 +36,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   // Real-time clock
   late Timer _clockTimer;
+  Timer? _statsRefreshTimer;
 
   // Break state
   bool isOnBreak = false;
@@ -58,6 +59,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -78,6 +80,19 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _loadTodayAttendance();
     _loadMonthlyStats();
     _loadUser();
+
+    _statsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) {
+        _loadMonthlyStats();
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      _loadMonthlyStats();
+    }
   }
 
   void _tickClock() {
@@ -153,11 +168,17 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         month: now.month,
         year: now.year,
       );
+      var leaveRemaining = _leaveRemaining;
+      try {
+        leaveRemaining = await ApiService.getLeaveBalance();
+      } catch (e) {
+        print('[Dashboard] Load leave balance error: $e');
+      }
       if (mounted) {
         setState(() {
           _workDays = summary.totalDays;
           _overtimeHours = summary.overtimeHours;
-          _leaveRemaining = 12;
+          _leaveRemaining = leaveRemaining;
           _isLoadingStats = false;
         });
       }
@@ -334,6 +355,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   @override
   void dispose() {
     _clockTimer.cancel();
+    _statsRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _breakTimer?.cancel();
     _animationController.dispose();
     super.dispose();
