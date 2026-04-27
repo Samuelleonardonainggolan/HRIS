@@ -14,7 +14,6 @@ type OvertimeApprovalItem = {
 
   employeeName: string;
   employeeId: string; // payroll number
-  department: string;
   position: string;
 
   dateLabel: string; // still used in detail panel
@@ -30,9 +29,6 @@ type OvertimeApprovalItem = {
 
   avatarUrl?: string;
   avatarFallback: string;
-
-  statusKepalaDepartemen?: string;
-  statusManagerHR?: string;
 };
 
 function getInitials(name: string) {
@@ -89,6 +85,7 @@ export default function PersetujuanLemburPage() {
   const [isActing, setIsActing] = useState(false);
 
   const [searchEmployee, setSearchEmployee] = useState("");
+  const [selectedPosition, setSelectedPosition] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Modal penolakan
@@ -116,7 +113,6 @@ export default function PersetujuanLemburPage() {
                 id: "ot-1",
                 employeeName: "Siti Rahmawati",
                 employeeId: "EMP-2023-089",
-                department: "Engineering",
                 position: "Senior Developer",
                 dateLabel: formatDateLabel(start),
                 startAt: formatListDateTime(start),
@@ -128,8 +124,6 @@ export default function PersetujuanLemburPage() {
                 status: "Pending",
                 avatarUrl: "",
                 avatarFallback: getInitials("Siti Rahmawati"),
-                statusKepalaDepartemen: "APPROVED",
-                statusManagerHR: "PENDING",
               };
             })(),
             (() => {
@@ -139,7 +133,6 @@ export default function PersetujuanLemburPage() {
                 id: "ot-2",
                 employeeName: "Andi Pratama",
                 employeeId: "EMP-2022-142",
-                department: "Marketing",
                 position: "Marketing Specialist",
                 dateLabel: formatDateLabel(start),
                 startAt: formatListDateTime(start),
@@ -151,8 +144,6 @@ export default function PersetujuanLemburPage() {
                 status: "Disetujui",
                 avatarUrl: "",
                 avatarFallback: getInitials("Andi Pratama"),
-                statusKepalaDepartemen: "APPROVED",
-                statusManagerHR: "APPROVED",
               };
             })(),
             (() => {
@@ -162,7 +153,6 @@ export default function PersetujuanLemburPage() {
                 id: "ot-3",
                 employeeName: "Budi Wijaya",
                 employeeId: "EMP-2021-085",
-                department: "Sales",
                 position: "Sales Manager",
                 dateLabel: formatDateLabel(start),
                 startAt: formatListDateTime(start),
@@ -174,20 +164,15 @@ export default function PersetujuanLemburPage() {
                 status: "Ditolak",
                 avatarUrl: "",
                 avatarFallback: getInitials("Budi Wijaya"),
-                statusKepalaDepartemen: "REJECTED",
-                statusManagerHR: "PENDING",
               };
             })(),
           ];
 
-          const q = searchEmployee.trim().toLowerCase();
-          const filtered = q ? mock.filter((x) => x.employeeName.toLowerCase().includes(q)) : mock;
-
           if (cancelled) return;
-          setItems(filtered);
+          setItems(mock);
           setSelectedId((prev) => {
-            if (prev && filtered.some((x) => x.id === prev)) return prev;
-            return filtered[0]?.id ?? null;
+            if (prev && mock.some((x) => x.id === prev)) return prev;
+            return mock[0]?.id ?? null;
           });
         } catch (e) {
           if (cancelled) return;
@@ -202,13 +187,20 @@ export default function PersetujuanLemburPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [searchEmployee]);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = searchEmployee.toLowerCase().trim();
-    if (!q) return items;
-    return items.filter((x) => x.employeeName.toLowerCase().includes(q));
-  }, [items, searchEmployee]);
+    return items.filter((x) => {
+      const matchEmployee = !q || x.employeeName.toLowerCase().includes(q);
+      const matchPosition = selectedPosition === "all" || x.position === selectedPosition;
+      return matchEmployee && matchPosition;
+    });
+  }, [items, searchEmployee, selectedPosition]);
+
+  const positionOptions = useMemo(() => {
+    return Array.from(new Set(items.map((x) => x.position)));
+  }, [items]);
 
   const selected = useMemo(
     () => filtered.find((x) => x.id === selectedId) ?? filtered[0] ?? null,
@@ -315,15 +307,31 @@ export default function PersetujuanLemburPage() {
               </div>
 
               <div className="mt-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <input
-                    value={searchEmployee}
-                    onChange={(e) => setSearchEmployee(e.target.value)}
-                    placeholder="Cari Karyawan"
-                    className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={searchEmployee}
+                      onChange={(e) => setSearchEmployee(e.target.value)}
+                      placeholder="Cari Karyawan"
+                      className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
                                focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
+                    />
+                  </div>
+
+                  <select
+                    value={selectedPosition}
+                    onChange={(e) => setSelectedPosition(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-700
+                               focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="all">Semua Jabatan</option>
+                    {positionOptions.map((position) => (
+                      <option key={position} value={position}>
+                        {position}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -377,15 +385,13 @@ export default function PersetujuanLemburPage() {
                                 </div>
                                 <div>
                                   <div className="font-semibold text-gray-900">{x.employeeName}</div>
-                                  <div className="text-xs text-gray-500">ID: {x.employeeId}</div>
+                                  <div className="text-xs text-gray-500">NO PAYROLL: {x.employeeId}</div>
                                 </div>
                               </div>
                             </td>
 
-                            {/* ✅ Departemen (bold) + Jabatan (di bawah) */}
                             <td className="px-5 py-4">
-                              <div className="text-sm font-semibold text-gray-900">{x.department}</div>
-                              <div className="text-xs text-gray-500">{x.position}</div>
+                              <div className="text-sm text-gray-700">{x.position}</div>
                             </td>
 
                             <td className="px-5 py-4 text-sm text-gray-700">{x.startAt}</td>
@@ -455,9 +461,7 @@ export default function PersetujuanLemburPage() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-semibold text-gray-900 truncate">{selected.employeeName}</div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {selected.department} • {selected.position}
-                        </div>
+                        <div className="text-xs text-gray-500 truncate">{selected.position}</div>
                         <div className="text-xs text-gray-400">{selected.employeeId}</div>
                       </div>
                     </div>

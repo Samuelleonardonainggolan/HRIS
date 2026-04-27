@@ -377,7 +377,7 @@ export default function PersetujuanLemburPage() {
                                 </div>
                                 <div>
                                   <div className="font-semibold text-gray-900">{x.employeeName}</div>
-                                  <div className="text-xs text-gray-500">ID: {x.employeeId}</div>
+                                  <div className="text-xs text-gray-500">NO PAYROLL: {x.employeeId}</div>
                                 </div>
                               </div>
                             </td>
