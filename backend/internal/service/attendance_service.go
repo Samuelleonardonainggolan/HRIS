@@ -26,8 +26,8 @@ var wib = time.FixedZone("WIB", 7*60*60)
 // ── Interface ─────────────────────────────────────────────────────────────────
 
 type AttendanceService interface {
-	ClockIn(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
-	ClockOut(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
+	ClockIn(ctx context.Context, userID string, latitude, longitude float64, address string, geofenceID primitive.ObjectID, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
+	ClockOut(ctx context.Context, userID string, latitude, longitude float64, address string, geofenceID primitive.ObjectID, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error)
 	StartBreak(ctx context.Context, userID string) (*models.Attendance, error)
 	EndBreak(ctx context.Context, userID string) (*models.Attendance, error)
 	GetTodayAttendance(ctx context.Context, userID string) (*models.Attendance, error)
@@ -352,7 +352,7 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 //  CLOCK IN / CLOCK OUT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
+func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude, longitude float64, address string, geofenceID primitive.ObjectID, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, errors.New("invalid user ID format")
@@ -382,7 +382,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	}
 
 	now := time.Now().In(wib)
-	location := models.GeoLocation{Latitude: latitude, Longitude: longitude}
+	location := models.GeoLocation{Latitude: latitude, Longitude: longitude, Address: address}
 
 	// Status: Tepat Waktu jika clock-in <= startTime + 1 menit toleransi
 	startTimeToday := s.extractTimeForToday(now, jamKerja.StartTime)
@@ -404,6 +404,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 		ClockInPhoto:    filename,
 		ClockInLocation: location,
 		Status:          status,
+		GeofenceID:      geofenceID,
 		WorkHours:       0,
 		OvertimeHours:   0,
 		FaceSimilarity:  faceSimilarity,
@@ -418,7 +419,7 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	return attendance, nil
 }
 
-func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitude, longitude float64, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
+func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitude, longitude float64, address string, geofenceID primitive.ObjectID, photo []byte, filename string, faceSimilarity float64) (*models.Attendance, error) {
 	userObjID, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
 		return nil, errors.New("invalid user ID format")
@@ -451,7 +452,7 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 	}
 
 	now := time.Now().In(wib)
-	location := models.GeoLocation{Latitude: latitude, Longitude: longitude}
+	location := models.GeoLocation{Latitude: latitude, Longitude: longitude, Address: address}
 
 	workDuration := now.Sub(*existing.ClockInTime)
 	workHours := workDuration.Hours()
@@ -716,7 +717,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	locationValid, distance, locationMsg := s.validateLocation(ctx, user, latitude, longitude)
+	locationValid, distance, locationMsg, address, geofenceID := s.validateLocation(ctx, user, latitude, longitude)
 	if !locationValid {
 		return &AttendanceProcessResult{
 			Success: false, Message: locationMsg,
@@ -782,9 +783,9 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	fmt.Printf("💾 [SUBMIT] %s untuk user=%s\n", recordType, resolvedUserID)
 	var attendance *models.Attendance
 	if recordType == "clock_in" {
-		attendance, err = s.ClockIn(ctx, resolvedUserID, latitude, longitude, photo, filename, similarity)
+		attendance, err = s.ClockIn(ctx, resolvedUserID, latitude, longitude, address, geofenceID, photo, filename, similarity)
 	} else {
-		attendance, err = s.ClockOut(ctx, resolvedUserID, latitude, longitude, photo, filename, similarity)
+		attendance, err = s.ClockOut(ctx, resolvedUserID, latitude, longitude, address, geofenceID, photo, filename, similarity)
 	}
 	if err != nil {
 		return &AttendanceProcessResult{
@@ -814,7 +815,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 }
 
 // validateLocation — coba geofence DB dulu, fallback ke koordinat statis
-func (s *attendanceService) validateLocation(ctx context.Context, user *models.User, latitude, longitude float64) (bool, float64, string) {
+func (s *attendanceService) validateLocation(ctx context.Context, user *models.User, latitude, longitude float64) (bool, float64, string, string, primitive.ObjectID) {
 	activeGeofences, err := s.geofenceRepo.FindActive(ctx)
 	if err == nil && len(activeGeofences) > 0 {
 		// Cari geofence yang berlaku untuk user ini
@@ -840,20 +841,20 @@ func (s *attendanceService) validateLocation(ctx context.Context, user *models.U
 				}
 			}
 			if matched != nil {
-				return true, closestDist, ""
+				return true, closestDist, "", matched.Name, matched.ID
 			}
 			return false, closestDist,
-				fmt.Sprintf("Anda berada di luar area geofence (jarak terdekat: %s)", formatDistance(closestDist))
+				fmt.Sprintf("Anda berada di luar area geofence (jarak terdekat: %s)", formatDistance(closestDist)), "", primitive.NilObjectID
 		}
 	}
 
 	// Fallback: gunakan koordinat statis jika tidak ada geofence DB aktif
 	dist := s.calculateDistance(latitude, longitude, s.officeLat, s.officeLng)
 	if dist <= s.radiusMeters {
-		return true, dist, ""
+		return true, dist, "", "Kantor Pusat", primitive.NilObjectID
 	}
 	return false, dist,
-		"Anda berada di luar area kantor (jarak: " + formatDistance(dist) + "m, max: " + formatDistance(s.radiusMeters) + "m)"
+		"Anda berada di luar area kantor (jarak: " + formatDistance(dist) + "m, max: " + formatDistance(s.radiusMeters) + "m)", "", primitive.NilObjectID
 }
 
 func (s *attendanceService) geofenceAppliesToUser(user *models.User, geofence *models.Geofence) bool {
@@ -1203,6 +1204,9 @@ func mapAttendanceStatusToUI(status models.AttendanceStatus) string {
 }
 
 func formatGeoLocation(loc models.GeoLocation) string {
+	if loc.Address != "" {
+		return loc.Address
+	}
 	if loc.Latitude != 0 || loc.Longitude != 0 {
 		return fmt.Sprintf("%.5f, %.5f", loc.Latitude, loc.Longitude)
 	}

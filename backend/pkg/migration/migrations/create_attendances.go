@@ -50,6 +50,11 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 				Keys:    bson.D{{Key: "status", Value: 1}},
 				Options: options.Index().SetName("idx_status"),
 			},
+			// ✅ NEW: Index for geofence_id queries
+			{
+				Keys:    bson.D{{Key: "geofence_id", Value: 1}},
+				Options: options.Index().SetName("idx_geofence_id"),
+			},
 			// Compound index for user + date range queries
 			{
 				Keys: bson.D{
@@ -71,6 +76,22 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 		}
 
 		log.Println("   ✅ Attendance indexes created")
+
+		// ✅ Try to get an active geofence to seed geofence_id (optional)
+		var geofenceDoc struct {
+			ID primitive.ObjectID `bson:"_id"`
+		}
+		var geofenceID primitive.ObjectID
+		err = db.Collection("geofences").
+			FindOne(ctx, bson.M{"is_active": true}, options.FindOne().SetSort(bson.D{{Key: "created_at", Value: -1}})).
+			Decode(&geofenceDoc)
+		if err == nil {
+			geofenceID = geofenceDoc.ID
+			log.Printf("   ✅ Using geofence_id for seeding: %s", geofenceID.Hex())
+		} else {
+			// If no geofence, keep zero ObjectID
+			log.Println("   ⚠️  No active geofence found, seeding attendances without geofence_id")
+		}
 
 		// Get all users for seeding
 		var users []models.User
@@ -111,7 +132,7 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 
 				if !shouldBePresent {
 					// Absent record
-					attendances = append(attendances, models.Attendance{
+					a := models.Attendance{
 						ID:        primitive.NewObjectID(),
 						UserID:    user.ID,
 						Date:      date,
@@ -119,7 +140,14 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 						WorkHours: 0,
 						CreatedAt: date,
 						UpdatedAt: date,
-					})
+					}
+
+					// ✅ set geofence_id if available
+					if !geofenceID.IsZero() {
+						a.GeofenceID = geofenceID
+					}
+
+					attendances = append(attendances, a)
 					continue
 				}
 
@@ -169,7 +197,6 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 				}
 
 				// ✅ Generate photo URLs (simulated)
-				// Format: /uploads/attendance/USERID_DATE_clockin.jpg
 				dateStr := date.Format("20060102")
 				clockInPhoto := fmt.Sprintf("/uploads/attendance/%s_%s_clockin.jpg", user.ID.Hex(), dateStr)
 				clockOutPhoto := fmt.Sprintf("/uploads/attendance/%s_%s_clockout.jpg", user.ID.Hex(), dateStr)
@@ -177,14 +204,14 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 				// Face similarity (95-99%)
 				faceSimilarity := 0.95 + (float64((userIdx+i)%5) * 0.01)
 
-				attendances = append(attendances, models.Attendance{
+				a := models.Attendance{
 					ID:               primitive.NewObjectID(),
 					UserID:           user.ID,
 					Date:             date,
 					ClockInTime:      &clockInTime,
 					ClockOutTime:     &clockOutTime,
-					ClockInPhoto:     clockInPhoto,  // ✅ Added
-					ClockOutPhoto:    clockOutPhoto, // ✅ Added
+					ClockInPhoto:     clockInPhoto,
+					ClockOutPhoto:    clockOutPhoto,
 					ClockInLocation:  clockInLocation,
 					ClockOutLocation: clockOutLocation,
 					Status:           status,
@@ -193,7 +220,14 @@ func CreateAttendances() (int, string, string, func(*mongo.Database) error, func
 					FaceSimilarity:   faceSimilarity,
 					CreatedAt:        clockInTime,
 					UpdatedAt:        clockOutTime,
-				})
+				}
+
+				// ✅ set geofence_id if available
+				if !geofenceID.IsZero() {
+					a.GeofenceID = geofenceID
+				}
+
+				attendances = append(attendances, a)
 			}
 		}
 

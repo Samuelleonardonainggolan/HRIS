@@ -159,20 +159,30 @@ func (s *jamKerjaService) ListJamKerja(ctx context.Context) ([]models.JamKerjaLi
 			return nil, err
 		}
 		if jk == nil {
-			jk = defaultJamKerja()
+			out = append(out, models.JamKerjaListRowResponse{
+				ID:         u.ID.Hex(),
+				Name:       u.FullName,
+				NIK:        u.PayrollNumber,
+				Department: u.DepartmentName,
+				Position:   u.PositionName,
+				DayOfWeek:  []string{},
+				WorkDays:   "Belum Diatur",
+				StartTime:  "-",
+				EndTime:    "-",
+			})
+		} else {
+			out = append(out, models.JamKerjaListRowResponse{
+				ID:         u.ID.Hex(),
+				Name:       u.FullName,
+				NIK:        u.PayrollNumber,
+				Department: u.DepartmentName,
+				Position:   u.PositionName,
+				DayOfWeek:  jk.DayOfWeek,                    // ✅ map
+				WorkDays:   formatHariKerja(jk.DayOfWeek),   // ✅ map
+				StartTime:  jk.StartTime.UTC().Format("15:04"), // ✅ map + UTC
+				EndTime:    jk.EndTime.UTC().Format("15:04"),   // ✅ map + UTC
+			})
 		}
-
-		out = append(out, models.JamKerjaListRowResponse{
-			ID:         u.ID.Hex(),
-			Name:       u.FullName,
-			NIK:        u.PayrollNumber,
-			Department: u.DepartmentName,
-			Position:   u.PositionName,
-			DayOfWeek:  jk.DayOfWeek,                    // ✅ map
-			WorkDays:   formatHariKerja(jk.DayOfWeek),   // ✅ map
-			StartTime:  jk.StartTime.UTC().Format("15:04"), // ✅ map + UTC
-			EndTime:    jk.EndTime.UTC().Format("15:04"),   // ✅ map + UTC
-		})
 	}
 
 	return out, nil
@@ -211,20 +221,30 @@ func (s *jamKerjaService) ListJamKerjaMyDepartment(ctx context.Context, departme
 			return nil, err
 		}
 		if jk == nil {
-			jk = defaultJamKerja()
+			out = append(out, models.JamKerjaListRowResponse{
+				ID:         u.ID.Hex(),
+				Name:       u.FullName,
+				NIK:        u.PayrollNumber,
+				Department: u.DepartmentName,
+				Position:   u.PositionName,
+				DayOfWeek:  []string{},
+				WorkDays:   "Belum Diatur",
+				StartTime:  "-",
+				EndTime:    "-",
+			})
+		} else {
+			out = append(out, models.JamKerjaListRowResponse{
+				ID:         u.ID.Hex(),
+				Name:       u.FullName,
+				NIK:        u.PayrollNumber,
+				Department: u.DepartmentName,
+				Position:   u.PositionName,
+				DayOfWeek:  jk.DayOfWeek,
+				WorkDays:   string(workDaysLabelFromHari(jk.DayOfWeek)),
+				StartTime:  jk.StartTime.UTC().Format("15:04"),
+				EndTime:    jk.EndTime.UTC().Format("15:04"),
+			})
 		}
-
-		out = append(out, models.JamKerjaListRowResponse{
-			ID:         u.ID.Hex(),
-			Name:       u.FullName,
-			NIK:        u.PayrollNumber,
-			Department: u.DepartmentName,
-			Position:   u.PositionName,
-			DayOfWeek:  jk.DayOfWeek,
-			WorkDays:   string(workDaysLabelFromHari(jk.DayOfWeek)),
-			StartTime:  jk.StartTime.UTC().Format("15:04"),
-			EndTime:    jk.EndTime.UTC().Format("15:04"),
-		})
 	}
 
 	return out, nil
@@ -246,7 +266,17 @@ func (s *jamKerjaService) GetJamKerjaByUserID(ctx context.Context, userID string
 		return nil, err
 	}
 	if jk == nil {
-		jk = defaultJamKerja()
+		return &models.JamKerjaDetailResponse{
+			UserID:       u.ID.Hex(),
+			Name:         u.FullName,
+			NIK:          u.PayrollNumber,
+			Department:   u.DepartmentName,
+			Position:     u.PositionName,
+			DayOfWeek:    []string{},
+			StartTime:    "",
+			EndTime:      "",
+			IsActive:     false,
+		}, nil
 	}
 
 	return &models.JamKerjaDetailResponse{

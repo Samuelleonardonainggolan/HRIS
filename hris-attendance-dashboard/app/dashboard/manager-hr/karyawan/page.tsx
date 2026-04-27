@@ -94,67 +94,79 @@ export default function PegawaiPage() {
       payload = null;
     }
 
-    toast.success("Pegawai berhasil dibuat");
-
-    if (payload?.temporary_password) {
-      const tempPass = payload.temporary_password;
-
-      toast.custom(
-        (t) => (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-[360px]">
-            <div className="text-sm font-semibold text-gray-900 mb-1">Akun baru</div>
-
-            {(payload.full_name || payload.payroll_number) && (
-              <div className="text-xs text-gray-600">
-                <span className="font-medium">
-                  {payload.full_name || "Karyawan"}
-                  {payload.payroll_number ? ` (${payload.payroll_number})` : ""}
-                </span>
-              </div>
-            )}
-
-            {payload.email && (
-              <div className="text-xs text-gray-600 mt-1">
-                Email: <span className="font-medium">{payload.email}</span>
-              </div>
-            )}
-
-            <div className="text-xs text-gray-600 mt-1">
-              Password sementara:{" "}
-              <span className="font-mono font-semibold text-gray-900">{tempPass}</span>
+    toast.custom(
+      (t) => (
+        <div className="rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-[360px]">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-
-            <div className="text-xs text-gray-500 mt-2">
-              Mohon catat password ini dan berikan kepada karyawan.
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Pegawai berhasil dibuat</div>
+              {payload?.full_name && (
+                <div className="text-xs text-gray-500">
+                  {payload.full_name} {payload?.payroll_number ? `(${payload.payroll_number})` : ""}
+                </div>
+              )}
             </div>
+          </div>
 
-            <div className="mt-3 flex justify-end gap-2">
+          {payload?.temporary_password && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="text-xs text-gray-600 mb-1">
+                Password sementara:{" "}
+                <span className="font-mono font-semibold text-gray-900">{payload.temporary_password}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 mb-2">
+                Mohon catat password ini dan berikan kepada karyawan.
+              </div>
               <button
                 type="button"
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
+                className="text-xs w-full px-3 py-1.5 rounded-md border border-gray-200 hover:bg-white bg-gray-50 text-gray-700 transition-colors"
                 onClick={() => {
                   navigator.clipboard
-                    .writeText(tempPass)
+                    .writeText(payload.temporary_password!)
                     .then(() => toast.success("Password disalin"))
                     .catch(() => toast.error("Gagal menyalin password"));
                 }}
               >
-                Salin
-              </button>
-
-              <button
-                type="button"
-                className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                onClick={() => toast.dismiss(t.id)}
-              >
-                OK
+                Salin Password
               </button>
             </div>
+          )}
+
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-100 rounded-lg">
+            <div className="text-xs text-amber-800 font-medium mb-1">Tindakan Diperlukan</div>
+            <div className="text-xs text-amber-700 mb-2">
+              Pegawai baru belum memiliki jam kerja. Segera atur jam kerja agar dapat melakukan presensi.
+            </div>
+            <button
+              type="button"
+              className="text-xs w-full px-3 py-1.5 rounded-md bg-amber-100 text-amber-800 hover:bg-amber-200 font-medium transition-colors"
+              onClick={() => {
+                toast.dismiss(t.id);
+                router.push("/dashboard/manager-hr/jam-kerja");
+              }}
+            >
+              Atur Jam Kerja Sekarang
+            </button>
           </div>
-        ),
-        { duration: 9000 }
-      );
-    }
+
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              className="text-xs px-4 py-1.5 rounded-lg bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+              onClick={() => toast.dismiss(t.id)}
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      ),
+      { duration: Infinity }
+    );
 
     // cleanup supaya tidak muncul lagi saat refresh
     try {

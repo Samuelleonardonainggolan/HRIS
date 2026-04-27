@@ -124,64 +124,14 @@ export default function AddEmployeePage() {
 
       const response = await employeeService.createEmployee(formData);
 
-      // ✅ toast success like geofencing
-      toast.success("Pegawai berhasil dibuat");
+      sessionStorage.setItem("flash_created_employee", JSON.stringify({
+        email: formData.email,
+        temporary_password: response?.temporary_password,
+        full_name: formData.full_name,
+        payroll_number: formData.payroll_number,
+      }));
 
-      // ✅ show temporary password (if any) using custom toast (no alert)
-      if (response?.temporary_password) {
-        const tempPass = response.temporary_password;
-
-        toast.custom(
-          (t) => (
-            <div className="rounded-xl border border-gray-200 bg-white shadow-lg p-4 w-[360px]">
-              <div className="text-sm font-semibold text-gray-900 mb-1">
-                Akun berhasil dibuat
-              </div>
-
-              <div className="text-xs text-gray-600">
-                Email: <span className="font-medium">{formData.email}</span>
-              </div>
-
-              <div className="text-xs text-gray-600 mt-1">
-                Password sementara:{" "}
-                <span className="font-mono font-semibold text-gray-900">
-                  {tempPass}
-                </span>
-              </div>
-
-              <div className="text-xs text-gray-500 mt-2">
-                Mohon catat password ini dan berikan kepada karyawan.
-              </div>
-
-              <div className="mt-3 flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"
-                  onClick={() => {
-                    navigator.clipboard
-                      .writeText(tempPass)
-                      .then(() => toast.success("Password disalin"))
-                      .catch(() => toast.error("Gagal menyalin password"));
-                  }}
-                >
-                  Salin
-                </button>
-
-                <button
-                  type="button"
-                  className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                  onClick={() => toast.dismiss(t.id)}
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          ),
-          { duration: 9000 }
-        );
-      }
-
-      router.push("/dashboard/manager-hr/karyawan");
+      router.push("/dashboard/manager-hr/karyawan?created=1");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Gagal membuat pegawai. Silakan coba lagi.";
@@ -215,7 +165,6 @@ export default function AddEmployeePage() {
 
   return (
     <>
-      {/* ✅ Toast container */}
       <Toaster position="top-right" />
 
       <div className="min-h-screen bg-gray-50 p-6">

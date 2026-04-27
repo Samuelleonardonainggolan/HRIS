@@ -32,6 +32,9 @@ import {
   type AttendanceStatusUI,
   type ManagerDeptAttendanceItem,
 } from "@/lib/api/attendance-manager-dept";
+import { geofenceApi } from "@/lib/api/geofence";
+import { resolveAttendanceLocationLabel } from "@/lib/utils/attendance-location";
+import type { Geofence } from "@/types/geofence";
 
 type AttendanceStatus = AttendanceStatusUI;
 
@@ -97,6 +100,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
   const pageSize = 10;
 
   const [rows, setRows] = useState<AttendanceRow[]>([]);
+  const [geofences, setGeofences] = useState<Geofence[]>([]);
   const [summary, setSummary] = useState({
     total_kehadiran_pct: 0,
     tepat_waktu: 0,
@@ -128,6 +132,19 @@ export default function PresensiKaryawanManagerDepartemenPage() {
       })),
     []
   );
+
+  useEffect(() => {
+    const loadGeofences = async () => {
+      try {
+        const data = await geofenceApi.getAll();
+        setGeofences(data);
+      } catch {
+        setGeofences([]);
+      }
+    };
+
+    loadGeofences();
+  }, []);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -382,8 +399,11 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-100 bg-white">
-                  {pagedRows.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                  {pagedRows.map((r) => {
+                    const locationLabel = resolveAttendanceLocationLabel(r.location, geofences);
+
+                    return (
+                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
@@ -431,8 +451,10 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-sm text-gray-700">
                           <MapPin className="h-4 w-4 text-gray-400" />
-                          <span className={r.location === "Unrecorded" ? "italic text-gray-400" : ""}>
-                            {r.location}
+                          <span
+                            className={locationLabel === "Unrecorded" ? "italic text-gray-400" : ""}
+                          >
+                            {locationLabel}
                           </span>
                         </div>
                       </td>
@@ -442,8 +464,9 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                           <MoreVertical className="h-4 w-4 text-gray-500" />
                         </button>
                       </td>
-                    </tr>
-                  ))}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 

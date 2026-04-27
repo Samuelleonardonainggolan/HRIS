@@ -29,11 +29,15 @@ type Attendance struct {
 	ClockInLocation  GeoLocation        `json:"clock_in_location" bson:"clock_in_location"`
 	ClockOutLocation GeoLocation        `json:"clock_out_location,omitempty" bson:"clock_out_location,omitempty"`
 	Status           AttendanceStatus   `json:"status" bson:"status"`
-	WorkHours        float64            `json:"work_hours" bson:"work_hours"`
-	OvertimeHours    float64            `json:"overtime_hours" bson:"overtime_hours"`
-	FaceSimilarity   float64            `json:"face_similarity,omitempty" bson:"face_similarity,omitempty"`
-	CreatedAt        time.Time          `json:"created_at" bson:"created_at"`
-	UpdatedAt        time.Time          `json:"updated_at" bson:"updated_at"`
+
+	// ✅ NEW: reference to geofence (for location name)
+	GeofenceID primitive.ObjectID `json:"geofence_id,omitempty" bson:"geofence_id,omitempty"`
+
+	WorkHours      float64   `json:"work_hours" bson:"work_hours"`
+	OvertimeHours  float64   `json:"overtime_hours" bson:"overtime_hours"`
+	FaceSimilarity float64   `json:"face_similarity,omitempty" bson:"face_similarity,omitempty"`
+	CreatedAt      time.Time `json:"created_at" bson:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at" bson:"updated_at"`
 }
 
 type GeoLocation struct {
