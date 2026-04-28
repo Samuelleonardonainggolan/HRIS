@@ -2,7 +2,11 @@
 package handler
 
 import (
+	"io"
 	"net/http"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/andikatampubolon10/hris-backend/internal/service"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
@@ -132,9 +136,46 @@ func (h *AuthHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 	var req models.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
-		return
+	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
+		req.Phone = strings.TrimSpace(c.PostForm("phone"))
+		req.Address = strings.TrimSpace(c.PostForm("address"))
+		req.FullName = strings.TrimSpace(c.PostForm("full_name"))
+		req.PayrollNumber = strings.TrimSpace(c.PostForm("payroll_number"))
+		if birthDate := strings.TrimSpace(c.PostForm("birth_date")); birthDate != "" {
+			req.BirthDate = birthDate
+		}
+		if value := strings.TrimSpace(c.PostForm("is_active")); value != "" {
+			if parsed, parseErr := strconv.ParseBool(value); parseErr == nil {
+				req.IsActive = &parsed
+			}
+		}
+
+		if fileHeader, err := c.FormFile("avatar"); err == nil {
+			file, err := fileHeader.Open()
+			if err != nil {
+				c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "gagal membuka file avatar: "+err.Error()))
+				return
+			}
+			defer file.Close()
+
+			photoBytes, err := io.ReadAll(file)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "gagal membaca file avatar: "+err.Error()))
+				return
+			}
+
+			avatarURL, err := h.authService.UploadProfilePhoto(c.Request.Context(), userIDStr, photoBytes, filepath.Base(fileHeader.Filename))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", "gagal upload avatar: "+err.Error()))
+				return
+			}
+			req.Avatar = avatarURL
+		}
+	} else {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse("Bad Request", err.Error()))
+			return
+		}
 	}
 	profile, err := h.authService.UpdateProfile(c.Request.Context(), userIDStr, &req)
 	if err != nil {

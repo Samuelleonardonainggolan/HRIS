@@ -41,6 +41,7 @@ class _ProfilePageState extends State<ProfilePage> {
           _user = u;
           _phoneCtrl.text = u.phone ?? '';
           _addressCtrl.text = u.address ?? '';
+          _profileImage = null;
           _isLoading = false;
         });
       }
@@ -55,7 +56,7 @@ class _ProfilePageState extends State<ProfilePage> {
       await ApiService.updateProfile({
         'phone': _phoneCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
-      });
+      }, avatarPath: _profileImage?.path);
       await _loadProfile();
       if (mounted) {
         setState(() {
@@ -106,8 +107,115 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   String _avatarUrl() {
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) {
+      return avatar;
+    }
     final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
     return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
+  }
+
+  ImageProvider? _avatarImageProvider() {
+    if (_profileImage != null) {
+      return FileImage(_profileImage!);
+    }
+
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) {
+      return NetworkImage(avatar);
+    }
+
+    final fallback = _avatarUrl().trim();
+    if (fallback.isNotEmpty) {
+      return NetworkImage(fallback);
+    }
+
+    return null;
+  }
+
+  void _showAvatarDetail() {
+    final provider = _avatarImageProvider();
+    if (provider == null) return;
+    double totalVerticalDrag = 0;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (_) {
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragUpdate: (details) {
+              if (details.delta.dy > 0) {
+                totalVerticalDrag += details.delta.dy;
+              }
+            },
+            onVerticalDragEnd: (details) {
+              final shouldCloseByDistance = totalVerticalDrag > 120;
+              final shouldCloseByVelocity =
+                  (details.primaryVelocity ?? 0) > 850;
+              totalVerticalDrag = 0;
+              if (shouldCloseByDistance || shouldCloseByVelocity) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white70,
+                        size: 64,
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 8,
+                  child: SafeArea(
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _avatarPreview({double size = 90}) {
+    if (_profileImage != null) {
+      return Image.file(_profileImage!, fit: BoxFit.cover);
+    }
+
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) {
+      return Image.network(
+        avatar,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) =>
+            const Icon(Icons.person, color: Color(0xFF135BEC), size: 44),
+      );
+    }
+
+    return Image.network(
+      _avatarUrl(),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) =>
+          const Icon(Icons.person, color: Color(0xFF135BEC), size: 44),
+    );
   }
 
   @override
@@ -199,19 +307,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         shape: BoxShape.circle,
                         color: Colors.white,
                       ),
-                      child: ClipOval(
-                        child: _profileImage != null
-                            ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : Image.network(
-                                _avatarUrl(),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF135BEC),
-                                  size: 26,
-                                ),
-                              ),
-                      ),
+                      child: ClipOval(child: _avatarPreview(size: 48)),
                     ),
                   ),
                 ),
@@ -347,7 +443,7 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 // Avatar
                 GestureDetector(
-                  onTap: _isEditing ? _pickImage : null,
+                  onTap: _showAvatarDetail,
                   child: Stack(
                     alignment: Alignment.bottomRight,
                     children: [
@@ -365,41 +461,29 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                         ),
-                        child: ClipOval(
-                          child: _profileImage != null
-                              ? Image.file(_profileImage!, fit: BoxFit.cover)
-                              : Image.network(
-                                  _avatarUrl(),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) => Container(
-                                    color: Colors.white,
-                                    child: const Icon(
-                                      Icons.person,
-                                      color: Color(0xFF135BEC),
-                                      size: 44,
-                                    ),
-                                  ),
-                                ),
-                        ),
+                        child: ClipOval(child: _avatarPreview()),
                       ),
                       if (_isEditing)
-                        Container(
-                          height: 26,
-                          width: 26,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.15),
-                                blurRadius: 6,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            size: 14,
-                            color: Color(0xFF135BEC),
+                        GestureDetector(
+                          onTap: _pickImage,
+                          child: Container(
+                            height: 26,
+                            width: 26,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 6,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 14,
+                              color: Color(0xFF135BEC),
+                            ),
                           ),
                         ),
                     ],
@@ -522,6 +606,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       _isEditing = false;
                       _phoneCtrl.text = _user?.phone ?? '';
                       _addressCtrl.text = _user?.address ?? '';
+                      _profileImage = null;
                     }),
                     child: Container(
                       width: double.infinity,
@@ -529,7 +614,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.white.withOpacity(0.4)),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.4),
+                        ),
                       ),
                       child: const Center(
                         child: Text(
@@ -563,11 +650,7 @@ class _ProfilePageState extends State<ProfilePage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 10,
-            color: color ?? Colors.white,
-          ),
+          Icon(icon, size: 10, color: color ?? Colors.white),
           const SizedBox(width: 5),
           Text(
             label,
@@ -598,10 +681,7 @@ class _ProfilePageState extends State<ProfilePage> {
         const SizedBox(height: 2),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.white.withOpacity(0.7),
-          ),
+          style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.7)),
         ),
       ],
     );
@@ -625,75 +705,103 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildPersonalInfo() {
-    return _card('Informasi Pribadi', Icons.person_outline, const Color(0xFF6366F1), [
-      _row(Icons.email_outlined, 'Email', _user?.email ?? '-'),
-      _div(),
-      _row(
-        Icons.phone_outlined,
-        'Nomor HP',
-        _user?.phone ?? '-',
-        editable: _isEditing,
-        ctrl: _phoneCtrl,
-      ),
-      _div(),
-      _row(
-        Icons.cake_outlined,
-        'Tanggal Lahir',
-        _fmtDate(_user?.birthDate),
-      ),
-      _div(),
-      _row(Icons.favorite_outline, 'Agama', _user?.religion ?? '-'),
-      _div(),
-      _row(Icons.school_outlined, 'Pendidikan Terakhir', _user?.lastEducation ?? '-'),
-      _div(),
-      _row(Icons.calendar_month_outlined, 'Tahun Masuk', _user?.yearEnrolled ?? '-'),
-      _div(),
-      _row(Icons.work_outline, 'Status Kerja', _user?.employmentStatus ?? '-'),
-      _div(),
-      _row(
-        Icons.calendar_today_outlined,
-        'Bergabung',
-        _fmtDate(_user?.joinDate),
-      ),
-      _div(),
-      _row(
-        Icons.location_on_outlined,
-        'Alamat',
-        _user?.address ?? '-',
-        editable: _isEditing,
-        ctrl: _addressCtrl,
-        multi: true,
-      ),
-    ]);
+    return _card(
+      'Informasi Pribadi',
+      Icons.person_outline,
+      const Color(0xFF6366F1),
+      [
+        _row(Icons.email_outlined, 'Email', _user?.email ?? '-'),
+        _div(),
+        _row(
+          Icons.phone_outlined,
+          'Nomor HP',
+          _user?.phone ?? '-',
+          editable: _isEditing,
+          ctrl: _phoneCtrl,
+        ),
+        _div(),
+        _row(Icons.cake_outlined, 'Tanggal Lahir', _fmtDate(_user?.birthDate)),
+        _div(),
+        _row(Icons.favorite_outline, 'Agama', _user?.religion ?? '-'),
+        _div(),
+        _row(
+          Icons.school_outlined,
+          'Pendidikan Terakhir',
+          _user?.lastEducation ?? '-',
+        ),
+        _div(),
+        _row(
+          Icons.calendar_month_outlined,
+          'Tahun Masuk',
+          _user?.yearEnrolled ?? '-',
+        ),
+        _div(),
+        _row(
+          Icons.work_outline,
+          'Status Kerja',
+          _user?.employmentStatus ?? '-',
+        ),
+        _div(),
+        _row(
+          Icons.calendar_today_outlined,
+          'Bergabung',
+          _fmtDate(_user?.joinDate),
+        ),
+        _div(),
+        _row(
+          Icons.location_on_outlined,
+          'Alamat',
+          _user?.address ?? '-',
+          editable: _isEditing,
+          ctrl: _addressCtrl,
+          multi: true,
+        ),
+      ],
+    );
   }
 
   Widget _buildEmploymentInfo() {
-    return _card('Detail Kepegawaian', Icons.work_outline, const Color(0xFF0EA5E9), [
-      _row(Icons.badge_outlined, 'NIK / Payroll', _user?.nik ?? '-'),
-      _div(),
-      _row(Icons.assignment_ind_outlined, 'Jabatan', _user?.position ?? '-'),
-      _div(),
-      _row(Icons.business_outlined, 'Departemen', _user?.department ?? '-'),
-      _div(),
-      _row(
-        Icons.toggle_on_outlined,
-        'Status',
-        (_user?.isActive ?? false) ? 'Aktif' : 'Non-Aktif',
-      ),
-    ]);
+    return _card(
+      'Detail Kepegawaian',
+      Icons.work_outline,
+      const Color(0xFF0EA5E9),
+      [
+        _row(Icons.badge_outlined, 'NIK / Payroll', _user?.nik ?? '-'),
+        _div(),
+        _row(Icons.assignment_ind_outlined, 'Jabatan', _user?.position ?? '-'),
+        _div(),
+        _row(Icons.business_outlined, 'Departemen', _user?.department ?? '-'),
+        _div(),
+        _row(
+          Icons.toggle_on_outlined,
+          'Status',
+          (_user?.isActive ?? false) ? 'Aktif' : 'Non-Aktif',
+        ),
+      ],
+    );
   }
 
   Widget _buildSettings() {
-    return _card('Pengaturan', Icons.settings_outlined, const Color(0xFF64748B), [
-      _settingTile(
-        Icons.lock_outlined,
-        'Ganti Password',
-        onTap: _showChangePasswordDialog,
-      ),
-    ]);
+    return _card(
+      'Pengaturan',
+      Icons.settings_outlined,
+      const Color(0xFF64748B),
+      [
+        _settingTile(
+          Icons.lock_outlined,
+          'Ganti Password',
+          onTap: _showChangePasswordDialog,
+        ),
+      ],
+    );
   }
 
-  Widget _card(String title, IconData icon, Color accentColor, List<Widget> children) {
+  Widget _card(
+    String title,
+    IconData icon,
+    Color accentColor,
+    List<Widget> children,
+  ) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -715,7 +823,9 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
             decoration: BoxDecoration(
               color: accentColor.withOpacity(0.06),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
               border: Border(
                 bottom: BorderSide(color: accentColor.withOpacity(0.1)),
               ),
@@ -762,8 +872,9 @@ class _ProfilePageState extends State<ProfilePage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
-        crossAxisAlignment:
-            (editable && _isEditing) || multi ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+        crossAxisAlignment: (editable && _isEditing) || multi
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           Container(
             padding: const EdgeInsets.all(7),
@@ -800,16 +911,22 @@ class _ProfilePageState extends State<ProfilePage> {
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: Color(0xFF135BEC), width: 1.5),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF135BEC),
+                          width: 1.5,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide:
-                            const BorderSide(color: Color(0xFF135BEC), width: 1.5),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF135BEC),
+                          width: 1.5,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -841,11 +958,8 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _div() => Divider(
-        color: const Color(0xFFF1F5F9),
-        height: 1,
-        thickness: 1,
-      );
+  Widget _div() =>
+      Divider(color: const Color(0xFFF1F5F9), height: 1, thickness: 1);
 
   Widget _settingTile(
     IconData icon,

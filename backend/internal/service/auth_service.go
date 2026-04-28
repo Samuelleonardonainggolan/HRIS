@@ -4,12 +4,17 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/auth"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"github.com/andikatampubolon10/hris-backend/pkg/storage"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -22,12 +27,16 @@ type AuthService interface {
 	// Profile
 	GetProfile(ctx context.Context, userID string) (*models.UserResponse, error)
 	UpdateProfile(ctx context.Context, userID string, req *models.UpdateUserRequest) (*models.UserResponse, error)
+	UploadProfilePhoto(ctx context.Context, userID string, photo []byte, filename string) (string, error)
 	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
 }
 
 type authService struct {
 	userRepo          repository.UserRepository
-	faceEmbeddingRepo repository.FaceEmbeddingRepository // TAMBAHKAN FIELD INI
+	faceEmbeddingRepo repository.FaceEmbeddingRepository
+	supabaseUploader  *storage.SupabaseUploader
+	publicBaseURL     string
+	profileImageDir   string
 	jwtSecret         string
 	jwtExpiry         string
 }
@@ -35,13 +44,28 @@ type authService struct {
 // UPDATE CONSTRUCTOR - Tambahkan faceEmbeddingRepo sebagai parameter
 func NewAuthService(
 	userRepo repository.UserRepository,
-	faceEmbeddingRepo repository.FaceEmbeddingRepository, // TAMBAHKAN PARAMETER
+	faceEmbeddingRepo repository.FaceEmbeddingRepository,
+	supabaseUploader *storage.SupabaseUploader,
+	publicBaseURL string,
+	profileImageDir string,
 	jwtSecret,
 	jwtExpiry string,
 ) AuthService {
+	baseURL := strings.TrimRight(strings.TrimSpace(publicBaseURL), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	imageDir := strings.TrimSpace(profileImageDir)
+	if imageDir == "" {
+		imageDir = filepath.Join("uploads", "profile")
+	}
+
 	return &authService{
 		userRepo:          userRepo,
-		faceEmbeddingRepo: faceEmbeddingRepo, // SIMPAN KE STRUCT
+		faceEmbeddingRepo: faceEmbeddingRepo,
+		supabaseUploader:  supabaseUploader,
+		publicBaseURL:     baseURL,
+		profileImageDir:   imageDir,
 		jwtSecret:         jwtSecret,
 		jwtExpiry:         jwtExpiry,
 	}
@@ -215,13 +239,44 @@ func (s *authService) GetProfile(ctx context.Context, userID string) (*models.Us
 	return &response, nil
 }
 
-// UpdateProfile — self-update: hanya phone & address
+func (s *authService) UploadProfilePhoto(ctx context.Context, userID string, photo []byte, filename string) (string, error) {
+	_ = ctx
+	if len(photo) == 0 {
+		return "", errors.New("file foto profil kosong")
+	}
+
+	if s.supabaseUploader != nil {
+		return s.supabaseUploader.UploadFile(photo, filename, "profile")
+	}
+
+	if err := os.MkdirAll(s.profileImageDir, 0o755); err != nil {
+		return "", err
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	if ext == "" {
+		ext = ".jpg"
+	}
+
+	storedName := fmt.Sprintf("profile_%s_%d%s", userID, time.Now().UnixMilli(), ext)
+	filePath := filepath.Join(s.profileImageDir, storedName)
+	if err := os.WriteFile(filePath, photo, 0o644); err != nil {
+		return "", err
+	}
+
+	urlPath := strings.ReplaceAll(filepath.ToSlash(filePath), "\\", "/")
+	urlPath = strings.TrimPrefix(urlPath, "./")
+	return fmt.Sprintf("%s/%s", s.publicBaseURL, urlPath), nil
+}
+
+// UpdateProfile — self-update: phone, address, dan avatar
 func (s *authService) UpdateProfile(ctx context.Context, userID string, req *models.UpdateUserRequest) (*models.UserResponse, error) {
 	safeReq := &models.UpdateUserRequest{
 		Phone:   req.Phone,
 		Address: req.Address,
+		Avatar:  req.Avatar,
 	}
-	if safeReq.Phone == "" && safeReq.Address == "" {
+	if safeReq.Phone == "" && safeReq.Address == "" && safeReq.Avatar == "" {
 		return nil, errors.New("tidak ada data yang diperbarui")
 	}
 	if err := s.userRepo.Update(ctx, userID, safeReq); err != nil {

@@ -15,7 +15,7 @@ class EmployeeDashboardPage extends StatefulWidget {
 }
 
 class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
-  with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -60,6 +60,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ApiService.currentUser.addListener(_syncProfile);
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -86,6 +87,11 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         _loadMonthlyStats();
       }
     });
+  }
+
+  void _syncProfile() {
+    if (!mounted) return;
+    setState(() => _user = ApiService.currentUser.value);
   }
 
   @override
@@ -348,6 +354,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   String _avatarUrl() {
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) return avatar;
     final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
     return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
   }
@@ -357,6 +365,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _clockTimer.cancel();
     _statsRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    ApiService.currentUser.removeListener(_syncProfile);
     _breakTimer?.cancel();
     _animationController.dispose();
     super.dispose();

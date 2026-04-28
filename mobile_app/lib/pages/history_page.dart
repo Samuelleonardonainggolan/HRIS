@@ -51,7 +51,13 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
+    ApiService.currentUser.addListener(_syncProfile);
     _init();
+  }
+
+  void _syncProfile() {
+    if (!mounted) return;
+    setState(() => _user = ApiService.currentUser.value);
   }
 
   Future<void> _init() async {
@@ -65,6 +71,12 @@ class _HistoryPageState extends State<HistoryPage> {
       final u = await ApiService.getProfile();
       if (mounted) setState(() => _user = u);
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    ApiService.currentUser.removeListener(_syncProfile);
+    super.dispose();
   }
 
   // ── Core: ambil attendance + pengajuan lalu merge ──────────────────────────
@@ -213,7 +225,10 @@ class _HistoryPageState extends State<HistoryPage> {
         var tempMonth = _selectedMonth.month;
         final monthLabels = List.generate(
           12,
-          (i) => DateFormat('MMM', 'id').format(DateTime(2000, i + 1, 1)).toUpperCase(),
+          (i) => DateFormat(
+            'MMM',
+            'id',
+          ).format(DateTime(2000, i + 1, 1)).toUpperCase(),
         );
 
         return StatefulBuilder(
@@ -261,7 +276,10 @@ class _HistoryPageState extends State<HistoryPage> {
                         TextButton.icon(
                           onPressed: () => setModalState(() => tempYear += 1),
                           label: const Text(''),
-                          icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                          icon: const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 16,
+                          ),
                           style: TextButton.styleFrom(
                             foregroundColor: const Color(0xFF334155),
                           ),
@@ -273,12 +291,13 @@ class _HistoryPageState extends State<HistoryPage> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: 12,
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 3,
-                        mainAxisSpacing: 8,
-                        crossAxisSpacing: 8,
-                        childAspectRatio: 2.4,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 8,
+                            childAspectRatio: 2.4,
+                          ),
                       itemBuilder: (_, i) {
                         final month = i + 1;
                         final selected = month == tempMonth;
@@ -317,7 +336,9 @@ class _HistoryPageState extends State<HistoryPage> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          Navigator.of(sheetContext).pop(DateTime(tempYear, tempMonth, 1));
+                          Navigator.of(
+                            sheetContext,
+                          ).pop(DateTime(tempYear, tempMonth, 1));
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF135BEC),
@@ -398,6 +419,8 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   String _avatarUrl() {
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) return avatar;
     final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
     return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
   }
@@ -596,7 +619,10 @@ class _HistoryPageState extends State<HistoryPage> {
                 onTap: () => _changeMonth(-1),
                 borderRadius: BorderRadius.circular(10),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 4,
+                  ),
                   child: Column(
                     children: const [
                       Icon(
@@ -614,7 +640,10 @@ class _HistoryPageState extends State<HistoryPage> {
                   onTap: _pickMonthYear,
                   borderRadius: BorderRadius.circular(10),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     child: Column(
                       children: [
                         Text(
@@ -654,7 +683,10 @@ class _HistoryPageState extends State<HistoryPage> {
                 child: Opacity(
                   opacity: isCurrent ? 0.4 : 1,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 4,
+                    ),
                     child: Column(
                       children: const [
                         Icon(
@@ -662,7 +694,6 @@ class _HistoryPageState extends State<HistoryPage> {
                           color: Colors.white,
                           size: 18,
                         ),
-
                       ],
                     ),
                   ),
@@ -783,7 +814,10 @@ class _HistoryPageState extends State<HistoryPage> {
                   left: 0,
                   child: IgnorePointer(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(10),
@@ -805,7 +839,10 @@ class _HistoryPageState extends State<HistoryPage> {
                   right: 0,
                   child: IgnorePointer(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(10),

@@ -23,6 +23,7 @@ type User struct {
 	Email            string             `json:"email" bson:"email"`
 	Password         string             `json:"-" bson:"password"`
 	FullName         string             `json:"full_name" bson:"full_name"`
+	Avatar           string             `json:"avatar,omitempty" bson:"avatar,omitempty"`
 	BirthDate        time.Time          `json:"birth_date" bson:"birth_date"`
 	Religion         string             `json:"religion" bson:"religion"`
 	LastEducation    string             `json:"last_education" bson:"last_education"`
@@ -46,6 +47,7 @@ type UserResponse struct {
 	PayrollNumber    string    `json:"payroll_number"`
 	Email            string    `json:"email"`
 	FullName         string    `json:"full_name"`
+	Avatar           string    `json:"avatar,omitempty"`
 	BirthDate        time.Time `json:"birth_date"`
 	Religion         string    `json:"religion"`
 	LastEducation    string    `json:"last_education"`
@@ -106,6 +108,7 @@ type CreateEmployeeRequest struct {
 type UpdateUserRequest struct {
 	PayrollNumber    string `json:"payroll_number,omitempty"`
 	FullName         string `json:"full_name,omitempty"`
+	Avatar           string `json:"avatar,omitempty"`
 	BirthDate        string `json:"birth_date,omitempty"`
 	Religion         string `json:"religion,omitempty"`
 	LastEducation    string `json:"last_education,omitempty"`
@@ -133,6 +136,7 @@ func (u *User) ToResponse() UserResponse {
 		PayrollNumber:    u.PayrollNumber,
 		Email:            u.Email,
 		FullName:         u.FullName,
+		Avatar:           u.Avatar,
 		BirthDate:        u.BirthDate,
 		Religion:         u.Religion,
 		LastEducation:    u.LastEducation,

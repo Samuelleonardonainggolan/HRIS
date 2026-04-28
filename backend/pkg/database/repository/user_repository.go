@@ -4,8 +4,8 @@ package repository
 import (
 	"context"
 	"errors"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson"
@@ -170,6 +170,9 @@ func (r *userRepository) Update(ctx context.Context, id string, req *models.Upda
 	}
 	if req.FullName != "" {
 		update["$set"].(bson.M)["full_name"] = req.FullName
+	}
+	if req.Avatar != "" {
+		update["$set"].(bson.M)["avatar"] = req.Avatar
 	}
 	if req.BirthDate != "" {
 		parsed, parseErr := time.Parse("2006-01-02", req.BirthDate)

@@ -2,6 +2,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/auth_model.dart';
@@ -10,7 +11,9 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.107:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.9:8080/api/v1';
+
+  static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
   static final Map<String, String> _headers = {
     'Content-Type': 'application/json',
@@ -748,15 +751,13 @@ class ApiService {
         final data = jsonDecode(response.body);
         final payload = data['data'] ?? data['balance'] ?? data;
         if (payload is Map<String, dynamic>) {
-          final remaining = payload['remaining_kuota'] ?? payload['remainingQuota'] ?? 0;
+          final remaining =
+              payload['remaining_kuota'] ?? payload['remainingQuota'] ?? 0;
           return int.tryParse(remaining.toString()) ?? 0;
         }
       }
 
-      final results = await Future.wait([
-        getTipePengajuan(),
-        getMyPengajuan(),
-      ]);
+      final results = await Future.wait([getTipePengajuan(), getMyPengajuan()]);
 
       final types = results[0] as List<TipePengajuan>;
       final requests = results[1] as List<LeaveRequest>;
@@ -768,11 +769,16 @@ class ApiService {
           .toSet();
 
       final currentYear = DateTime.now().year;
-      final usedQuota = requests.where((request) {
-        if (request.statusFinal != 'APPROVED') return false;
-        if (request.startDate.year != currentYear) return false;
-        return deductingTypes.contains(request.type.trim().toLowerCase());
-      }).fold<int>(0, (sum, request) => sum + (request.days > 0 ? request.days : 1));
+      final usedQuota = requests
+          .where((request) {
+            if (request.statusFinal != 'APPROVED') return false;
+            if (request.startDate.year != currentYear) return false;
+            return deductingTypes.contains(request.type.trim().toLowerCase());
+          })
+          .fold<int>(
+            0,
+            (sum, request) => sum + (request.days > 0 ? request.days : 1),
+          );
 
       const annualQuota = 12;
       final remaining = annualQuota - usedQuota;
@@ -1014,7 +1020,9 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final userJson = data['data'] ?? data['user'] ?? data;
-        return User.fromJson(userJson);
+        final user = User.fromJson(userJson);
+        currentUser.value = user;
+        return user;
       } else {
         throw Exception('Gagal mengambil profil (${response.statusCode})');
       }
@@ -1023,19 +1031,66 @@ class ApiService {
     }
   }
 
-  static Future<void> updateProfile(Map<String, dynamic> profileData) async {
+  static Future<void> updateProfile(
+    Map<String, dynamic> profileData, {
+    String? avatarPath,
+  }) async {
     try {
       if (await isTokenExpired()) await refreshToken();
       final headers = await getHeaders();
-      final response = await http
-          .put(
-            Uri.parse('$baseUrl/profile'),
-            headers: headers,
-            body: jsonEncode(profileData),
-          )
-          .timeout(const Duration(seconds: 30));
+      late final http.Response response;
+
+      if (avatarPath != null && avatarPath.isNotEmpty) {
+        final token = await getAccessToken();
+        if (token == null || token.isEmpty) {
+          throw Exception('Token tidak ditemukan. Silakan login ulang.');
+        }
+
+        final request = http.MultipartRequest(
+          'PUT',
+          Uri.parse('$baseUrl/profile'),
+        );
+        request.headers.addAll({
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        });
+
+        profileData.forEach((key, value) {
+          if (value == null) return;
+          final textValue = value.toString().trim();
+          if (textValue.isNotEmpty) {
+            request.fields[key] = textValue;
+          }
+        });
+
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'avatar',
+            avatarPath,
+            filename:
+                'profile_${DateTime.now().millisecondsSinceEpoch}${avatarPath.contains('.') ? avatarPath.substring(avatarPath.lastIndexOf('.')) : '.jpg'}',
+          ),
+        );
+
+        final streamedResponse = await request.send().timeout(
+          const Duration(seconds: 30),
+        );
+        response = await http.Response.fromStream(streamedResponse);
+      } else {
+        response = await http
+            .put(
+              Uri.parse('$baseUrl/profile'),
+              headers: headers,
+              body: jsonEncode(profileData),
+            )
+            .timeout(const Duration(seconds: 30));
+      }
+
       print('[API] updateProfile status: ${response.statusCode}');
-      if (response.statusCode == 200) return;
+      if (response.statusCode == 200) {
+        await getProfile();
+        return;
+      }
       if (response.statusCode == 401) {
         await clearTokens();
         throw Exception('Sesi berakhir, silakan login ulang.');
@@ -1192,19 +1247,20 @@ class TipePengajuan {
 
   factory TipePengajuan.fromJson(Map<String, dynamic> json) {
     final categoryName = (json['category_name'] ?? json['nama_kategori'] ?? '')
-      .toString();
+        .toString();
     final normalizedCategory = categoryName.trim().toLowerCase();
 
     return TipePengajuan(
       id: (json['id'] ?? '').toString(),
       namaTipe: (json['type_name'] ?? json['nama_tipe'] ?? '').toString(),
       namaKategori: categoryName,
-      potongKuota: json['quota_deduction'] == true ||
-        json['potong_kuota'] == true ||
-        normalizedCategory == 'izin' ||
-        normalizedCategory == 'cuti',
+      potongKuota:
+          json['quota_deduction'] == true ||
+          json['potong_kuota'] == true ||
+          normalizedCategory == 'izin' ||
+          normalizedCategory == 'cuti',
       wajibLampiran:
-        json['attachment_required'] == true || json['wajib_lampiran'] == true,
+          json['attachment_required'] == true || json['wajib_lampiran'] == true,
     );
   }
 

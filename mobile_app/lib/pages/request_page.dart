@@ -24,8 +24,14 @@ class _RequestPageState extends State<RequestPage> {
   @override
   void initState() {
     super.initState();
+    ApiService.currentUser.addListener(_syncProfile);
     _loadUser();
     _loadRequests();
+  }
+
+  void _syncProfile() {
+    if (!mounted) return;
+    setState(() => _user = ApiService.currentUser.value);
   }
 
   Future<void> _loadUser() async {
@@ -33,6 +39,12 @@ class _RequestPageState extends State<RequestPage> {
       final u = await ApiService.getProfile();
       if (mounted) setState(() => _user = u);
     } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    ApiService.currentUser.removeListener(_syncProfile);
+    super.dispose();
   }
 
   Future<void> _loadRequests() async {
@@ -467,6 +479,8 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   String _avatarUrl() {
+    final avatar = (_user?.avatar ?? '').trim();
+    if (avatar.isNotEmpty) return avatar;
     final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
     return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
   }

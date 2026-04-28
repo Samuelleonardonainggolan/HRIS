@@ -3,6 +3,7 @@ package main
 
 import (
 	"log"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -69,7 +70,15 @@ func main() {
 		log.Println("⚠️  Supabase not configured, using local file storage")
 	}
 
-	authService := service.NewAuthService(userRepo, faceEmbeddingRepo, cfg.JWTSecret, jwtExpiryStr)
+	authService := service.NewAuthService(
+		userRepo,
+		faceEmbeddingRepo,
+		supabaseUploader,
+		cfg.PublicBaseURL,
+		filepath.Join("uploads", "profile"),
+		cfg.JWTSecret,
+		jwtExpiryStr,
+	)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
 	positionService := service.NewPositionService(positionRepo)
