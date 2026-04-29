@@ -13,6 +13,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import type { BadgeProps } from "@/components/ui/badge";
 import {
   Select,
@@ -50,6 +51,7 @@ interface AttendanceRow {
   clockOut: string;
   status: AttendanceStatus;
   location: string;
+  avatar?: string;
 }
 
 function statusBadgeVariant(status: AttendanceStatus) {
@@ -159,6 +161,7 @@ export default function PresensiKaryawanManagerHRPage() {
         clockOut: it.clock_out_time || "--:--",
         status: it.status,
         location: it.location || "Unrecorded",
+        avatar: (it as any).avatar || undefined, // Ambil avatar jika ada di API
       })),
     []
   );
@@ -364,7 +367,7 @@ export default function PresensiKaryawanManagerHRPage() {
                 <thead>
                   <tr className="bg-gray-50 border-y border-gray-100">
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      Nama Karyawan
+                      Karyawan
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       ID / Dept
@@ -396,23 +399,29 @@ export default function PresensiKaryawanManagerHRPage() {
 
                     return (
                       <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                            {r.name
-                              .split(/\s+/)
-                              .filter(Boolean)
-                              .map((p) => p[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-10 w-10">
+                              {r.avatar && r.avatar.startsWith("http") ? (
+                                <AvatarImage src={r.avatar} alt={r.name} />
+                              ) : (
+                                <AvatarFallback>
+                                  {r.name
+                                    ? r.name
+                                        .split(" ")
+                                        .map((n) => n[0])
+                                        .join("")
+                                        .toUpperCase()
+                                    : "?"}
+                                </AvatarFallback>
+                              )}
+                            </Avatar>
+                            <div>
+                              <div className="font-semibold text-gray-900">{r.name}</div>
+                              <div className="text-xs text-gray-500">{r.email}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="font-semibold text-gray-900">{r.name}</div>
-                            <div className="text-xs text-gray-500">{r.email}</div>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
                       <td className="px-6 py-4">
                         <div className="text-sm font-semibold text-gray-900">

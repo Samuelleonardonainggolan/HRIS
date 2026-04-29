@@ -11,6 +11,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -275,15 +276,21 @@ export default function ManajemenJamKerjaPage() {
                         {/* Karyawan */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                              {r.name
-                                .split(/\s+/)
-                                .filter(Boolean)
-                                .map((p) => p[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
-                            </div>
+                            <Avatar className="h-10 w-10">
+                              {r.avatar && r.avatar.startsWith("http") ? (
+                                <AvatarImage src={r.avatar} alt={r.name} />
+                              ) : (
+                                <AvatarFallback>
+                                  {r.name
+                                    ? r.name
+                                        .split(" ")
+                                        .map((n) => n[0])
+                                        .join("")
+                                        .toUpperCase()
+                                    : "?"}
+                                </AvatarFallback>
+                              )}
+                            </Avatar>
                             <div>
                               <div className="font-semibold text-gray-900">{r.name}</div>
                               <div className="text-xs text-gray-500">NO PAY: {r.nik}</div>

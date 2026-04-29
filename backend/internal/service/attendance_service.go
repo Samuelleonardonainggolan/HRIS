@@ -1021,6 +1021,7 @@ func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to t
 			ClockOutTime:   clockOut,
 			Status:         mapAttendanceStatusToUI(r.Status),
 			Location:       location,
+			Avatar: r.User.Avatar,
 		})
 	}
 
