@@ -27,6 +27,11 @@ type OvertimeRequest struct {
 	StatusManagerHR string             `json:"status_manager_hr" bson:"status_manager_hr"`
 	ManagerHRID     primitive.ObjectID `json:"manager_hr_id,omitempty" bson:"manager_hr_id,omitempty"`
 
+	FinalStatus string `json:"final_status" bson:"final_status"`
+
+	RejectionReasonKepalaDept string `json:"rejection_reason_kepala_dept,omitempty" bson:"rejection_reason_kepala_dept,omitempty"`
+	RejectionReasonManagerHR  string `json:"rejection_reason_manager_hr,omitempty" bson:"rejection_reason_manager_hr,omitempty"`
+
 	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" bson:"updated_at"`
 }
@@ -54,6 +59,13 @@ type UpdateOvertimeRequestRequest struct {
 
 	StatusManagerHR *string `json:"status_manager_hr,omitempty"`
 	ManagerHRID     *string `json:"manager_hr_id,omitempty"`
+
+	FinalStatus *string `json:"final_status,omitempty"`
+}
+
+// RejectOvertimeRequest represents rejection request
+type RejectOvertimeRequest struct {
+	RejectionReason string `json:"rejection_reason" binding:"required"`
 }
 
 // OvertimeRequestResponse represents response
@@ -74,8 +86,28 @@ type OvertimeRequestResponse struct {
 	StatusManagerHR string `json:"status_manager_hr"`
 	ManagerHRID     string `json:"manager_hr_id,omitempty"`
 
+	FinalStatus string `json:"final_status"`
+
+	RejectionReasonKepalaDept string `json:"rejection_reason_kepala_dept,omitempty"`
+	RejectionReasonManagerHR  string `json:"rejection_reason_manager_hr,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OvertimeApprovalEmployeeResponse represents employee info in approval response
+type OvertimeApprovalEmployeeResponse struct {
+	ID             string `json:"id"`
+	PayrollNumber  string `json:"payroll_number"`
+	FullName       string `json:"full_name"`
+	DepartmentName string `json:"department_name"`
+	PositionName   string `json:"position_name"`
+}
+
+// OvertimeApprovalResponse represents full approval response
+type OvertimeApprovalResponse struct {
+	Overtime OvertimeRequestResponse           `json:"overtime"`
+	Employee *OvertimeApprovalEmployeeResponse `json:"employee,omitempty"`
 }
 
 // ToResponse converts OvertimeRequest to OvertimeRequestResponse
@@ -93,6 +125,10 @@ func (o *OvertimeRequest) ToResponse() OvertimeRequestResponse {
 
 		StatusKepalaDepartemen: o.StatusKepalaDepartemen,
 		StatusManagerHR:        o.StatusManagerHR,
+		FinalStatus:            o.FinalStatus,
+
+		RejectionReasonKepalaDept: o.RejectionReasonKepalaDept,
+		RejectionReasonManagerHR:  o.RejectionReasonManagerHR,
 
 		CreatedAt: o.CreatedAt,
 		UpdatedAt: o.UpdatedAt,

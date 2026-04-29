@@ -14,8 +14,11 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/api/routes"
 	"github.com/andikatampubolon10/hris-backend/pkg/database"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
+	"github.com/andikatampubolon10/hris-backend/pkg/migration"
+	"github.com/andikatampubolon10/hris-backend/pkg/migration/migrations"
 	"github.com/andikatampubolon10/hris-backend/pkg/storage"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func main() {
@@ -30,6 +33,38 @@ func main() {
 	defer mongodb.Disconnect()
 
 	log.Println("✅ Database connected successfully")
+
+	// ==================== Run Migrations ====================
+	migrationManager := migration.NewManager(mongodb.Database)
+
+	// Helper function to create Migration from return values
+	createMigration := func(version int, name, description string, up, down func(*mongo.Database) error) migration.Migration {
+		return migration.Migration{
+			Version:     version,
+			Name:        name,
+			Description: description,
+			Up:          up,
+			Down:        down,
+		}
+	}
+
+	// Register all migrations
+	migrationManager.Register(createMigration(migrations.CreateDepartments()))
+	migrationManager.Register(createMigration(migrations.CreatePositions()))
+	migrationManager.Register(createMigration(migrations.CreateTestUsers()))
+	migrationManager.Register(createMigration(migrations.CreateGeofences()))
+	migrationManager.Register(createMigration(migrations.CreateKategoriPengajuan()))
+	migrationManager.Register(createMigration(migrations.CreateTipePengajuan()))
+	migrationManager.Register(createMigration(migrations.CreatePengajuanIzinCuti()))
+	migrationManager.Register(createMigration(migrations.CreateAttendances()))
+	migrationManager.Register(createMigration(migrations.CreateJamKerja()))
+
+	// Run pending migrations
+	if err := migrationManager.Up(); err != nil {
+		log.Printf("⚠️  Warning: Migration error (continuing anyway): %v", err)
+	}
+
+	log.Println("🚀 Migrations completed")
 
 	// ==================== Initialize Repositories ====================
 	userRepo := repository.NewUserRepository(mongodb.Database)
@@ -102,6 +137,7 @@ func main() {
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
+	overtimeRequestService := service.NewOvertimeRequestService(repository.NewOvertimeRequestRepository(mongodb.Database), userRepo)
 	log.Println("⚙️  Services initialized")
 
 	// ==================== Initialize Handlers ====================
@@ -118,6 +154,7 @@ func main() {
 	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
+	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService)
 	log.Println("🎯 Handlers initialized")
 
 	// ==================== Setup Gin ====================
@@ -144,6 +181,7 @@ func main() {
 		jamKerjaHandler, // ✅ Dari kode kedua
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
+		overtimeRequestHandler,
 	)
 
 	log.Println("🛣️  Routes configured")

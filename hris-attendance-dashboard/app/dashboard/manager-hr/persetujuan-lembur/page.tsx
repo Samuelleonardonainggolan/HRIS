@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
+import { overtimeRequestsApi, OvertimeApprovalResponse, OvertimeRequestStatus } from "@/lib/api/overtime-requests";
 
 type RequestStatus = "Pending" | "Disetujui" | "Ditolak";
 
@@ -34,6 +35,28 @@ type OvertimeApprovalItem = {
   statusKepalaDepartemen?: string;
   statusManagerHR?: string;
 };
+
+function mapStatus(status: OvertimeRequestStatus): RequestStatus {
+  switch (status) {
+    case "APPROVED":
+      return "Disetujui";
+    case "REJECTED":
+      return "Ditolak";
+    default:
+      return "Pending";
+  }
+}
+
+function mapStatusToBackend(status: RequestStatus): OvertimeRequestStatus {
+  switch (status) {
+    case "Disetujui":
+      return "APPROVED";
+    case "Ditolak":
+      return "REJECTED";
+    default:
+      return "PENDING";
+  }
+}
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -83,6 +106,32 @@ function statusBadgeClass(s: RequestStatus) {
   }
 }
 
+function convertToFrontendItem(resp: OvertimeApprovalResponse): OvertimeApprovalItem {
+  const overtime = resp.overtime;
+  const employee = resp.employee;
+  const startDate = new Date(overtime.start_time);
+  const endDate = new Date(overtime.end_time);
+
+  return {
+    id: overtime.id,
+    employeeName: employee?.full_name ?? "Unknown",
+    employeeId: employee?.payroll_number ?? "-",
+    department: employee?.department_name ?? "-",
+    position: employee?.position_name ?? "-",
+    dateLabel: formatDateLabel(startDate),
+    startAt: formatListDateTime(startDate),
+    endAt: formatListDateTime(endDate),
+    startTimeLabel: formatTimeLabel(startDate),
+    endTimeLabel: formatTimeLabel(endDate),
+    reason: overtime.reason,
+    total: overtime.total,
+    status: mapStatus(overtime.final_status),
+    avatarFallback: getInitials(employee?.full_name ?? "?"),
+    statusKepalaDepartemen: overtime.status_kepala_departemen,
+    statusManagerHR: overtime.status_manager_hr,
+  };
+}
+
 export default function PersetujuanLemburPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -107,87 +156,19 @@ export default function PersetujuanLemburPage() {
           setLoadError(null);
           setIsLoading(true);
 
-          // TODO: ganti ini dengan API list overtime requests for manager-hr
-          const mock: OvertimeApprovalItem[] = [
-            (() => {
-              const start = new Date("2026-04-22T18:00:00+07:00");
-              const end = new Date("2026-04-22T21:00:00+07:00");
-              return {
-                id: "ot-1",
-                employeeName: "Siti Rahmawati",
-                employeeId: "EMP-2023-089",
-                department: "Engineering",
-                position: "Senior Developer",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Deployment & bugfix urgent untuk release malam ini.",
-                total: "3 jam",
-                status: "Pending",
-                avatarUrl: "",
-                avatarFallback: getInitials("Siti Rahmawati"),
-                statusKepalaDepartemen: "APPROVED",
-                statusManagerHR: "PENDING",
-              };
-            })(),
-            (() => {
-              const start = new Date("2026-04-21T19:30:00+07:00");
-              const end = new Date("2026-04-21T22:00:00+07:00");
-              return {
-                id: "ot-2",
-                employeeName: "Andi Pratama",
-                employeeId: "EMP-2022-142",
-                department: "Marketing",
-                position: "Marketing Specialist",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Persiapan materi campaign besok pagi.",
-                total: "2.5 jam",
-                status: "Disetujui",
-                avatarUrl: "",
-                avatarFallback: getInitials("Andi Pratama"),
-                statusKepalaDepartemen: "APPROVED",
-                statusManagerHR: "APPROVED",
-              };
-            })(),
-            (() => {
-              const start = new Date("2026-04-20T18:00:00+07:00");
-              const end = new Date("2026-04-20T20:00:00+07:00");
-              return {
-                id: "ot-3",
-                employeeName: "Budi Wijaya",
-                employeeId: "EMP-2021-085",
-                department: "Sales",
-                position: "Sales Manager",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Follow up klien untuk closing deal.",
-                total: "2 jam",
-                status: "Ditolak",
-                avatarUrl: "",
-                avatarFallback: getInitials("Budi Wijaya"),
-                statusKepalaDepartemen: "REJECTED",
-                statusManagerHR: "PENDING",
-              };
-            })(),
-          ];
-
-          const q = searchEmployee.trim().toLowerCase();
-          const filtered = q ? mock.filter((x) => x.employeeName.toLowerCase().includes(q)) : mock;
+          const data = await overtimeRequestsApi.listForManagerHR({
+            status: "ALL",
+            search: searchEmployee || undefined,
+          });
 
           if (cancelled) return;
-          setItems(filtered);
+
+          const converted = data.map(convertToFrontendItem);
+
+          setItems(converted);
           setSelectedId((prev) => {
-            if (prev && filtered.some((x) => x.id === prev)) return prev;
-            return filtered[0]?.id ?? null;
+            if (prev && converted.some((x) => x.id === prev)) return prev;
+            return converted[0]?.id ?? null;
           });
         } catch (e) {
           if (cancelled) return;
@@ -224,10 +205,10 @@ export default function PersetujuanLemburPage() {
     if (!selected || isActing) return;
     try {
       setIsActing(true);
-      // TODO: call API approve
-      await new Promise((r) => setTimeout(r, 600));
+      const data = await overtimeRequestsApi.approve(selected.id);
+      const updated = convertToFrontendItem(data);
       toast.success("Pengajuan lembur disetujui");
-      setItems((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "Disetujui" } : x)));
+      setItems((prev) => prev.map((x) => (x.id === selected.id ? updated : x)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyetujui pengajuan lembur");
     } finally {
@@ -260,11 +241,11 @@ export default function PersetujuanLemburPage() {
 
     try {
       setIsActing(true);
-      // TODO: call API reject + reason
-      await new Promise((r) => setTimeout(r, 600));
-      toast.success("Pengajuan lembur ditolak");
+      const data = await overtimeRequestsApi.reject(selected.id, trimmed);
+      const updated = convertToFrontendItem(data);
       closeRejectModal();
-      setItems((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "Ditolak" } : x)));
+      toast.success("Pengajuan lembur ditolak");
+      setItems((prev) => prev.map((x) => (x.id === selected.id ? updated : x)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menolak pengajuan lembur");
     } finally {

@@ -24,6 +24,7 @@ func SetupRoutes(
 	jamKerjaHandler *handler.JamKerjaHandler,
 	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
 	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
+	overtimeRequestHandler *handler.OvertimeRequestHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -199,6 +200,26 @@ func SetupRoutes(
 
 			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
+
+			// OVERTIME REQUEST APPROVAL (Manager HR Only)
+			overtimeRequests := protected.Group("/overtime-requests")
+			overtimeRequests.Use(middleware.ManagerHROnly())
+			{
+				overtimeRequests.GET("", overtimeRequestHandler.ListForManagerHR)
+				overtimeRequests.GET("/:id", overtimeRequestHandler.GetForManagerHR)
+				overtimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByManagerHR)
+				overtimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByManagerHR)
+			}
+
+			// OVERTIME REQUEST APPROVAL (Kepala Departemen Only)
+			deptOvertimeRequests := protected.Group("/dept-overtime-requests")
+			deptOvertimeRequests.Use(middleware.ManagerDepartemenOnly())
+			{
+				deptOvertimeRequests.GET("", overtimeRequestHandler.ListForKepalaDepartemen)
+				deptOvertimeRequests.GET("/:id", overtimeRequestHandler.GetForKepalaDepartemen)
+				deptOvertimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByKepalaDepartemen)
+				deptOvertimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByKepalaDepartemen)
+			}
 
 			// LEAVE REQUEST APPROVAL (Manager HR Only)
 			leaveRequests := protected.Group("/leave-requests")
