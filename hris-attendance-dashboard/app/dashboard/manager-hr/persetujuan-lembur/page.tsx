@@ -483,19 +483,32 @@ export default function PersetujuanLemburPage() {
                     </div>
                   </div>
 
+                  <div className="mt-3">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Status Kepala Departemen</div>
+                    <div className="mt-1 text-sm">
+                      {selected.statusKepalaDepartemen === "APPROVED" ? (
+                        <span className="text-green-600">Disetujui</span>
+                      ) : selected.statusKepalaDepartemen === "REJECTED" ? (
+                        <span className="text-red-600">Ditolak</span>
+                      ) : (
+                        <span className="text-orange-600">Pending</span>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-auto pt-6 grid grid-cols-2 gap-3">
                     <Button
                       variant="outline"
                       className="border-red-200 text-red-600 hover:bg-red-50"
                       onClick={openRejectModal}
-                      disabled={selected.status !== "Pending" || isActing}
+                      disabled={selected.status !== "Pending" || selected.statusKepalaDepartemen !== "APPROVED" || isActing}
                     >
                       Tolak
                     </Button>
                     <Button
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={handleApprove}
-                      disabled={selected.status !== "Pending" || isActing}
+                      disabled={selected.status !== "Pending" || selected.statusKepalaDepartemen !== "APPROVED" || isActing}
                     >
                       Setuju
                     </Button>

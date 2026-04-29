@@ -90,6 +90,9 @@ func (s *overtimeRequestService) GetForManagerHR(ctx context.Context, id string)
 	if err != nil {
 		return nil, err
 	}
+	if strings.ToUpper(r.StatusKepalaDepartemen) == models.StatusPending {
+		return nil, errors.New("pengajuan lembur belum diproses kepala departemen")
+	}
 
 	u, err := s.userRepo.FindByID(ctx, r.UserID.Hex())
 	if err != nil {
@@ -163,7 +166,7 @@ func (s *overtimeRequestService) ListForKepalaDepartemen(ctx context.Context, st
 	}
 	if len(deptUsers) == 0 {
 		return []models.OvertimeApprovalResponse{}, nil
-	}
+	}	
 
 	userOIDs := make([]primitive.ObjectID, 0, len(deptUsers))
 	userByID := make(map[string]models.User, len(deptUsers))

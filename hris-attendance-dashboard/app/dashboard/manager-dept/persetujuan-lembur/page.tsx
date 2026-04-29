@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import toast from "react-hot-toast";
+import { deptOvertimeRequestsApi, OvertimeApprovalResponse, OvertimeRequestStatus } from "@/lib/api/overtime-requests";
 
 type RequestStatus = "Pending" | "Disetujui" | "Ditolak";
 
@@ -14,6 +15,7 @@ type OvertimeApprovalItem = {
 
   employeeName: string;
   employeeId: string; // payroll number
+  department: string;
   position: string;
 
   dateLabel: string; // still used in detail panel
@@ -29,7 +31,21 @@ type OvertimeApprovalItem = {
 
   avatarUrl?: string;
   avatarFallback: string;
+
+  statusKepalaDepartemen?: string;
+  statusManagerHR?: string;
 };
+
+function mapStatus(status: OvertimeRequestStatus): RequestStatus {
+  switch (status) {
+    case "APPROVED":
+      return "Disetujui";
+    case "REJECTED":
+      return "Ditolak";
+    default:
+      return "Pending";
+  }
+}
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -79,6 +95,32 @@ function statusBadgeClass(s: RequestStatus) {
   }
 }
 
+function convertToFrontendItem(resp: OvertimeApprovalResponse): OvertimeApprovalItem {
+  const overtime = resp.overtime;
+  const employee = resp.employee;
+  const startDate = new Date(overtime.start_time);
+  const endDate = new Date(overtime.end_time);
+
+  return {
+    id: overtime.id,
+    employeeName: employee?.full_name ?? "Unknown",
+    employeeId: employee?.payroll_number ?? "-",
+    department: employee?.department_name ?? "-",
+    position: employee?.position_name ?? "-",
+    dateLabel: formatDateLabel(startDate),
+    startAt: formatListDateTime(startDate),
+    endAt: formatListDateTime(endDate),
+    startTimeLabel: formatTimeLabel(startDate),
+    endTimeLabel: formatTimeLabel(endDate),
+    reason: overtime.reason,
+    total: overtime.total,
+    status: mapStatus(overtime.final_status),
+    avatarFallback: getInitials(employee?.full_name ?? "?"),
+    statusKepalaDepartemen: overtime.status_kepala_departemen,
+    statusManagerHR: overtime.status_manager_hr,
+  };
+}
+
 export default function PersetujuanLemburPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,6 +138,12 @@ export default function PersetujuanLemburPage() {
 
   const [items, setItems] = useState<OvertimeApprovalItem[]>([]);
 
+  const positionOptions = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((x) => set.add(x.position));
+    return Array.from(set).sort();
+  }, [items]);
+
   useEffect(() => {
     let cancelled = false;
     const t = setTimeout(() => {
@@ -104,75 +152,19 @@ export default function PersetujuanLemburPage() {
           setLoadError(null);
           setIsLoading(true);
 
-          // TODO: ganti ini dengan API list overtime requests for manager-hr
-          const mock: OvertimeApprovalItem[] = [
-            (() => {
-              const start = new Date("2026-04-22T18:00:00+07:00");
-              const end = new Date("2026-04-22T21:00:00+07:00");
-              return {
-                id: "ot-1",
-                employeeName: "Siti Rahmawati",
-                employeeId: "EMP-2023-089",
-                position: "Senior Developer",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Deployment & bugfix urgent untuk release malam ini.",
-                total: "3 jam",
-                status: "Pending",
-                avatarUrl: "",
-                avatarFallback: getInitials("Siti Rahmawati"),
-              };
-            })(),
-            (() => {
-              const start = new Date("2026-04-21T19:30:00+07:00");
-              const end = new Date("2026-04-21T22:00:00+07:00");
-              return {
-                id: "ot-2",
-                employeeName: "Andi Pratama",
-                employeeId: "EMP-2022-142",
-                position: "Marketing Specialist",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Persiapan materi campaign besok pagi.",
-                total: "2.5 jam",
-                status: "Disetujui",
-                avatarUrl: "",
-                avatarFallback: getInitials("Andi Pratama"),
-              };
-            })(),
-            (() => {
-              const start = new Date("2026-04-20T18:00:00+07:00");
-              const end = new Date("2026-04-20T20:00:00+07:00");
-              return {
-                id: "ot-3",
-                employeeName: "Budi Wijaya",
-                employeeId: "EMP-2021-085",
-                position: "Sales Manager",
-                dateLabel: formatDateLabel(start),
-                startAt: formatListDateTime(start),
-                endAt: formatListDateTime(end),
-                startTimeLabel: formatTimeLabel(start),
-                endTimeLabel: formatTimeLabel(end),
-                reason: "Follow up klien untuk closing deal.",
-                total: "2 jam",
-                status: "Ditolak",
-                avatarUrl: "",
-                avatarFallback: getInitials("Budi Wijaya"),
-              };
-            })(),
-          ];
+          const data = await deptOvertimeRequestsApi.list({
+            status: "ALL",
+            search: searchEmployee || undefined,
+          });
 
           if (cancelled) return;
-          setItems(mock);
+
+          const converted = data.map(convertToFrontendItem);
+
+          setItems(converted);
           setSelectedId((prev) => {
-            if (prev && mock.some((x) => x.id === prev)) return prev;
-            return mock[0]?.id ?? null;
+            if (prev && converted.some((x) => x.id === prev)) return prev;
+            return converted[0]?.id ?? null;
           });
         } catch (e) {
           if (cancelled) return;
@@ -187,39 +179,23 @@ export default function PersetujuanLemburPage() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, []);
+  }, [searchEmployee]);
+
+  const selected = useMemo(() => items.find((x) => x.id === selectedId) ?? null,[items, selectedId]);
 
   const filtered = useMemo(() => {
-    const q = searchEmployee.toLowerCase().trim();
-    return items.filter((x) => {
-      const matchEmployee = !q || x.employeeName.toLowerCase().includes(q);
-      const matchPosition = selectedPosition === "all" || x.position === selectedPosition;
-      return matchEmployee && matchPosition;
-    });
-  }, [items, searchEmployee, selectedPosition]);
-
-  const positionOptions = useMemo(() => {
-    return Array.from(new Set(items.map((x) => x.position)));
-  }, [items]);
-
-  const selected = useMemo(
-    () => filtered.find((x) => x.id === selectedId) ?? filtered[0] ?? null,
-    [filtered, selectedId]
-  );
-
-  useEffect(() => {
-    if (!selected) return;
-    setSelectedId(selected.id);
-  }, [selected]);
+    if (selectedPosition === "all") return items;
+    return items.filter((x) => x.position === selectedPosition);
+  },[items, selectedPosition]);
 
   const handleApprove = async () => {
     if (!selected || isActing) return;
     try {
       setIsActing(true);
-      // TODO: call API approve
-      await new Promise((r) => setTimeout(r, 600));
+      const data = await deptOvertimeRequestsApi.approve(selected.id);
+      const updated = convertToFrontendItem(data);
       toast.success("Pengajuan lembur disetujui");
-      setItems((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "Disetujui" } : x)));
+      setItems((prev) => prev.map((x) => (x.id === selected.id ? updated : x)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menyetujui pengajuan lembur");
     } finally {
@@ -228,7 +204,6 @@ export default function PersetujuanLemburPage() {
   };
 
   const openRejectModal = () => {
-    if (!selected || isActing) return;
     setRejectionReason("");
     setRejectError(null);
     setShowRejectModal(true);
@@ -252,11 +227,11 @@ export default function PersetujuanLemburPage() {
 
     try {
       setIsActing(true);
-      // TODO: call API reject + reason
-      await new Promise((r) => setTimeout(r, 600));
-      toast.success("Pengajuan lembur ditolak");
+      const data = await deptOvertimeRequestsApi.reject(selected.id, trimmed);
+      const updated = convertToFrontendItem(data);
       closeRejectModal();
-      setItems((prev) => prev.map((x) => (x.id === selected.id ? { ...x, status: "Ditolak" } : x)));
+      toast.success("Pengajuan lembur ditolak");
+      setItems((prev) => prev.map((x) => (x.id === selected.id ? updated : x)));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Gagal menolak pengajuan lembur");
     } finally {
@@ -303,6 +278,7 @@ export default function PersetujuanLemburPage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900">Persetujuan Lembur</h2>
+                  <p className="mt-1 text-sm text-gray-500">Klik baris untuk melihat detail pengajuan lembur.</p>
                 </div>
               </div>
 
@@ -506,19 +482,32 @@ export default function PersetujuanLemburPage() {
                     </div>
                   </div>
 
+                  <div className="mt-3">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Status Manager HR</div>
+                    <div className="mt-1 text-sm">
+                      {selected.statusManagerHR === "APPROVED" ? (
+                        <span className="text-green-600">Disetujui</span>
+                      ) : selected.statusManagerHR === "REJECTED" ? (
+                        <span className="text-red-600">Ditolak</span>
+                      ) : (
+                        <span className="text-orange-600">Pending</span>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-auto pt-6 grid grid-cols-2 gap-3">
                     <Button
                       variant="outline"
                       className="border-red-200 text-red-600 hover:bg-red-50"
                       onClick={openRejectModal}
-                      disabled={selected.status !== "Pending" || isActing}
+                      disabled={selected.statusKepalaDepartemen !== "PENDING" || isActing}
                     >
                       Tolak
                     </Button>
                     <Button
                       className="bg-blue-600 hover:bg-blue-700 text-white"
                       onClick={handleApprove}
-                      disabled={selected.status !== "Pending" || isActing}
+                      disabled={selected.statusKepalaDepartemen !== "PENDING" || isActing}
                     >
                       Setuju
                     </Button>
@@ -598,14 +587,14 @@ export default function PersetujuanLemburPage() {
               </Button>
               <Button
                 onClick={handleReject}
-                disabled={isActing || rejectionReason.trim().length < 5}
-                className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+                disabled={isActing}
+                className="bg-red-600 hover:bg-red-700 text-white gap-2"
               >
                 {isActing ? (
-                  <span className="flex items-center gap-2">
+                  <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Memproses...
-                  </span>
+                    Menolak...
+                  </>
                 ) : (
                   "Tolak Pengajuan"
                 )}
