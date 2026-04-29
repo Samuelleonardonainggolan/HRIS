@@ -17,11 +17,54 @@ import {
 import { departmentApi } from "@/lib/api/department";
 import toast from "react-hot-toast";
 
+const DEPARTMENT_CODE_STOPWORDS = new Set(["dan", "and", "&", "of", "the"]);
+
+function buildDepartmentCodePrefix(name: string) {
+  const words = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((w) => !DEPARTMENT_CODE_STOPWORDS.has(w));
+
+  if (words.length >= 2) {
+    return `${words[0].slice(0, 1)}${words[1].slice(0, 1)}`.toUpperCase();
+  }
+
+  const w = words[0] ?? "";
+  if (!w) return "";
+  if (w.length >= 2) return w.slice(0, 2).toUpperCase();
+  return `${w.slice(0, 1)}X`.toUpperCase();
+}
+
+function suggestNextDepartmentCode(name: string, existingCodes: string[]) {
+  const prefix = buildDepartmentCodePrefix(name);
+  if (!prefix) return "";
+
+  const re = new RegExp(`^${prefix}[^0-9]*(\\d+)$`, "i");
+  let max = 0;
+  for (const raw of existingCodes) {
+    const code = (raw ?? "").trim().toUpperCase();
+    const m = code.match(re);
+    if (!m) continue;
+    const n = Number.parseInt(m[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+
+  const next = max + 1;
+  return `${prefix}${String(next).padStart(3, "0")}`;
+}
+
 export default function AddDepartmentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [existingDepartmentCodes, setExistingDepartmentCodes] = useState<string[]>(
+    []
+  );
+  const [isCodeManuallyEdited, setIsCodeManuallyEdited] = useState(false);
   const [formData, setFormData] = useState({
     code: "",
     name: "",
@@ -60,6 +103,28 @@ export default function AddDepartmentPage() {
       loadDepartment(editId);
     }
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const all = await departmentApi.getAll();
+        setExistingDepartmentCodes(
+          all.map((d) => d.code).filter((c): c is string => Boolean(c?.trim()))
+        );
+      } catch {
+        setExistingDepartmentCodes([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (editingId) return;
+    if (isCodeManuallyEdited) return;
+    setFormData((prev) => ({
+      ...prev,
+      code: suggestNextDepartmentCode(prev.name, existingDepartmentCodes),
+    }));
+  }, [editingId, existingDepartmentCodes, isCodeManuallyEdited]);
 
   const loadDepartment = async (id: string) => {
     try {
@@ -168,9 +233,21 @@ export default function AddDepartmentPage() {
                   id="name"
                   placeholder="Contoh: Front Office"
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const nextName = e.target.value;
+                    setFormData((prev) => {
+                      const next = { ...prev, name: nextName };
+                      if (editingId) return next;
+                      if (isCodeManuallyEdited) return next;
+                      return {
+                        ...next,
+                        code: suggestNextDepartmentCode(
+                          nextName,
+                          existingDepartmentCodes
+                        ),
+                      };
+                    });
+                  }}
                   required
                   className="w-full"
                 />
@@ -183,15 +260,17 @@ export default function AddDepartmentPage() {
                 </Label>
                 <Input
                   id="code"
-                  placeholder="Contoh: FO-01"
+                  placeholder="Otomatis: IT001"
                   value={formData.code}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code: e.target.value.toUpperCase() })
-                  }
+                  onChange={(e) => {
+                    const nextCode = e.target.value.toUpperCase();
+                    setIsCodeManuallyEdited(Boolean(nextCode.trim()));
+                    setFormData((prev) => ({ ...prev, code: nextCode }));
+                  }}
                   className="w-full"
                 />
                 <p className="text-xs text-gray-500">
-                  Kode unik untuk departemen (opsional)
+                  Terisi otomatis sesuai nama departemen, tetapi tetap bisa diedit
                 </p>
               </div>
 
