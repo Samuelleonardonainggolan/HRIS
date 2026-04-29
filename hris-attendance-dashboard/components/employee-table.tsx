@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, MoreVertical, UserX, UserCheck } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Employee } from "@/types";
 import {
@@ -134,17 +134,27 @@ export function EmployeeTable({
                 >
                   <td className="py-4">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback
-                        className={
-                          employee.status === "AKTIF"
-                            ? "bg-teal-500 text-white"
-                            : employee.status === "NONAKTIF"
-                            ? "bg-gray-400 text-white"
-                            : "bg-blue-500 text-white"
-                        }
-                      >
-                        {employee.avatar}
-                      </AvatarFallback>
+                      {employee.avatar && employee.avatar.startsWith("http") ? (
+                        <AvatarImage src={employee.avatar} alt={employee.name} />
+                      ) : (
+                        <AvatarFallback
+                          className={
+                            employee.status === "AKTIF"
+                              ? "bg-teal-500 text-white"
+                              : employee.status === "NONAKTIF"
+                              ? "bg-gray-400 text-white"
+                              : "bg-blue-500 text-white"
+                          }
+                        >
+                          {employee.name
+                            ? employee.name
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")
+                                .toUpperCase()
+                            : "?"}
+                        </AvatarFallback>
+                      )}
                     </Avatar>
                   </td>
                   <td className="py-4">

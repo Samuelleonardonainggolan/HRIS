@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { X, Mail, Phone, MapPin } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Employee } from "@/types";
 import { authService } from "@/lib/api/auth";
 
@@ -45,9 +45,19 @@ export function EmployeeDetailPanel({
 
             <div className="relative inline-block mb-4">
               <Avatar className="h-20 w-20">
-                <AvatarFallback className="bg-teal-500 text-white text-2xl">
-                  {employee.avatar}
-                </AvatarFallback>
+                {employee.avatar && employee.avatar.startsWith("http") ? (
+                  <AvatarImage src={employee.avatar} alt={employee.name} />
+                ) : (
+                  <AvatarFallback className="bg-teal-500 text-white text-2xl">
+                    {employee.name
+                      ? employee.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")
+                          .toUpperCase()
+                      : "?"}
+                  </AvatarFallback>
+                )}
               </Avatar>
               <div className="absolute bottom-0 right-0 h-5 w-5 rounded-full bg-green-500 border-2 border-gray-900"></div>
             </div>

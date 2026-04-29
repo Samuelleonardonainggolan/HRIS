@@ -1,4 +1,4 @@
-// cmd/server/main.go (FINAL VERSION - GABUNGAN)
+// cmd/server/main.go (FINAL VERSION - GABUNGAN LENGKAP)
 package main
 
 import (
@@ -77,6 +77,7 @@ func main() {
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
 	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
 	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
+	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // ✅ Dari kode kedua
 
 	log.Println("📦 Repositories initialized")
 
@@ -121,8 +122,10 @@ func main() {
 	// FaceService dengan parameter lengkap (dari kode kedua)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient, cfg.PublicBaseURL, cfg.FaceImageDir, supabaseUploader)
 
-	// ✅ AttendanceService dengan jamKerjaRepo (dari kode pertama)
-	attendanceService := service.NewAttendanceService(attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
+	// ✅ AttendanceService dengan jamKerjaRepo DAN mongodb.Database (gabungan kedua kode)
+	// Kode pertama menggunakan mongodb.Database, kode kedua tidak
+	// Kita gunakan versi dengan mongodb.Database (lebih lengkap)
+	attendanceService := service.NewAttendanceService(mongodb.Database, attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
 
 	// PengajuanService dengan konfigurasi lengkap (dari kode kedua)
 	var pengajuanService service.PengajuanService
@@ -137,7 +140,8 @@ func main() {
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
-	overtimeRequestService := service.NewOvertimeRequestService(repository.NewOvertimeRequestRepository(mongodb.Database), userRepo)
+	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // ✅ Dari kode kedua
+
 	log.Println("⚙️  Services initialized")
 
 	// ==================== Initialize Handlers ====================
@@ -154,7 +158,8 @@ func main() {
 	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
-	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService)
+	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // ✅ Dari kode kedua
+
 	log.Println("🎯 Handlers initialized")
 
 	// ==================== Setup Gin ====================
@@ -181,7 +186,7 @@ func main() {
 		jamKerjaHandler, // ✅ Dari kode kedua
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
-		overtimeRequestHandler,
+		overtimeRequestHandler, // ✅ Dari kode kedua
 	)
 
 	log.Println("🛣️  Routes configured")
@@ -223,6 +228,9 @@ func main() {
 	log.Println("     GET    /api/v1/pengajuan")
 	log.Println("     GET    /api/v1/pengajuan/tipe")
 	log.Println("     POST   /api/v1/pengajuan")
+	log.Println("   Overtime Request:") // ✅ Dari kode kedua
+	log.Println("     POST   /api/v1/overtime/request")
+	log.Println("     GET    /api/v1/overtime/my-requests")
 	log.Println("================================================")
 
 	if err := router.Run(":" + port); err != nil {

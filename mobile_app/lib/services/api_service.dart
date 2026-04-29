@@ -11,7 +11,7 @@ import '../models/leave_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.9:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.48:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
