@@ -535,7 +535,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _statItem('NIK', _user?.nik ?? '-'),
+                    _statItem('Payroll', _user?.nik ?? '-'),
                     _verticalDivider(),
                     _statItem('Bergabung', _fmtDateShort(_user?.joinDate)),
                   ],

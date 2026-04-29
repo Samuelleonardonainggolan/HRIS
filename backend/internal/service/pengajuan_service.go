@@ -207,9 +207,6 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	if tanggalSelesai.Before(tanggalMulai) {
 		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
 	}
-	if isSameCalendarDate(tanggalMulai, tanggalSelesai) {
-		return nil, errors.New("tanggal_mulai dan tanggal_selesai tidak boleh sama")
-	}
 
 	if err := validateRequestLeadTime(tipe.TypeName, tanggalMulai); err != nil {
 		return nil, err
@@ -473,9 +470,6 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 
 	if endDate.Before(startDate) {
 		return nil, errors.New("tanggal_selesai tidak boleh sebelum tanggal_mulai")
-	}
-	if isSameCalendarDate(startDate, endDate) {
-		return nil, errors.New("tanggal_mulai dan tanggal_selesai tidak boleh sama")
 	}
 
 	if err := validateRequestLeadTime(current.TypeName, startDate); err != nil {

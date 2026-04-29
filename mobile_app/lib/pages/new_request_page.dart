@@ -149,12 +149,11 @@ class _NewRequestPageState extends State<NewRequestPage> {
     setState(() {
       if (isStart) {
         _startDate = picked;
-        if (!_endDate.isAfter(_startDate)) {
-          _endDate = _startDate.add(const Duration(days: 1));
+        if (_endDate.isBefore(_startDate)) {
+          _endDate = _startDate;
         }
       } else {
-        final minimumEnd = _startDate.add(const Duration(days: 1));
-        _endDate = picked.isBefore(minimumEnd) ? minimumEnd : picked;
+        _endDate = picked.isBefore(_startDate) ? _startDate : picked;
       }
     });
   }
@@ -228,9 +227,9 @@ class _NewRequestPageState extends State<NewRequestPage> {
       }
 
       final dateFormat = DateFormat('yyyy-MM-dd');
-      if (!_endDate.isAfter(_startDate)) {
+      if (_endDate.isBefore(_startDate)) {
         _showSnack(
-          'Tanggal selesai harus berbeda dan minimal 1 hari setelah tanggal mulai',
+          'Tanggal selesai tidak boleh sebelum tanggal mulai',
           isError: true,
         );
         return;
@@ -741,15 +740,15 @@ class _NewRequestPageState extends State<NewRequestPage> {
         color: overLimit
             ? const Color(0xFFFFF1F2)
             : consumesQuota
-                ? const Color(0xFFF0FDF4)
-                : const Color(0xFFEFF6FF),
+            ? const Color(0xFFF0FDF4)
+            : const Color(0xFFEFF6FF),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: overLimit
               ? const Color(0xFFFCA5A5)
               : consumesQuota
-                  ? const Color(0xFF86EFAC)
-                  : const Color(0xFFBFDBFE),
+              ? const Color(0xFF86EFAC)
+              : const Color(0xFFBFDBFE),
         ),
       ),
       child: Row(
@@ -760,21 +759,21 @@ class _NewRequestPageState extends State<NewRequestPage> {
               color: overLimit
                   ? const Color(0xFFFEE2E2)
                   : consumesQuota
-                      ? const Color(0xFFDCFCE7)
-                      : const Color(0xFFE0F2FE),
+                  ? const Color(0xFFDCFCE7)
+                  : const Color(0xFFE0F2FE),
               shape: BoxShape.circle,
             ),
             child: Icon(
               overLimit
                   ? Icons.warning_amber_rounded
                   : consumesQuota
-                      ? Icons.beach_access
-                      : Icons.info_outline_rounded,
+                  ? Icons.beach_access
+                  : Icons.info_outline_rounded,
               color: overLimit
                   ? const Color(0xFFB91C1C)
                   : consumesQuota
-                      ? const Color(0xFF15803D)
-                      : const Color(0xFF135BEC),
+                  ? const Color(0xFF15803D)
+                  : const Color(0xFF135BEC),
               size: 20,
             ),
           ),
@@ -793,8 +792,8 @@ class _NewRequestPageState extends State<NewRequestPage> {
                     color: overLimit
                         ? const Color(0xFFB91C1C)
                         : consumesQuota
-                            ? const Color(0xFF166534)
-                            : const Color(0xFF135BEC),
+                        ? const Color(0xFF166534)
+                        : const Color(0xFF135BEC),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -802,15 +801,15 @@ class _NewRequestPageState extends State<NewRequestPage> {
                   overLimit
                       ? 'Jumlah hari pengajuan melebihi sisa kuota cuti.'
                       : consumesQuota
-                          ? 'Pengajuan ini akan mengurangi kuota cuti setelah approved.'
-                          : 'Tipe yang dipilih tidak mengurangi kuota cuti.',
+                      ? 'Pengajuan ini akan mengurangi kuota cuti setelah approved.'
+                      : 'Tipe yang dipilih tidak mengurangi kuota cuti.',
                   style: TextStyle(
                     fontSize: 12,
                     color: overLimit
                         ? const Color(0xFFB91C1C)
                         : consumesQuota
-                            ? const Color(0xFF166534)
-                            : const Color(0xFF135BEC),
+                        ? const Color(0xFF166534)
+                        : const Color(0xFF135BEC),
                   ),
                 ),
               ],
@@ -1244,7 +1243,8 @@ class _NewRequestPageState extends State<NewRequestPage> {
   }
 
   Widget _submitBtn() {
-    final quotaBlocked = _requiresQuotaDeduction && _days > _remainingLeaveQuota;
+    final quotaBlocked =
+        _requiresQuotaDeduction && _days > _remainingLeaveQuota;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(

@@ -15,7 +15,9 @@ import (
 	"github.com/andikatampubolon10/hris-backend/internal/faceclient"
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // wib adalah timezone WIB (UTC+7).
@@ -136,6 +138,7 @@ type TodayScheduleInfoResponse struct {
 //   - V2: geofenceRepo untuk validasi dinamis dari database
 
 type attendanceService struct {
+	db                *mongo.Database
 	attendanceRepo    repository.AttendanceRepository
 	breakTimeRepo     repository.BreakTimeRepository
 	userRepo          repository.UserRepository
@@ -152,6 +155,7 @@ type attendanceService struct {
 // ── Constructor ───────────────────────────────────────────────────────────────
 
 func NewAttendanceService(
+	db *mongo.Database,
 	attendanceRepo repository.AttendanceRepository,
 	breakTimeRepo repository.BreakTimeRepository,
 	userRepo repository.UserRepository,
@@ -161,6 +165,7 @@ func NewAttendanceService(
 	faceClient *faceclient.Client,
 ) AttendanceService {
 	return &attendanceService{
+		db:                db,
 		attendanceRepo:    attendanceRepo,
 		breakTimeRepo:     breakTimeRepo,
 		userRepo:          userRepo,
@@ -173,6 +178,48 @@ func NewAttendanceService(
 		officeLng:    99.1431,
 		radiusMeters: 10000,
 	}
+}
+
+func (s *attendanceService) hasApprovedLeaveToday(ctx context.Context, userID primitive.ObjectID) (*models.LeaveRequest, error) {
+	if s.db == nil {
+		return nil, nil
+	}
+
+	nowWIB := time.Now().In(wib)
+	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
+	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
+
+	filter := bson.M{
+		"user_id":      userID,
+		"final_status": models.StatusApproved,
+		"start_date":   bson.M{"$lte": endOfDayWIB.UTC()},
+		"end_date":     bson.M{"$gte": startOfDayWIB.UTC()},
+	}
+
+	var leave models.LeaveRequest
+	err := s.db.Collection("leave_request").FindOne(ctx, filter).
+		Decode(&leave)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &leave, nil
+}
+
+func blockedAttendanceMessage(leave *models.LeaveRequest) string {
+	if leave == nil {
+		return "Anda memiliki pengajuan izin/cuti yang sudah disetujui pada hari ini"
+	}
+
+	title := strings.TrimSpace(leave.TypeName)
+	if title == "" {
+		title = "izin/cuti"
+	}
+
+	return fmt.Sprintf("Tidak dapat melakukan attendance karena %s Anda sudah disetujui pada hari ini", title)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -208,6 +255,10 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	nowWIB := time.Now().In(wib)
 	dayName := s.getDayName(nowWIB.Weekday())
 	isWorkDay := s.isWorkDay(dayName, jamKerja.DayOfWeek)
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
@@ -218,6 +269,11 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
 
 	message := s.buildScheduleMessage(isWorkDay, canClockIn, canClockOut, nowWIB, clockInWindowOpen, clockOutWindowClose)
+	if leaveToday != nil {
+		canClockIn = false
+		canClockOut = false
+		message = blockedAttendanceMessage(leaveToday)
+	}
 
 	info.TodaySchedule = &TodaySchedule{
 		IsWorkDay:      isWorkDay,
@@ -260,6 +316,10 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	nowWIB := time.Now().In(wib)
 	dayName := s.getDayName(nowWIB.Weekday())
 	isWorkDay := s.isWorkDay(dayName, jamKerja.DayOfWeek)
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
@@ -270,6 +330,11 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
 
 	message := s.buildScheduleMessage(isWorkDay, canClockIn, canClockOut, nowWIB, clockInWindowOpen, clockOutWindowClose)
+	if leaveToday != nil {
+		canClockIn = false
+		canClockOut = false
+		message = blockedAttendanceMessage(leaveToday)
+	}
 
 	info.TodaySchedule = &TodayScheduleInfoResponse{
 		IsWorkDay:      isWorkDay,
@@ -303,6 +368,13 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 
 	nowWIB := time.Now().In(wib)
 	dayName := s.getDayName(nowWIB.Weekday())
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return false, jamKerja, err
+	}
+	if leaveToday != nil {
+		return false, jamKerja, errors.New(blockedAttendanceMessage(leaveToday))
+	}
 
 	if !s.isWorkDay(dayName, jamKerja.DayOfWeek) {
 		return false, jamKerja, errors.New("hari ini bukan hari kerja")
@@ -336,6 +408,13 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 
 	nowWIB := time.Now().In(wib)
 	dayName := s.getDayName(nowWIB.Weekday())
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return false, jamKerja, err
+	}
+	if leaveToday != nil {
+		return false, jamKerja, errors.New(blockedAttendanceMessage(leaveToday))
+	}
 
 	if !s.isWorkDay(dayName, jamKerja.DayOfWeek) {
 		return false, jamKerja, errors.New("hari ini bukan hari kerja")
@@ -361,6 +440,13 @@ func (s *attendanceService) ClockIn(ctx context.Context, userID string, latitude
 	existing, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
 	if existing != nil && existing.ClockInTime != nil {
 		return nil, errors.New("sudah melakukan clock in hari ini")
+	}
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
+	if leaveToday != nil {
+		return nil, errors.New(blockedAttendanceMessage(leaveToday))
 	}
 
 	isInWindow, jamKerja, err := s.ValidateClockInWindow(ctx, userID)
@@ -428,6 +514,13 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 	existing, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
 	if existing != nil && existing.ClockOutTime != nil {
 		return nil, errors.New("sudah melakukan clock out hari ini")
+	}
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, userObjID)
+	if err != nil {
+		return nil, err
+	}
+	if leaveToday != nil {
+		return nil, errors.New(blockedAttendanceMessage(leaveToday))
 	}
 
 	isInWindow, jamKerja, err := s.ValidateClockOutWindow(ctx, userID)
@@ -713,6 +806,19 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	if err != nil || user == nil {
 		return &AttendanceProcessResult{
 			Success: false, Message: "data user tidak ditemukan",
+			LocationValid: false, Distance: 0,
+		}, nil
+	}
+	leaveToday, err := s.hasApprovedLeaveToday(ctx, user.ID)
+	if err != nil {
+		return &AttendanceProcessResult{
+			Success: false, Message: err.Error(),
+			LocationValid: false, Distance: 0,
+		}, nil
+	}
+	if leaveToday != nil {
+		return &AttendanceProcessResult{
+			Success: false, Message: blockedAttendanceMessage(leaveToday),
 			LocationValid: false, Distance: 0,
 		}, nil
 	}
