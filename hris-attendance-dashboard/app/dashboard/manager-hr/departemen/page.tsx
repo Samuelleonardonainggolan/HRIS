@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { departmentApi } from "@/lib/api/department";
 import { employeeService } from "@/lib/api/employee";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import toast from "react-hot-toast";
 
 interface Department {
@@ -26,6 +27,17 @@ export default function DepartmentsPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // State for confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    department: Department | null;
+    action: "activate" | "deactivate" | null;
+  }>({
+    open: false,
+    department: null,
+    action: null,
+  });
 
   useEffect(() => {
     loadDepartments();
@@ -89,16 +101,25 @@ export default function DepartmentsPage() {
     router.push(`/dashboard/manager-hr/departemen/tambah-departemen?edit=${id}`);
   };
 
-  const handleToggleActive = async (
+  const handleToggleActive = (
     e: React.MouseEvent,
     dept: Department
   ) => {
     e.stopPropagation();
-    const willActivate = dept.status === "Nonaktif";
-    const confirmText = willActivate
-      ? "Apakah Anda yakin ingin mengaktifkan departemen ini?"
-      : "Apakah Anda yakin ingin menonaktifkan departemen ini?";
-    if (!confirm(confirmText)) return;
+    const action = dept.status === "Nonaktif" ? "activate" : "deactivate";
+    setConfirmDialog({
+      open: true,
+      department: dept,
+      action: action,
+    });
+  };
+
+  const handleConfirmToggle = async () => {
+    if (!confirmDialog.department || !confirmDialog.action) return;
+    
+    const dept = confirmDialog.department;
+    const willActivate = confirmDialog.action === "activate";
+
     try {
       await departmentApi.update(dept.id, { is_active: willActivate });
       toast.success(
@@ -114,6 +135,8 @@ export default function DepartmentsPage() {
           ? "Gagal mengaktifkan departemen"
           : "Gagal menonaktifkan departemen"
       );
+    } finally {
+      setConfirmDialog({ open: false, department: null, action: null });
     }
   };
 
@@ -274,6 +297,37 @@ export default function DepartmentsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Confirmation Dialog for Activate/Deactivate */}
+      <ConfirmationDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmDialog({ open: false, department: null, action: null });
+          }
+        }}
+        title={
+          confirmDialog.action === "activate"
+            ? "Aktifkan Departemen"
+            : "Nonaktifkan Departemen"
+        }
+        description={
+          confirmDialog.action === "activate"
+            ? `Apakah Anda yakin ingin mengaktifkan departemen "${confirmDialog.department?.name}"? Departemen yang diaktifkan akan muncul kembali dalam daftar departemen aktif.`
+            : `Apakah Anda yakin ingin menonaktifkan departemen "${confirmDialog.department?.name}"? Departemen yang dinonaktifkan tidak akan dapat digunakan untuk penugasan karyawan baru.`
+        }
+        confirmText={
+          confirmDialog.action === "activate"
+            ? "Ya, Aktifkan"
+            : "Ya, Nonaktifkan"
+        }
+        cancelText="Batal"
+        onConfirm={handleConfirmToggle}
+        variant={confirmDialog.action === "deactivate" ? "destructive" : "default"}
+        icon={
+          confirmDialog.action === "activate" ? "activate" : "deactivate"
+        }
+      />
     </div>
   );
 }
