@@ -1008,20 +1008,41 @@ func (s *attendanceService) GetManagerAttendance(ctx context.Context, from, to t
 		}
 		location := formatGeoLocation(r.ClockInLocation)
 
+		dateStr := r.Date.In(wib).Format("2006-01-02")
+		if r.Date.IsZero() {
+			dateStr = from.In(wib).Format("2006-01-02")
+		}
+
+		status := mapAttendanceStatusToUI(r.Status)
+		// Requirement 2 & 3: Priority leave status
+		if r.LeaveRequest != nil {
+			status = strings.ToUpper(r.LeaveRequest.TypeName)
+			if status == "" {
+				status = "IZIN/CUTI"
+			}
+		} else if r.ID.IsZero() {
+			status = "BELUM ABSENSI"
+		}
+
+		idStr := r.ID.Hex()
+		if r.ID.IsZero() {
+			idStr = fmt.Sprintf("absent_%s_%s", r.UserID.Hex(), r.Date.Format("20060102"))
+		}
+
 		items = append(items, models.ManagerAttendanceRecord{
-			ID:             r.ID.Hex(),
+			ID:             idStr,
 			UserID:         r.UserID.Hex(),
 			FullName:       r.User.FullName,
 			Email:          r.User.Email,
 			PayrollNumber:  r.User.PayrollNumber,
 			DepartmentName: r.User.DepartmentName,
 			PositionName:   r.User.PositionName,
-			Date:           r.Date.In(wib).Format("2006-01-02"),
+			Date:           dateStr,
 			ClockInTime:    clockIn,
 			ClockOutTime:   clockOut,
-			Status:         mapAttendanceStatusToUI(r.Status),
+			Status:         status,
 			Location:       location,
-			Avatar: r.User.Avatar,
+			Avatar:         r.User.Avatar,
 		})
 	}
 

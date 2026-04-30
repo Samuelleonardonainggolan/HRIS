@@ -15,7 +15,7 @@ type Config struct {
 	MongoURI               string
 	DatabaseName           string
 	JWTSecret              string
-	JWTExpiry              int // Sudah int
+	JWTExpiry              string // Keep as string for '24h' format support
 	FaceServiceURL         string
 	FaceAPIKey             string
 	FaceHTTPTimeout        string
@@ -34,13 +34,8 @@ func LoadConfig() *Config {
 		log.Println("Warning: .env file not found, using environment variables")
 	}
 
-	// Parse JWT expiry dari string ke int
-	jwtExpiryStr := getEnv("JWT_EXPIRY", "60")
-	jwtExpiry, err := strconv.Atoi(jwtExpiryStr)
-	if err != nil {
-		log.Printf("Warning: Invalid JWT_EXPIRY '%s', using default 60", jwtExpiryStr)
-		jwtExpiry = 60
-	}
+	// Gunakan string langsung agar support format "24h", "60m", dll.
+	jwtExpiryStr := getEnv("JWT_EXPIRY", "24h")
 
 	return &Config{
 		ServerPort:             getEnv("SERVER_PORT", "8080"),
@@ -48,7 +43,7 @@ func LoadConfig() *Config {
 		MongoURI:               getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		DatabaseName:           getEnv("DATABASE_NAME", "hris_db"),
 		JWTSecret:              getEnv("JWT_SECRET", "your-secret-key"),
-		JWTExpiry:              jwtExpiry, // Simpan sebagai int
+		JWTExpiry:              jwtExpiryStr,
 		FaceServiceURL:         getEnv("FACE_SERVICE_URL", "http://localhost:5000"),
 		FaceAPIKey:             getEnv("FACE_API_KEY", ""),
 		FaceHTTPTimeout:        getEnv("FACE_HTTP_TIMEOUT", "30s"),

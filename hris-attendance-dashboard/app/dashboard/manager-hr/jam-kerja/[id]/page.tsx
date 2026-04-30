@@ -77,6 +77,12 @@ export default function AturJamKerjaPage() {
 
   const handleSave = async () => {
     if (!detail) return;
+
+    if (detail.waktu_selesai <= detail.waktu_mulai) {
+      alert("Waktu selesai harus lebih dari waktu mulai");
+      return;
+    }
+
     setSaving(true);
     try {
         const res = await fetch(`/api/v1/jam-kerja/user/${userId}`, {
@@ -168,43 +174,51 @@ export default function AturJamKerjaPage() {
           </div>
 
           {/* Jam kerja */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-            <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
-                Waktu Mulai
-              </div>
-              <input
-                type="time"
-                value={detail.waktu_mulai}
-                onChange={(e) => setDetail({ ...detail, waktu_mulai: e.target.value })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm
-                           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
-                Waktu Selesai
-              </div>
-              <input
-                type="time"
-                value={detail.waktu_selesai}
-                onChange={(e) => setDetail({ ...detail, waktu_selesai: e.target.value })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm
-                           focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700">
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
+                  Waktu Mulai
+                </div>
                 <input
-                  type="checkbox"
-                  checked={detail.aktif}
-                  onChange={(e) => setDetail({ ...detail, aktif: e.target.checked })}
+                  type="time"
+                  value={detail.waktu_mulai}
+                  onChange={(e) => setDetail({ ...detail, waktu_mulai: e.target.value })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm
+                             focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
-                Aktif
-              </label>
+              </div>
+
+              <div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase mb-2">
+                  Waktu Selesai
+                </div>
+                <input
+                  type="time"
+                  value={detail.waktu_selesai}
+                  onChange={(e) => setDetail({ ...detail, waktu_selesai: e.target.value })}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm
+                             focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={detail.aktif}
+                    onChange={(e) => setDetail({ ...detail, aktif: e.target.checked })}
+                  />
+                  Aktif
+                </label>
+              </div>
             </div>
+
+            {detail.waktu_selesai && detail.waktu_mulai && detail.waktu_selesai <= detail.waktu_mulai && (
+              <p className="text-xs text-red-600">
+                ⚠ Waktu selesai harus lebih dari waktu mulai.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

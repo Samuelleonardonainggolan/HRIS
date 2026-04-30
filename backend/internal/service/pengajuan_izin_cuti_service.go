@@ -315,6 +315,7 @@ func (s *pengajuanIzinCutiService) toApprovalResponse(p models.LeaveRequest, has
 		ID:             u.ID.Hex(),
 		PayrollNumber:  u.PayrollNumber,
 		FullName:       u.FullName,
+		Avatar:         u.Avatar,
 		DepartmentName: u.DepartmentName,
 		PositionName:   u.PositionName,
 	}

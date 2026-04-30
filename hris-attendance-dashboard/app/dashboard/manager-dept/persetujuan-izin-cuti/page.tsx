@@ -158,7 +158,7 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
         attachmentName: fileNameFromUrl(r.pengajuan.document_url),
         attachmentUrl: r.pengajuan.document_url || undefined,
         status: toStatus(r.pengajuan.final_status, r.pengajuan.status_kepala_departemen),
-        avatarUrl: "",
+        avatarUrl: r.employee?.avatar_url || r.employee?.avatarUrl || r.employee?.avatar || "",
         avatarFallback: empName
           .split(/\s+/)
           .filter(Boolean)

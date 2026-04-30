@@ -25,6 +25,7 @@ type ManagerAttendanceAggRow struct {
 	ClockInLocation GeoLocation         `bson:"clock_in_location"`
 	Status          AttendanceStatus    `bson:"status"`
 	User            ManagerAttendanceUserAgg `bson:"user"`
+	LeaveRequest    *LeaveRequest       `bson:"leave_request,omitempty"`
 }
 
 type ManagerAttendanceRecord struct {

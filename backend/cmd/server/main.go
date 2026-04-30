@@ -91,7 +91,6 @@ func main() {
 	log.Println("🔌 External clients initialized")
 
 	// ==================== Initialize Services ====================
-	jwtExpiryStr := strconv.Itoa(cfg.JWTExpiry)
 	// Initialize Supabase uploader if configured
 	var supabaseUploader *storage.SupabaseUploader
 	storageKey := cfg.SupabaseServiceRoleKey
@@ -113,7 +112,7 @@ func main() {
 		cfg.PublicBaseURL,
 		filepath.Join("uploads", "profile"),
 		cfg.JWTSecret,
-		jwtExpiryStr,
+		cfg.JWTExpiry,
 	)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)

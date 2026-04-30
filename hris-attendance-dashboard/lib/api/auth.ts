@@ -62,6 +62,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payloadBase64 = token.split('.')[1];
+    if (!payloadBase64) return true;
+    
+    const base64 = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    
+    const payload = JSON.parse(jsonPayload);
+    if (!payload.exp) return false;
+    
+    const currentTime = Math.floor(Date.now() / 1000);
+    // Tambahkan buffer 5 detik
+    return payload.exp < currentTime + 5;
+  } catch (e) {
+    return true;
+  }
+}
+
 class AuthService {
   private setAccessTokenCookie(token: string): void {
     if (typeof window === 'undefined') return;
@@ -218,7 +242,15 @@ class AuthService {
 
   getAccessToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('access_token');
+    const token = localStorage.getItem('access_token');
+    if (!token) return null;
+    
+    if (isTokenExpired(token)) {
+      console.warn("Access token expired, returning null");
+      return null;
+    }
+    
+    return token;
   }
 
   getRefreshToken(): string | null {

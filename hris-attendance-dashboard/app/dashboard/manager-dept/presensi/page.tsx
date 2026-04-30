@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { BadgeProps } from "@/components/ui/badge";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -51,6 +52,7 @@ interface AttendanceRow {
   clockOut: string;
   status: AttendanceStatus;
   location: string;
+  avatar?: string;
 }
 
 function statusBadgeVariant(status: AttendanceStatus) {
@@ -75,8 +77,8 @@ export default function PresensiKaryawanManagerDepartemenPage() {
 
   const now = new Date();
   const defaultRange: DateRange = {
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+    from: now,
+    to: now,
   };
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
   const [appliedFilters, setAppliedFilters] = useState(() => ({
@@ -129,6 +131,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
         clockOut: it.clock_out_time || "--:--",
         status: it.status,
         location: it.location || "Unrecorded",
+        avatar: (it as any).avatar || undefined,
       })),
     []
   );
@@ -350,6 +353,11 @@ export default function PresensiKaryawanManagerDepartemenPage() {
             <input
               value={searchEmployee}
               onChange={(e) => setSearchEmployee(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleApplyFilter();
+                }
+              }}
               placeholder="Cari karyawan..."
               className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
                          focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -375,7 +383,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                       Nama Karyawan
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      ID / Dept
+                      NO PAy / Dept
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Tanggal
@@ -406,15 +414,21 @@ export default function PresensiKaryawanManagerDepartemenPage() {
                       <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                            {r.name
-                              .split(/\s+/)
-                              .filter(Boolean)
-                              .map((p) => p[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
-                          </div>
+                          <Avatar className="h-10 w-10">
+                            {r.avatar && r.avatar.startsWith("http") ? (
+                              <AvatarImage src={r.avatar} alt={r.name} />
+                            ) : (
+                              <AvatarFallback>
+                                {r.name
+                                  .split(/\s+/)
+                                  .filter(Boolean)
+                                  .map((p) => p[0])
+                                  .join("")
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
                           <div>
                             <div className="font-semibold text-gray-900">{r.name}</div>
                             <div className="text-xs text-gray-500">{r.email}</div>

@@ -27,6 +27,7 @@ interface WorkScheduleRow {
   id: string; // user_id
   name: string;
   nik: string;
+  avatar?: string;
   department: string;
   position: string;
 
@@ -39,6 +40,8 @@ interface WorkScheduleRow {
 
   startTime: string; // "08:00"
   endTime: string; // "17:00"
+  start_time?: string;
+  end_time?: string;
 }
 
 const hariOrder = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"] as const;
@@ -327,17 +330,20 @@ export default function ManajemenJamKerjaPage() {
                           )}
                         </td>
 
-                        {/* Jam kerja */}
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-10">
                             <div>
-                              <div className="text-sm font-semibold text-gray-900">{r.startTime}</div>
+                              <div className="text-sm font-semibold text-gray-900">
+                                {r.startTime || r.start_time || "-"}
+                              </div>
                               <div className="text-[11px] font-semibold text-gray-400 uppercase">
                                 Mulai
                               </div>
                             </div>
                             <div>
-                              <div className="text-sm font-semibold text-gray-900">{r.endTime}</div>
+                              <div className="text-sm font-semibold text-gray-900">
+                                {r.endTime || r.end_time || "-"}
+                              </div>
                               <div className="text-[11px] font-semibold text-gray-400 uppercase">
                                 Selesai
                               </div>

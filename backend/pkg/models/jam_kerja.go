@@ -8,8 +8,8 @@ import (
 )
 
 type JamKerja struct {
-	ID        primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	UserID    primitive.ObjectID `json:"user_id" bson:"user_id"`
+	ID     primitive.ObjectID `json:"id" bson:"_id,omitempty"`
+	UserID primitive.ObjectID `json:"user_id" bson:"user_id"`
 
 	// ✅ renamed fields (db)
 	DayOfWeek []string  `json:"day_of_week" bson:"day_of_week"` // ["Senin",...]
@@ -25,32 +25,33 @@ type JamKerjaListRowResponse struct {
 	ID         string   `json:"id"` // user_id (dipakai di frontend sebagai id)
 	Name       string   `json:"name"`
 	NIK        string   `json:"nik"`
+	Avatar     string   `json:"avatar,omitempty"`
 	Department string   `json:"department"`
 	Position   string   `json:"position"`
-	DayOfWeek []string  `json:"day_of_week"`
-	WorkDays   string   `json:"workDays"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
-	StartTime  string   `json:"startTime"` // "08:00"
-	EndTime    string   `json:"endTime"`   // "17:00"
-}
-	
-type JamKerjaDetailResponse struct {
-	UserID       string   `json:"user_id"`
-	Name         string   `json:"name"`
-	NIK          string   `json:"nik"`
-	Department   string   `json:"department"`
-	Position     string   `json:"position"`
-	DayOfWeek []string  `json:"day_of_week"`
+	DayOfWeek  []string `json:"day_of_week"`
+	WorkDays   string   `json:"work_days"`  // "Senin - Jumat" | "Senin - Sabtu" | "Shift"
 	StartTime  string   `json:"start_time"` // "08:00"
 	EndTime    string   `json:"end_time"`   // "17:00"
-	IsActive  bool      `json:"is_active"`
+}
+
+type JamKerjaDetailResponse struct {
+	UserID     string   `json:"user_id"`
+	Name       string   `json:"name"`
+	NIK        string   `json:"nik"`
+	Department string   `json:"department"`
+	Position   string   `json:"position"`
+	DayOfWeek  []string `json:"day_of_week"`
+	StartTime  string   `json:"start_time"` // "08:00"
+	EndTime    string   `json:"end_time"`   // "17:00"
+	IsActive   bool     `json:"is_active"`
 }
 
 type UpdateJamKerjaRequest struct {
 	// ✅ format baru
-	DayOfWeek  []string `json:"day_of_week"`
-	StartTime  string   `json:"start_time"`
-	EndTime    string   `json:"end_time"`
-	IsActive   *bool    `json:"is_active,omitempty"`
+	DayOfWeek []string `json:"day_of_week"`
+	StartTime string   `json:"start_time"`
+	EndTime   string   `json:"end_time"`
+	IsActive  *bool    `json:"is_active,omitempty"`
 
 	// ✅ format lama (biar tidak break)
 	HariKerja    []string `json:"hari_kerja,omitempty"`

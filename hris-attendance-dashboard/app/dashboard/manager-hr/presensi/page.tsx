@@ -56,15 +56,20 @@ interface AttendanceRow {
 
 function statusBadgeVariant(status: AttendanceStatus) {
   type BadgeVariant = BadgeProps["variant"];
-  switch (status) {
+  const s = status.toUpperCase();
+  if (s.includes("SAKIT") || s.includes("IZIN") || s.includes("CUTI")) {
+    return "secondary" as BadgeVariant;
+  }
+
+  switch (s) {
     case "HADIR":
       return "success" as BadgeVariant;
     case "TELAT":
       return "warning" as BadgeVariant;
-    case "IZIN":
-      return "secondary" as BadgeVariant;
     case "ALFA":
       return "danger" as BadgeVariant;
+    case "BELUM ABSENSI":
+      return "outline" as BadgeVariant;
     default:
       return "secondary" as BadgeVariant;
   }
@@ -77,13 +82,13 @@ export default function PresensiKaryawanManagerHRPage() {
   // ✅ date range picker state (bukan input ketik)
   const now = new Date();
   const defaultRange: DateRange = {
-    from: new Date(now.getFullYear(), now.getMonth(), 1),
-    to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+    from: now,
+    to: now,
   };
   const [dateRange, setDateRange] = useState<DateRange | undefined>(defaultRange);
   const [appliedFilters, setAppliedFilters] = useState(() => ({
-    from: format(defaultRange.from as Date, "yyyy-MM-dd"),
-    to: format(defaultRange.to as Date, "yyyy-MM-dd"),
+    from: format(now, "yyyy-MM-dd"),
+    to: format(now, "yyyy-MM-dd"),
     department: "all",
     q: "",
   }));
@@ -341,6 +346,11 @@ export default function PresensiKaryawanManagerHRPage() {
             <input
               value={searchEmployee}
               onChange={(e) => setSearchEmployee(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleApplyFilter();
+                }
+              }}
               placeholder="Cari karyawan..."
               className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm
                          focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -370,7 +380,7 @@ export default function PresensiKaryawanManagerHRPage() {
                       Karyawan
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      ID / Dept
+                      No Pay / Dept
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                       Tanggal

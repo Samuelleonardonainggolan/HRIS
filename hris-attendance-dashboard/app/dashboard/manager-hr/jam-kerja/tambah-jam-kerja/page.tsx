@@ -142,6 +142,14 @@ export default function AddJamKerjaPage() {
       return;
     }
 
+    if (formData.waktu_selesai <= formData.waktu_mulai) {
+      const msg = "Waktu selesai harus lebih dari waktu mulai";
+      setError(msg);
+      toast.error(msg);
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/v1/jam-kerja", {
         method: "POST",
@@ -296,26 +304,34 @@ export default function AddJamKerjaPage() {
               </div>
 
               {/* Waktu */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700">WAKTU MULAI</Label>
-                  <Input
-                    type="time"
-                    value={formData.waktu_mulai}
-                    onChange={(e) => setFormData({ ...formData, waktu_mulai: e.target.value })}
-                    required
-                  />
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">WAKTU MULAI</Label>
+                    <Input
+                      type="time"
+                      value={formData.waktu_mulai}
+                      onChange={(e) => setFormData({ ...formData, waktu_mulai: e.target.value })}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-700">WAKTU SELESAI</Label>
+                    <Input
+                      type="time"
+                      value={formData.waktu_selesai}
+                      onChange={(e) => setFormData({ ...formData, waktu_selesai: e.target.value })}
+                      required
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-700">WAKTU SELESAI</Label>
-                  <Input
-                    type="time"
-                    value={formData.waktu_selesai}
-                    onChange={(e) => setFormData({ ...formData, waktu_selesai: e.target.value })}
-                    required
-                  />
-                </div>
+                {formData.waktu_selesai && formData.waktu_mulai && formData.waktu_selesai <= formData.waktu_mulai && (
+                  <p className="text-xs text-red-600">
+                    ⚠ Waktu selesai harus lebih dari waktu mulai.
+                  </p>
+                )}
               </div>
 
               {/* Aktif */}
