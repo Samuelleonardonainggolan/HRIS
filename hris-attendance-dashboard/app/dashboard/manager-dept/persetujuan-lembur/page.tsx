@@ -32,8 +32,8 @@ type OvertimeApprovalItem = {
   avatarUrl?: string;
   avatarFallback: string;
 
-  statusKepalaDepartemen?: string;
-  statusManagerHR?: string;
+  statusKepalaDepartemen: OvertimeRequestStatus;
+  statusManagerHR: OvertimeRequestStatus;
 };
 
 function mapStatus(status: OvertimeRequestStatus): RequestStatus {
@@ -114,7 +114,7 @@ function convertToFrontendItem(resp: OvertimeApprovalResponse): OvertimeApproval
     endTimeLabel: formatTimeLabel(endDate),
     reason: overtime.reason,
     total: overtime.total,
-    status: mapStatus(overtime.final_status),
+    status: mapStatus(overtime.status_kepala_departemen),
     avatarFallback: getInitials(employee?.full_name ?? "?"),
     statusKepalaDepartemen: overtime.status_kepala_departemen,
     statusManagerHR: overtime.status_manager_hr,
@@ -473,7 +473,7 @@ export default function PersetujuanLemburPage() {
                   </div>
 
                   <div className="mt-5">
-                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Status</div>
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Status Kepala Departemen</div>
                     <div className="mt-2 flex items-center gap-2">
                       <span className={`h-2 w-2 rounded-full ${statusDotColor(selected.status)}`} />
                       <Badge variant="secondary" className={statusBadgeClass(selected.status)}>
