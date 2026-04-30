@@ -9,6 +9,7 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type DepartmentService interface {
@@ -98,6 +99,9 @@ func (s *departmentService) CreateDepartment(ctx context.Context, req models.Cre
 
 	err = s.departmentRepo.Create(ctx, department)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, errors.New("kode departemen sudah digunakan")
+		}
 		return nil, errors.New("gagal membuat departemen")
 	}
 
@@ -176,6 +180,9 @@ func (s *departmentService) UpdateDepartment(ctx context.Context, id string, req
 	// Update department
 	err = s.departmentRepo.Update(ctx, id, &req)
 	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, errors.New("kode departemen sudah digunakan")
+		}
 		return nil, errors.New("gagal memperbarui departemen")
 	}
 

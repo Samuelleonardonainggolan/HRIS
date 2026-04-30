@@ -19,6 +19,47 @@ import { departmentApi } from "@/lib/api/department";
 import toast from "react-hot-toast";
 import type { Department } from "@/types";
 
+const POSITION_CODE_STOPWORDS = new Set(["dan", "and", "&", "of", "the"]);
+
+function buildPositionCodePrefix(name: string) {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const words = normalized.filter((w) => !POSITION_CODE_STOPWORDS.has(w));
+  const source = words.length > 0 ? words : normalized;
+
+  if (source.length >= 2) {
+    return `${source[0].slice(0, 1)}${source[1].slice(0, 1)}`.toUpperCase();
+  }
+
+  const w = source[0] ?? "";
+  if (!w) return "";
+  if (w.length >= 2) return w.slice(0, 2).toUpperCase();
+  return `${w.slice(0, 1)}X`.toUpperCase();
+}
+
+function suggestNextPositionCode(name: string, existingCodes: string[]) {
+  const prefix = buildPositionCodePrefix(name);
+  if (!prefix) return "";
+
+  const re = new RegExp(`^${prefix}[^0-9]*(\\d+)$`, "i");
+  let max = 0;
+  for (const raw of existingCodes) {
+    const code = (raw ?? "").trim().toUpperCase();
+    const m = code.match(re);
+    if (!m) continue;
+    const n = Number.parseInt(m[1], 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+
+  const next = max + 1;
+  return `${prefix}_${String(next).padStart(3, "0")}`;
+}
+
 // ─── Level options ─────────────────────────────────────────────────────────────
 
 const LEVEL_OPTIONS = [
@@ -56,6 +97,8 @@ export default function TambahJabatanPage() {
 
   const [editingId, setEditingId]     = useState<string | null>(null);
   const [formData, setFormData]       = useState<FormData>(INITIAL_FORM);
+  const [existingPositionCodes, setExistingPositionCodes] = useState<string[]>([]);
+  const [isCodeManuallyEdited, setIsCodeManuallyEdited] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loadingDepts, setLoadingDepts] = useState(true);
   const [loadingData, setLoadingData]   = useState(false);
@@ -85,6 +128,28 @@ export default function TambahJabatanPage() {
     loadDepartments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const all = await positionApi.getAll();
+        setExistingPositionCodes(
+          all.map((p) => p.code).filter((c): c is string => Boolean(c?.trim()))
+        );
+      } catch {
+        setExistingPositionCodes([]);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (editingId) return;
+    if (isCodeManuallyEdited) return;
+    setFormData((prev) => ({
+      ...prev,
+      code: suggestNextPositionCode(prev.name, existingPositionCodes),
+    }));
+  }, [editingId, existingPositionCodes, isCodeManuallyEdited]);
 
   // ── Load departments for dropdown ─────────────────────────────────────────
   const loadDepartments = async () => {
@@ -162,8 +227,11 @@ export default function TambahJabatanPage() {
         router.back();
       } else {
         // ── CREATE ──────────────────────────────────────────────────────
+        const codeToSend =
+          formData.code.trim() ||
+          suggestNextPositionCode(formData.name, existingPositionCodes);
         await positionApi.create({
-          code:          formData.code.trim() || "",
+          code:          codeToSend,
           name:          formData.name.trim(),
           department_id: formData.department_id,
           level:         Number(formData.level),
@@ -279,7 +347,21 @@ export default function TambahJabatanPage() {
                   id="name"
                   placeholder="Contoh: Software Engineer"
                   value={formData.name}
-                  onChange={(e) => set("name", e.target.value)}
+                  onChange={(e) => {
+                    const nextName = e.target.value;
+                    setFormData((prev) => {
+                      const next = { ...prev, name: nextName };
+                      if (editingId) return next;
+                      if (isCodeManuallyEdited) return next;
+                      return {
+                        ...next,
+                        code: suggestNextPositionCode(
+                          nextName,
+                          existingPositionCodes
+                        ),
+                      };
+                    });
+                  }}
                   className="w-full"
                   required
                 />
@@ -292,13 +374,17 @@ export default function TambahJabatanPage() {
                 </Label>
                 <Input
                   id="code"
-                  placeholder="Contoh: SE-01"
+                  placeholder="Otomatis: CH_001"
                   value={formData.code}
-                  onChange={(e) => set("code", e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    const nextCode = e.target.value.toUpperCase();
+                    setIsCodeManuallyEdited(Boolean(nextCode.trim()));
+                    set("code", nextCode);
+                  }}
                   className="w-full"
                 />
                 <p className="text-xs text-gray-500">
-                  Kode unik untuk jabatan (opsional)
+                  Terisi otomatis sesuai nama jabatan, tetapi tetap bisa diedit
                 </p>
               </div>
 

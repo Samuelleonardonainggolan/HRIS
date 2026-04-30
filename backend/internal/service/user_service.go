@@ -15,6 +15,7 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type UserService interface {
@@ -119,7 +120,7 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 
 	existingEmail, err := s.userRepo.FindByEmail(ctx, email)
 	if err == nil && existingEmail != nil {
-		return nil, nil, errors.New("email already registered")
+		return nil, nil, errors.New("email sudah digunakan")
 	}
 
 	existingPayroll, err := s.userRepo.FindByPayrollNumber(ctx, payrollNumber)
@@ -127,7 +128,7 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 		return nil, nil, err
 	}
 	if existingPayroll != nil {
-		return nil, nil, errors.New("payroll_number already used")
+		return nil, nil, errors.New("nomor payroll/NIK sudah digunakan")
 	}
 
 	department, err := s.departmentRepo.FindByID(ctx, departmentID)
@@ -197,7 +198,17 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
-		return nil, nil, err
+		if mongo.IsDuplicateKeyError(err) {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "email_1") || strings.Contains(msg, " email") {
+				return nil, nil, errors.New("email sudah digunakan")
+			}
+			if strings.Contains(msg, "payroll_number_1") || strings.Contains(msg, "payroll_number") {
+				return nil, nil, errors.New("nomor payroll/NIK sudah digunakan")
+			}
+			return nil, nil, errors.New("data pegawai sudah ada")
+		}
+		return nil, nil, errors.New("gagal membuat pegawai")
 	}
 
 	response := user.ToResponse()
@@ -283,7 +294,17 @@ func (s *userService) UpdateEmployee(ctx context.Context, id string, req *models
 
 	err := s.userRepo.Update(ctx, id, req)
 	if err != nil {
-		return nil, err
+		if mongo.IsDuplicateKeyError(err) {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "email_1") || strings.Contains(msg, " email") {
+				return nil, errors.New("email sudah digunakan")
+			}
+			if strings.Contains(msg, "payroll_number_1") || strings.Contains(msg, "payroll_number") {
+				return nil, errors.New("nomor payroll/NIK sudah digunakan")
+			}
+			return nil, errors.New("data pegawai sudah ada")
+		}
+		return nil, errors.New("gagal memperbarui pegawai")
 	}
 
 	user, err := s.userRepo.FindByID(ctx, id)
@@ -344,7 +365,17 @@ func (s *userService) UpdateEmployeeByManagerDepartemen(
 	}
 
 	if err := s.userRepo.Update(ctx, employeeID, req); err != nil {
-		return nil, err
+		if mongo.IsDuplicateKeyError(err) {
+			msg := strings.ToLower(err.Error())
+			if strings.Contains(msg, "email_1") || strings.Contains(msg, " email") {
+				return nil, errors.New("email sudah digunakan")
+			}
+			if strings.Contains(msg, "payroll_number_1") || strings.Contains(msg, "payroll_number") {
+				return nil, errors.New("nomor payroll/NIK sudah digunakan")
+			}
+			return nil, errors.New("data pegawai sudah ada")
+		}
+		return nil, errors.New("gagal memperbarui pegawai")
 	}
 
 	updated, err := s.userRepo.FindByID(ctx, employeeID)

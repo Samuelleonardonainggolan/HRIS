@@ -7,6 +7,7 @@ import (
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type PositionService interface {
@@ -71,7 +72,10 @@ func (s *positionService) CreatePosition(ctx context.Context, req models.CreateP
 	}
 
 	if err := s.positionRepo.Create(ctx, position); err != nil {
-		return nil, err
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, errors.New("kode jabatan sudah ada")
+		}
+		return nil, errors.New("gagal membuat jabatan")
 	}
 
 	resp := position.ToResponse()
@@ -89,7 +93,10 @@ func (s *positionService) UpdatePosition(ctx context.Context, id string, req mod
 	}
 
 	if err := s.positionRepo.Update(ctx, id, &req); err != nil {
-		return nil, err
+		if mongo.IsDuplicateKeyError(err) {
+			return nil, errors.New("kode jabatan sudah ada")
+		}
+		return nil, errors.New("gagal memperbarui jabatan")
 	}
 
 	updated, err := s.positionRepo.FindByID(ctx, id)
