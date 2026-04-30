@@ -136,7 +136,7 @@ function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
       x.pengajuan.final_status ?? x.pengajuan.status_final,
       x.pengajuan.status_manager_hr
     ),
-    avatarUrl: "",
+    avatarUrl: x.employee?.avatar || "",
     avatarFallback: getInitials(employeeName),
   };
 }
@@ -400,7 +400,7 @@ export default function PersetujuanIzinCutiPage() {
                                   {x.employeeName}
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                  ID: {x.employeeId}
+                                  {x.employeeId}
                                 </div>
                               </div>
                             </div>

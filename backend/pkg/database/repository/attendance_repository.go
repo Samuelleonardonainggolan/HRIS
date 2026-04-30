@@ -257,58 +257,151 @@ func (r *attendanceRepository) FindManagerAttendance(ctx context.Context, from, 
 	}
 	skip := (page - 1) * pageSize
 
-	match := bson.D{{Key: "date", Value: bson.D{{Key: "$gte", Value: from.UTC()}, {Key: "$lt", Value: to.UTC()}}}}
-
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: match}},
-		{{Key: "$lookup", Value: bson.D{{Key: "from", Value: "users"}, {Key: "localField", Value: "user_id"}, {Key: "foreignField", Value: "_id"}, {Key: "as", Value: "user"}}}},
-		{{Key: "$unwind", Value: "$user"}},
+	// Calculate number of days in range
+	numDays := int(to.Sub(from).Hours() / 24)
+	if numDays <= 0 {
+		numDays = 1
 	}
 
+	dayOffsets := make(bson.A, numDays)
+	for i := 0; i < numDays; i++ {
+		dayOffsets[i] = int64(i)
+	}
+
+	// 1. Pipeline untuk Users (Base)
+	userMatch := bson.M{"is_active": true}
+
 	if departmentName != "" && departmentName != "all" {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "user.department_name", Value: departmentName}}}})
+		oid, err := primitive.ObjectIDFromHex(departmentName)
+		if err == nil {
+			userMatch["department_id"] = oid
+		} else {
+			userMatch["department_name"] = departmentName
+		}
 	}
 
 	if q != "" {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "$or", Value: bson.A{
-			bson.D{{Key: "user.full_name", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-			bson.D{{Key: "user.email", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-			bson.D{{Key: "user.payroll_number", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-		}}}}})
+		userMatch["$or"] = []bson.M{
+			{"full_name": bson.M{"$regex": q, "$options": "i"}},
+			{"email": bson.M{"$regex": q, "$options": "i"}},
+			{"payroll_number": bson.M{"$regex": q, "$options": "i"}},
+		}
 	}
 
-	sortStage := bson.D{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}, {Key: "user.full_name", Value: 1}}}}
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: userMatch}},
+		// Generate date_series array
+		{{Key: "$addFields", Value: bson.D{
+			{Key: "date_series", Value: bson.D{
+				{Key: "$map", Value: bson.D{
+					{Key: "input", Value: dayOffsets},
+					{Key: "as", Value: "d"},
+					{Key: "in", Value: bson.D{
+						{Key: "$add", Value: bson.A{
+							from.UTC(),
+							bson.D{{Key: "$multiply", Value: bson.A{"$$d", 24 * 60 * 60 * 1000}}},
+						}},
+					}},
+				}},
+			}},
+		}}},
+		// Unwind so we have one document per user per day
+		{{Key: "$unwind", Value: "$date_series"}},
+		
+		// Lookup Attendance for this specific user AND date
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "attendances"},
+			{Key: "let", Value: bson.D{
+				{Key: "uid", Value: "$_id"},
+				{Key: "current_date", Value: "$date_series"},
+				{Key: "next_date", Value: bson.D{{Key: "$add", Value: bson.A{"$date_series", 24 * 60 * 60 * 1000}}}},
+			}},
+			{Key: "pipeline", Value: mongo.Pipeline{
+				{{Key: "$match", Value: bson.D{
+					{Key: "$expr", Value: bson.D{
+						{Key: "$and", Value: bson.A{
+							bson.D{{Key: "$eq", Value: bson.A{"$user_id", "$$uid"}}},
+							bson.D{{Key: "$gte", Value: bson.A{"$date", "$$current_date"}}},
+							bson.D{{Key: "$lt", Value: bson.A{"$date", "$$next_date"}}},
+						}},
+					}},
+				}}},
+			}},
+			{Key: "as", Value: "attendance_records"},
+		}}},
+
+		// Lookup Leave for this specific user AND date
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "leave_request"},
+			{Key: "let", Value: bson.D{
+				{Key: "uid", Value: "$_id"},
+				{Key: "current_date", Value: "$date_series"},
+				{Key: "next_date", Value: bson.D{{Key: "$add", Value: bson.A{"$date_series", 24 * 60 * 60 * 1000}}}},
+			}},
+			{Key: "pipeline", Value: mongo.Pipeline{
+				{{Key: "$match", Value: bson.D{
+					{Key: "$expr", Value: bson.D{
+						{Key: "$and", Value: bson.A{
+							bson.D{{Key: "$eq", Value: bson.A{"$user_id", "$$uid"}}},
+							bson.D{{Key: "$eq", Value: bson.A{"$final_status", "APPROVED"}}},
+							bson.D{{Key: "$lt", Value: bson.A{"$start_date", "$$next_date"}}},
+							bson.D{{Key: "$gte", Value: bson.A{"$end_date", "$$current_date"}}},
+						}},
+					}},
+				}}},
+			}},
+			{Key: "as", Value: "leave_records"},
+		}}},
+
+		// Structure user data explicitly and arrayElemAt
+		{{Key: "$project", Value: bson.D{
+			{Key: "user_info", Value: bson.D{
+				{Key: "full_name", Value: "$full_name"},
+				{Key: "email", Value: "$email"},
+				{Key: "payroll_number", Value: "$payroll_number"},
+				{Key: "department_name", Value: "$department_name"},
+				{Key: "position_name", Value: "$position_name"},
+				{Key: "avatar", Value: "$avatar"},
+			}},
+			{Key: "date_series", Value: 1},
+			{Key: "attendance_record", Value: bson.D{{Key: "$arrayElemAt", Value: bson.A{"$attendance_records", 0}}}},
+			{Key: "leave_record", Value: bson.D{{Key: "$arrayElemAt", Value: bson.A{"$leave_records", 0}}}},
+		}}},
+	}
+
+	sortStage := bson.D{{Key: "$sort", Value: bson.D{
+		{Key: "date_series", Value: -1},
+		{Key: "user_info.full_name", Value: 1},
+	}}}
+	pipeline = append(pipeline, sortStage)
+
 	facetStage := bson.D{{Key: "$facet", Value: bson.D{
 		{Key: "data", Value: bson.A{
 			bson.D{{Key: "$skip", Value: skip}},
 			bson.D{{Key: "$limit", Value: pageSize}},
 			bson.D{{Key: "$project", Value: bson.D{
-				{Key: "_id", Value: 1},
-				{Key: "user_id", Value: 1},
-				{Key: "date", Value: 1},
-				{Key: "clock_in_time", Value: 1},
-				{Key: "clock_out_time", Value: 1},
-				{Key: "clock_in_location", Value: 1},
-				{Key: "status", Value: 1},
-				       {Key: "user", Value: bson.D{
-					       {Key: "full_name", Value: "$user.full_name"},
-					       {Key: "email", Value: "$user.email"},
-					       {Key: "payroll_number", Value: "$user.payroll_number"},
-					       {Key: "department_name", Value: "$user.department_name"},
-					       {Key: "position_name", Value: "$user.position_name"},
-					       {Key: "avatar", Value: "$user.avatar"},
-				       }},
+				{Key: "_id", Value: "$attendance_record._id"},
+				{Key: "user_id", Value: "$_id"},
+				{Key: "date", Value: "$date_series"},
+				{Key: "clock_in_time", Value: "$attendance_record.clock_in_time"},
+				{Key: "clock_out_time", Value: "$attendance_record.clock_out_time"},
+				{Key: "clock_in_location", Value: "$attendance_record.clock_in_location"},
+				{Key: "status", Value: "$attendance_record.status"},
+				{Key: "user", Value: "$user_info"},
+				{Key: "leave_request", Value: "$leave_record"},
 			}}},
 		}},
 		{Key: "total", Value: bson.A{bson.D{{Key: "$count", Value: "count"}}}},
 		{Key: "status_summary", Value: bson.A{
-			bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
+			bson.D{{Key: "$group", Value: bson.D{{Key: "_id", Value: "$attendance_record.status"}, {Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}}}}},
 		}},
 	}}}
 
-	pipeline = append(pipeline, sortStage, facetStage)
+	pipeline = append(pipeline, facetStage)
 
-	cursor, err := r.collection.Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
+	// ✅ FIX: Aggregasi harus dimulai dari collection 'users' agar bisa menampilkan semua karyawan
+	// meskipun belum ada record di collection 'attendances'.
+	cursor, err := r.collection.Database().Collection("users").Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true))
 	if err != nil {
 		return nil, 0, nil, err
 	}
@@ -372,50 +465,131 @@ func (r *attendanceRepository) FindManagerAttendanceExport(ctx context.Context, 
 }
 
 func (r *attendanceRepository) FindManagerAttendanceExportCursor(ctx context.Context, from, to time.Time, departmentName, q string) (*mongo.Cursor, error) {
-	match := bson.D{{Key: "date", Value: bson.D{{Key: "$gte", Value: from.UTC()}, {Key: "$lt", Value: to.UTC()}}}}
-
-	pipeline := mongo.Pipeline{
-		{{Key: "$match", Value: match}},
-		{{Key: "$lookup", Value: bson.D{{Key: "from", Value: "users"}, {Key: "localField", Value: "user_id"}, {Key: "foreignField", Value: "_id"}, {Key: "as", Value: "user"}}}},
-		{{Key: "$unwind", Value: "$user"}},
+	// Calculate number of days in range
+	numDays := int(to.Sub(from).Hours() / 24)
+	if numDays <= 0 {
+		numDays = 1
 	}
 
+	dayOffsets := make(bson.A, numDays)
+	for i := 0; i < numDays; i++ {
+		dayOffsets[i] = int64(i)
+	}
+
+	// 1. Pipeline untuk Users (Base)
+	userMatch := bson.M{"is_active": true}
+
 	if departmentName != "" && departmentName != "all" {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "user.department_name", Value: departmentName}}}})
+		oid, err := primitive.ObjectIDFromHex(departmentName)
+		if err == nil {
+			userMatch["department_id"] = oid
+		} else {
+			userMatch["department_name"] = departmentName
+		}
 	}
 
 	if q != "" {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: bson.D{{Key: "$or", Value: bson.A{
-			bson.D{{Key: "user.full_name", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-			bson.D{{Key: "user.email", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-			bson.D{{Key: "user.payroll_number", Value: bson.D{{Key: "$regex", Value: q}, {Key: "$options", Value: "i"}}}},
-		}}}}})
+		userMatch["$or"] = []bson.M{
+			{"full_name": bson.M{"$regex": q, "$options": "i"}},
+			{"email": bson.M{"$regex": q, "$options": "i"}},
+			{"payroll_number": bson.M{"$regex": q, "$options": "i"}},
+		}
 	}
 
-	pipeline = append(pipeline,
-		bson.D{{Key: "$sort", Value: bson.D{{Key: "date", Value: -1}}}},
-		bson.D{{Key: "$project", Value: bson.D{
-			{Key: "_id", Value: 1},
-			{Key: "user_id", Value: 1},
-			{Key: "date", Value: 1},
-			{Key: "date_str", Value: bson.D{{Key: "$dateToString", Value: bson.D{
-				{Key: "format", Value: "%d/%m/%Y"},
-				{Key: "date", Value: bson.D{{Key: "$ifNull", Value: bson.A{"$date", bson.D{{Key: "$ifNull", Value: bson.A{"$clock_in_time", "$created_at"}}}}}}},
-				{Key: "timezone", Value: "+07:00"},
-			}}}},
-			{Key: "clock_in_time", Value: 1},
-			{Key: "clock_out_time", Value: 1},
-			{Key: "clock_in_location", Value: 1},
-			{Key: "status", Value: 1},
-			{Key: "user", Value: bson.D{
-				{Key: "full_name", Value: "$user.full_name"},
-				{Key: "email", Value: "$user.email"},
-				{Key: "payroll_number", Value: "$user.payroll_number"},
-				{Key: "department_name", Value: "$user.department_name"},
-				{Key: "position_name", Value: "$user.position_name"},
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: userMatch}},
+		// Generate date_series array
+		{{Key: "$addFields", Value: bson.D{
+			{Key: "date_series", Value: bson.D{
+				{Key: "$map", Value: bson.D{
+					{Key: "input", Value: dayOffsets},
+					{Key: "as", Value: "d"},
+					{Key: "in", Value: bson.D{
+						{Key: "$add", Value: bson.A{
+							from.UTC(),
+							bson.D{{Key: "$multiply", Value: bson.A{"$$d", 24 * 60 * 60 * 1000}}},
+						}},
+					}},
+				}},
 			}},
 		}}},
-	)
+		// Unwind so we have one document per user per day
+		{{Key: "$unwind", Value: "$date_series"}},
+		
+		// Lookup Attendance for this specific user AND date
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "attendances"},
+			{Key: "let", Value: bson.D{
+				{Key: "uid", Value: "$_id"},
+				{Key: "current_date", Value: "$date_series"},
+				{Key: "next_date", Value: bson.D{{Key: "$add", Value: bson.A{"$date_series", 24 * 60 * 60 * 1000}}}},
+			}},
+			{Key: "pipeline", Value: mongo.Pipeline{
+				{{Key: "$match", Value: bson.D{
+					{Key: "$expr", Value: bson.D{
+						{Key: "$and", Value: bson.A{
+							bson.D{{Key: "$eq", Value: bson.A{"$user_id", "$$uid"}}},
+							bson.D{{Key: "$gte", Value: bson.A{"$date", "$$current_date"}}},
+							bson.D{{Key: "$lt", Value: bson.A{"$date", "$$next_date"}}},
+						}},
+					}},
+				}}},
+			}},
+			{Key: "as", Value: "attendance_records"},
+		}}},
 
-	return r.collection.Aggregate(ctx, pipeline, options.Aggregate().SetAllowDiskUse(true).SetBatchSize(1000))
+		// Lookup Leave for this specific user AND date
+		{{Key: "$lookup", Value: bson.D{
+			{Key: "from", Value: "leave_request"},
+			{Key: "let", Value: bson.D{
+				{Key: "uid", Value: "$_id"},
+				{Key: "current_date", Value: "$date_series"},
+				{Key: "next_date", Value: bson.D{{Key: "$add", Value: bson.A{"$date_series", 24 * 60 * 60 * 1000}}}},
+			}},
+			{Key: "pipeline", Value: mongo.Pipeline{
+				{{Key: "$match", Value: bson.D{
+					{Key: "$expr", Value: bson.D{
+						{Key: "$and", Value: bson.A{
+							bson.D{{Key: "$eq", Value: bson.A{"$user_id", "$$uid"}}},
+							bson.D{{Key: "$eq", Value: bson.A{"$final_status", "APPROVED"}}},
+							bson.D{{Key: "$lt", Value: bson.A{"$start_date", "$$next_date"}}},
+							bson.D{{Key: "$gte", Value: bson.A{"$end_date", "$$current_date"}}},
+						}},
+					}},
+				}}},
+			}},
+			{Key: "as", Value: "leave_records"},
+		}}},
+
+		// Structure user data explicitly and arrayElemAt
+		{{Key: "$project", Value: bson.D{
+			{Key: "user_info", Value: bson.D{
+				{Key: "full_name", Value: "$full_name"},
+				{Key: "email", Value: "$email"},
+				{Key: "payroll_number", Value: "$payroll_number"},
+				{Key: "department_name", Value: "$department_name"},
+				{Key: "position_name", Value: "$position_name"},
+				{Key: "avatar", Value: "$avatar"},
+			}},
+			{Key: "date_series", Value: 1},
+			{Key: "attendance_record", Value: bson.D{{Key: "$arrayElemAt", Value: bson.A{"$attendance_records", 0}}}},
+			{Key: "leave_record", Value: bson.D{{Key: "$arrayElemAt", Value: bson.A{"$leave_records", 0}}}},
+		}}},
+		// Sort
+		{{Key: "$sort", Value: bson.D{
+			{Key: "date_series", Value: -1},
+			{Key: "user_info.full_name", Value: 1},
+		}}},
+		// Final Project for Export
+		{{Key: "$project", Value: bson.D{
+			{Key: "user", Value: "$user_info"},
+			{Key: "date", Value: "$date_series"},
+			{Key: "clock_in_time", Value: "$attendance_record.clock_in_time"},
+			{Key: "clock_out_time", Value: "$attendance_record.clock_out_time"},
+			{Key: "status", Value: "$attendance_record.status"},
+			{Key: "leave_request", Value: "$leave_record"},
+		}}},
+	}
+
+	return r.collection.Database().Collection("users").Aggregate(ctx, pipeline)
 }

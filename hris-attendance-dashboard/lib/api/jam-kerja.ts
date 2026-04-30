@@ -15,6 +15,12 @@ export interface JamKerjaListRow {
   workDays: string;
   startTime: string;
   endTime: string;
+  // API kadang mengembalikan snake_case
+  start_time?: string;
+  end_time?: string;
+  avatar_url?: string;
+  avatarUrl?: string;
+  avatar?: string;
 }
 
 export interface JamKerjaDetail {

@@ -44,6 +44,7 @@ export interface LeaveRequestApprovalResponse {
     id: string;
     payroll_number: string;
     full_name: string;
+    avatar?: string;
     department_name: string;
     position_name: string;
   };

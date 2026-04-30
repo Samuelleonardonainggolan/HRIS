@@ -34,6 +34,7 @@ interface WorkScheduleRow {
   startTime: string;
   endTime: string;
   dayOfWeek: string[];
+  avatarUrl: string;
 }
 
 function workDaysBadgeVariant(v: WorkDays) {
@@ -51,6 +52,25 @@ function workDaysLabelFromHari(hari: string[]): WorkDays {
   const isMonSat = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"].every((h) => set.has(h));
   if (isMonSat && hari.length === 6) return "Senin - Sabtu";
   return "Shift";
+}
+
+function sortHariKerja(hari: string[] | undefined) {
+  if (!hari) return [];
+  const set = new Set(hari);
+  return hariOrder.filter((h) => set.has(h));
+}
+
+function hariBadgeVariant(hari: string) {
+  switch (hari) {
+    case "Senin":  return "bg-blue-50 text-blue-700 border-blue-200";
+    case "Selasa": return "bg-indigo-50 text-indigo-700 border-indigo-200";
+    case "Rabu":   return "bg-violet-50 text-violet-700 border-violet-200";
+    case "Kamis":  return "bg-amber-50 text-amber-800 border-amber-200";
+    case "Jumat":  return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    case "Sabtu":  return "bg-teal-50 text-teal-700 border-teal-200";
+    case "Minggu": return "bg-rose-50 text-rose-700 border-rose-200";
+    default:       return "bg-gray-50 text-gray-700 border-gray-200";
+  }
 }
 
 export default function ManajemenJamKerjaManagerDepartemenPage() {
@@ -94,8 +114,9 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
             jabatan: r.position,
             dayOfWeek: hari,
             workDays: workDaysLabelFromHari(hari),
-            startTime: r.startTime,
-            endTime: r.endTime,
+            startTime: r.start_time ?? r.startTime ?? "-",
+            endTime: r.end_time ?? r.endTime ?? "-",
+            avatarUrl: r.avatar_url || r.avatarUrl || r.avatar || "",
           };
         });
         setRows(mapped);
@@ -185,6 +206,10 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
       setFormError("Jam mulai dan selesai wajib diisi");
       return;
     }
+    if (formEndTime <= formStartTime) {
+      setFormError("Waktu selesai harus lebih dari waktu mulai");
+      return;
+    }
 
     setSaving(true);
     setFormError(null);
@@ -201,12 +226,12 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
           r.id !== selectedUserId
             ? r
             : {
-                ...r,
-                dayOfWeek: updated.day_of_week,
-                workDays: workDaysLabelFromHari(updated.day_of_week),
-                startTime: updated.start_time,
-                endTime: updated.end_time,
-              }
+              ...r,
+              dayOfWeek: updated.day_of_week,
+              workDays: workDaysLabelFromHari(updated.day_of_week),
+              startTime: updated.start_time,
+              endTime: updated.end_time,
+            }
         )
       );
       setDialogOpen(false);
@@ -326,14 +351,23 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
                       {/* Karyawan */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                            {r.name
-                              .split(/\s+/)
-                              .filter(Boolean)
-                              .map((p) => p[0])
-                              .join("")
-                              .slice(0, 2)
-                              .toUpperCase()}
+                          <div className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700 overflow-hidden shrink-0">
+                            {r.avatarUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={r.avatarUrl}
+                                alt={r.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              r.name
+                                .split(/\s+/)
+                                .filter(Boolean)
+                                .map((p) => p[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()
+                            )}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">{r.name}</div>
@@ -349,7 +383,28 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
 
                       {/* Hari kerja */}
                       <td className="px-6 py-4">
-                        <Badge variant={workDaysBadgeVariant(r.workDays)}>{r.workDays}</Badge>
+                        {(() => {
+                          const hari = sortHariKerja(r.dayOfWeek);
+                          return hari.length === 0 ? (
+                            <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                              -
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {hari.map((h) => (
+                                <span
+                                  key={h}
+                                  className={[
+                                    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                    hariBadgeVariant(h),
+                                  ].join(" ")}
+                                >
+                                  {h}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Jam kerja */}
@@ -454,26 +509,34 @@ export default function ManajemenJamKerjaManagerDepartemenPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-sm font-semibold text-gray-900">Mulai</div>
-                <input
-                  type="time"
-                  value={formStartTime}
-                  onChange={(e) => setFormStartTime(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
-                />
+            <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Mulai</div>
+                  <input
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-semibold text-gray-900">Selesai</div>
+                  <input
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
 
-              <div>
-                <div className="text-sm font-semibold text-gray-900">Selesai</div>
-                <input
-                  type="time"
-                  value={formEndTime}
-                  onChange={(e) => setFormEndTime(e.target.value)}
-                  className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm"
-                />
-              </div>
+              {formEndTime && formStartTime && formEndTime <= formStartTime && (
+                <p className="text-xs text-red-600">
+                  ⚠ Waktu selesai harus lebih dari waktu mulai.
+                </p>
+              )}
             </div>
 
             <label className="flex items-center gap-2 text-sm text-gray-700">

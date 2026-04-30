@@ -32,6 +32,9 @@ export interface DeptLeaveRequestApprovalResponse {
     full_name: string;
     department_name: string;
     position_name: string;
+    avatar_url?: string;
+    avatarUrl?: string;
+    avatar?: string;
   };
 }
 

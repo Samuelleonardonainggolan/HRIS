@@ -30,6 +30,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(currentUser);
       } else {
         setUser(null);
+        // Clear invalid/expired tokens from localStorage and cookies
+        authService.clearTokens();
+        
         // Only redirect to login if not already on login page
         if (pathname && !pathname.startsWith('/login')) {
           router.push('/login');

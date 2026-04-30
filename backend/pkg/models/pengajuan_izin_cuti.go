@@ -94,6 +94,7 @@ type PengajuanIzinCutiApprovalEmployeeResponse struct {
 	ID             string `json:"id"`
 	PayrollNumber  string `json:"payroll_number"`
 	FullName       string `json:"full_name"`
+	Avatar         string `json:"avatar,omitempty"`
 	DepartmentName string `json:"department_name"`
 	PositionName   string `json:"position_name"`
 }
