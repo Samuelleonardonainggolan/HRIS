@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
+import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
@@ -86,7 +87,7 @@ class _HistoryPageState extends State<HistoryPage> {
       _error = null;
     });
     try {
-      // Ambil dua sumber data secara paralel
+      // Ambil tiga sumber data secara paralel
       final results = await Future.wait([
         ApiService.getMonthlyAttendance(
           month: _selectedMonth.month,
@@ -96,10 +97,15 @@ class _HistoryPageState extends State<HistoryPage> {
           month: _selectedMonth.month,
           year: _selectedMonth.year,
         ),
+        ApiService.getApprovedOvertimeByMonth(
+          month: _selectedMonth.month,
+          year: _selectedMonth.year,
+        ),
       ]);
 
       final summary = results[0] as MonthlyAttendanceSummary;
       final pengajuan = results[1] as List<LeaveRequest>;
+      final overtime = results[2] as List<OvertimeRequest>;
 
       print('[History] attendance records: ${summary.records.length}');
       print('[History] approved pengajuan for this month: ${pengajuan.length}');
@@ -149,8 +155,23 @@ class _HistoryPageState extends State<HistoryPage> {
                 '[History]   ~ skip ${_fmtDate(cur)} (absensi real sudah ada)',
               );
             }
+            cur = cur.add(const Duration(days: 1));
           }
-          cur = cur.add(const Duration(days: 1));
+        }
+      }
+
+      // Merge Overtime Requests
+      for (final o in overtime) {
+        if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
+          final rec = AttendanceRecord.fromOvertime(
+            id: o.id,
+            date: o.date,
+            startTime: o.startTime,
+            endTime: o.endTime,
+            reason: o.reason,
+            total: o.total,
+          );
+          merged.add(rec);
         }
       }
 
@@ -1286,6 +1307,27 @@ class _HistoryPageState extends State<HistoryPage> {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
+                      if (r.leaveType == 'Lembur') ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 13,
+                              color: Color(0xFF135BEC),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${r.clockIn} - ${r.clockOut} WIB',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF135BEC),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       // Badge disetujui
                       Container(
@@ -1347,7 +1389,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical:a 9),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: const BorderRadius.vertical(
