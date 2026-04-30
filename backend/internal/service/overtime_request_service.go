@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
@@ -20,6 +21,13 @@ type OvertimeRequestService interface {
 	GetForKepalaDepartemen(ctx context.Context, id string, kepalaUserID string) (*models.OvertimeApprovalResponse, error)
 	ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaUserID string) (*models.OvertimeApprovalResponse, error)
 	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaUserID string, rejectionReason string) (*models.OvertimeApprovalResponse, error)
+
+	// Employee
+	CreateOvertimeRequest(ctx context.Context, req models.CreateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error)
+	GetMyOvertimeRequests(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error)
+	GetMyOvertimeRequestByID(ctx context.Context, userID string, id string) (*models.OvertimeRequestResponse, error)
+	UpdateMyOvertimeRequest(ctx context.Context, userID string, id string, req models.UpdateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error)
+	DeleteMyOvertimeRequest(ctx context.Context, userID string, id string) error
 }
 
 type overtimeRequestService struct {
@@ -35,6 +43,186 @@ func NewOvertimeRequestService(
 		overtimeRepo: overtimeRepo,
 		userRepo:     userRepo,
 	}
+}
+
+// ============================================================
+// Employee
+// ============================================================
+
+func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, req models.CreateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error) {
+	userOID, err := primitive.ObjectIDFromHex(req.UserID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
+	}
+
+	loc := time.FixedZone("WIB", 7*3600)
+
+	date, err := time.ParseInLocation("2006-01-02", req.Date, loc)
+	if err != nil {
+		return nil, errors.New("format tanggal tidak valid, gunakan YYYY-MM-DD")
+	}
+
+	// Cek apakah sudah ada pengajuan lembur di tanggal yang sama (kecuali yang dibatalkan/ditolak)
+	existingRequests, err := s.overtimeRepo.Find(ctx, bson.M{
+		"user_id": userOID,
+		"date":    date,
+	})
+	if err == nil {
+		for _, r := range existingRequests {
+			if r.FinalStatus != "CANCELLED" && r.FinalStatus != "REJECTED" {
+				return nil, errors.New("pengajuan lembur untuk tanggal tersebut sudah ada")
+			}
+		}
+	}
+
+	// Assuming StartTime and EndTime are HH:MM
+	var startTime, endTime time.Time
+	if req.StartTime != "" {
+		st, err := time.ParseInLocation("15:04", req.StartTime, loc)
+		if err == nil {
+			startTime = time.Date(date.Year(), date.Month(), date.Day(), st.Hour(), st.Minute(), 0, 0, loc)
+		}
+	}
+	if req.EndTime != "" {
+		et, err := time.ParseInLocation("15:04", req.EndTime, loc)
+		if err == nil {
+			endTime = time.Date(date.Year(), date.Month(), date.Day(), et.Hour(), et.Minute(), 0, 0, loc)
+		}
+	}
+
+	overtimeReq := &models.OvertimeRequest{
+		UserID:                 userOID,
+		Date:                   date,
+		StartTime:              startTime,
+		EndTime:                endTime,
+		Reason:                 req.Reason,
+		Total:                  req.Total,
+		StatusKepalaDepartemen: models.StatusPending,
+		StatusManagerHR:        models.StatusPending,
+		FinalStatus:            models.StatusPending,
+	}
+
+	created, err := s.overtimeRepo.Create(ctx, overtimeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := created.ToResponse()
+	return &resp, nil
+}
+
+func (s *overtimeRequestService) GetMyOvertimeRequests(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
+	}
+
+	filter := bson.M{"user_id": userOID}
+	requests, err := s.overtimeRepo.Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []models.OvertimeRequestResponse
+	for _, r := range requests {
+		results = append(results, r.ToResponse())
+	}
+	if results == nil {
+		results = []models.OvertimeRequestResponse{}
+	}
+
+	return results, nil
+}
+
+func (s *overtimeRequestService) GetMyOvertimeRequestByID(ctx context.Context, userID string, id string) (*models.OvertimeRequestResponse, error) {
+	r, err := s.overtimeRepo.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.UserID.Hex() != userID {
+		return nil, errors.New("akses ditolak")
+	}
+
+	resp := r.ToResponse()
+	return &resp, nil
+}
+
+func (s *overtimeRequestService) UpdateMyOvertimeRequest(ctx context.Context, userID string, id string, req models.UpdateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user ID tidak valid")
+	}
+
+	loc := time.FixedZone("WIB", 7*3600)
+	updates := bson.M{}
+
+	if req.Date != nil {
+		date, err := time.ParseInLocation("2006-01-02", *req.Date, loc)
+		if err != nil {
+			return nil, errors.New("format tanggal tidak valid, gunakan YYYY-MM-DD")
+		}
+		updates["date"] = date
+	}
+
+	// Assuming StartTime and EndTime are HH:MM
+	if req.StartTime != nil {
+		st, err := time.ParseInLocation("15:04", *req.StartTime, loc)
+		if err == nil {
+			// We need date to construct time. If Date is not updated, we should ideally fetch the current date of the request.
+			// But for simplicity, we can fetch the request first.
+			r, err := s.overtimeRepo.FindByID(ctx, id)
+			if err == nil {
+				d := r.Date
+				if req.Date != nil {
+					d, _ = time.ParseInLocation("2006-01-02", *req.Date, loc)
+				}
+				updates["start_time"] = time.Date(d.Year(), d.Month(), d.Day(), st.Hour(), st.Minute(), 0, 0, loc)
+			}
+		}
+	}
+
+	if req.EndTime != nil {
+		et, err := time.ParseInLocation("15:04", *req.EndTime, loc)
+		if err == nil {
+			r, err := s.overtimeRepo.FindByID(ctx, id)
+			if err == nil {
+				d := r.Date
+				if req.Date != nil {
+					d, _ = time.ParseInLocation("2006-01-02", *req.Date, loc)
+				}
+				updates["end_time"] = time.Date(d.Year(), d.Month(), d.Day(), et.Hour(), et.Minute(), 0, 0, loc)
+			}
+		}
+	}
+
+	if req.Reason != nil {
+		updates["reason"] = *req.Reason
+	}
+	if req.Total != nil {
+		updates["total"] = *req.Total
+	}
+
+	if len(updates) == 0 {
+		return nil, errors.New("tidak ada data yang diperbarui")
+	}
+
+	updated, err := s.overtimeRepo.Update(ctx, id, userOID, updates)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := updated.ToResponse()
+	return &resp, nil
+}
+
+func (s *overtimeRequestService) DeleteMyOvertimeRequest(ctx context.Context, userID string, id string) error {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return errors.New("user ID tidak valid")
+	}
+
+	return s.overtimeRepo.Delete(ctx, id, userOID)
 }
 
 // ============================================================

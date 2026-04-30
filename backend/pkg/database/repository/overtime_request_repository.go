@@ -18,6 +18,8 @@ type OvertimeRequestRepository interface {
 	Create(ctx context.Context, req *models.OvertimeRequest) (*models.OvertimeRequest, error)
 	UpdateKepalaDepartemenDecision(ctx context.Context, id string, kepalaID primitive.ObjectID, status string, finalStatus string, rejectionReason string) (*models.OvertimeRequest, error)
 	UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, status string, finalStatus string, rejectionReason string) (*models.OvertimeRequest, error)
+	Update(ctx context.Context, id string, userID primitive.ObjectID, updates bson.M) (*models.OvertimeRequest, error)
+	Delete(ctx context.Context, id string, userID primitive.ObjectID) error
 }
 
 type overtimeRequestRepository struct {
@@ -165,4 +167,65 @@ func (r *overtimeRequestRepository) UpdateManagerHRDecision(
 	}
 
 	return &updated, nil
+}
+
+func (r *overtimeRequestRepository) Update(ctx context.Context, id string, userID primitive.ObjectID, updates bson.M) (*models.OvertimeRequest, error) {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("invalid overtime request ID")
+	}
+
+	filter := bson.M{
+		"_id":     objectID,
+		"user_id": userID,
+		"final_status": models.StatusPending,
+	}
+
+	updates["updated_at"] = time.Now()
+	update := bson.M{"$set": updates}
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+
+	var updated models.OvertimeRequest
+	err = r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("pengajuan lembur tidak ditemukan atau sudah diproses")
+		}
+		return nil, err
+	}
+
+	return &updated, nil
+}
+
+func (r *overtimeRequestRepository) Delete(ctx context.Context, id string, userID primitive.ObjectID) error {
+	objectID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid overtime request ID")
+	}
+
+	filter := bson.M{
+		"_id":     objectID,
+		"user_id": userID,
+		"final_status": models.StatusPending,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"final_status":             "CANCELLED",
+			"status_kepala_departemen": "CANCELLED",
+			"status_manager_hr":        "CANCELLED",
+			"updated_at":               time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if result.ModifiedCount == 0 {
+		return errors.New("pengajuan lembur tidak ditemukan atau sudah diproses")
+	}
+
+	return nil
 }

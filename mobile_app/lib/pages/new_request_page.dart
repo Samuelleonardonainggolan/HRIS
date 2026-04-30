@@ -215,10 +215,18 @@ class _NewRequestPageState extends State<NewRequestPage> {
 
     try {
       if (_category == 'Lembur') {
-        // ── Lembur: belum ada endpoint khusus di backend, kirim sebagai pengajuan
-        // dengan tipe "Lembur" jika ada, atau tampilkan informasi sementara.
-        // TODO: sesuaikan dengan endpoint lembur backend Anda
-        await Future.delayed(const Duration(seconds: 1));
+        final dateFormat = DateFormat('yyyy-MM-dd');
+        final startTimeStr = '${_startTime.hour.toString().padLeft(2, '0')}:${_startTime.minute.toString().padLeft(2, '0')}';
+        final endTimeStr = '${_endTime.hour.toString().padLeft(2, '0')}:${_endTime.minute.toString().padLeft(2, '0')}';
+
+        await ApiService.submitOvertime(
+          tanggal: dateFormat.format(_startDate),
+          startTime: startTimeStr,
+          endTime: endTimeStr,
+          alasan: _reasonCtrl.text.trim(),
+          total: _kompensasiStr,
+        );
+
         if (mounted) {
           Navigator.pop(context, true);
           _showSnack('Pengajuan Lembur berhasil dikirim');

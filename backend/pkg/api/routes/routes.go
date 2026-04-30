@@ -201,6 +201,16 @@ func SetupRoutes(
 			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
 
+			// MY OVERTIME REQUEST (Employee)
+			myOvertime := protected.Group("/my-overtime")
+			{
+				myOvertime.POST("", overtimeRequestHandler.Create)
+				myOvertime.GET("", overtimeRequestHandler.GetMine)
+				myOvertime.GET("/:id", overtimeRequestHandler.GetMineByID)
+				myOvertime.PUT("/:id", overtimeRequestHandler.UpdateMine)
+				myOvertime.DELETE("/:id", overtimeRequestHandler.DeleteMine)
+			}
+
 			// OVERTIME REQUEST APPROVAL (Manager HR Only)
 			overtimeRequests := protected.Group("/overtime-requests")
 			overtimeRequests.Use(middleware.ManagerHROnly())

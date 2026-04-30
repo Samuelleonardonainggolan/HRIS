@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
+import 'package:mobile_app/models/overtime_request.dart';
 import 'package:intl/intl.dart';
 import 'new_request_page.dart';
 
@@ -20,6 +21,7 @@ class _RequestPageState extends State<RequestPage> {
 
   // Dummy data — ganti dengan API call
   List<LeaveRequest> _requests = [];
+  List<OvertimeRequest> _overtimeRequests = [];
 
   @override
   void initState() {
@@ -51,12 +53,18 @@ class _RequestPageState extends State<RequestPage> {
     setState(() => _isLoading = true);
     try {
       // ✅ Ambil data real dari backend
-      final data = await ApiService.getMyPengajuan();
-      if (mounted)
+      final results = await Future.wait([
+        ApiService.getMyPengajuan(),
+        ApiService.getMyOvertime(),
+      ]);
+      
+      if (mounted) {
         setState(() {
-          _requests = data;
+          _requests = results[0] as List<LeaveRequest>;
+          _overtimeRequests = results[1] as List<OvertimeRequest>;
           _isLoading = false;
         });
+      }
     } catch (e) {
       print('[Request] load error: $e');
       if (mounted) setState(() => _isLoading = false);
@@ -462,9 +470,18 @@ class _RequestPageState extends State<RequestPage> {
     );
   }
 
-  List<LeaveRequest> get _filtered {
-    if (_selectedTab == 0) return _requests;
-    final cat = _tabs[_selectedTab]; // 'Izin' | 'Cuti' | 'Lembur'
+  List<dynamic> get _filtered {
+    if (_selectedTab == 0) {
+      final all = <dynamic>[..._requests, ..._overtimeRequests];
+      all.sort((a, b) {
+        final d1 = a is LeaveRequest ? a.startDate : (a as OvertimeRequest).date;
+        final d2 = b is LeaveRequest ? b.startDate : (b as OvertimeRequest).date;
+        return d2.compareTo(d1);
+      });
+      return all;
+    }
+    final cat = _tabs[_selectedTab];
+    if (cat == 'Lembur') return _overtimeRequests;
     return _requests
         .where((r) => r.namaKategori.toLowerCase() == cat.toLowerCase())
         .toList();
@@ -730,14 +747,16 @@ class _RequestPageState extends State<RequestPage> {
     );
   }
 
-  Widget _buildCard(LeaveRequest r) {
-    final isLembur = r.namaKategori.toLowerCase() == 'lembur';
-    final sc = _statusColor(r.statusFinal);
-    final sl = _statusLabel(r.statusFinal);
+  Widget _buildCard(dynamic r) {
+    if (r is OvertimeRequest) return _buildOvertimeCard(r);
+    final LeaveRequest lr = r as LeaveRequest;
+    final isLembur = lr.namaKategori.toLowerCase() == 'lembur';
+    final sc = _statusColor(lr.statusFinal);
+    final sl = _statusLabel(lr.statusFinal);
     final fmt = DateFormat('EEE, dd MMM yyyy', 'id');
 
     return GestureDetector(
-      onTap: () => _showRequestDetail(r),
+      onTap: () => _showRequestDetail(lr),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
@@ -761,12 +780,12 @@ class _RequestPageState extends State<RequestPage> {
                 height: 44,
                 width: 44,
                 decoration: BoxDecoration(
-                  color: _kategoriColor(r.namaKategori).withOpacity(0.1),
+                  color: _kategoriColor(lr.namaKategori).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  _kategoriIcon(r.namaKategori),
-                  color: _kategoriColor(r.namaKategori),
+                  _kategoriIcon(lr.namaKategori),
+                  color: _kategoriColor(lr.namaKategori),
                   size: 22,
                 ),
               ),
@@ -785,7 +804,7 @@ class _RequestPageState extends State<RequestPage> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Diajukan: ${fmt.format(r.createdAt)}',
+                          'Diajukan: ${fmt.format(lr.createdAt)}',
                           style: TextStyle(
                             fontSize: 11,
                             color: Colors.grey.shade400,
@@ -797,7 +816,7 @@ class _RequestPageState extends State<RequestPage> {
                     const SizedBox(height: 4),
                     // ✅ Gunakan r.type (nama_tipe dari backend, misal "Izin Sakit")
                     Text(
-                      r.type,
+                      lr.type,
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
@@ -814,15 +833,15 @@ class _RequestPageState extends State<RequestPage> {
                           size: 13,
                           color: const Color(0xFF135BEC),
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 2),
                         Text(
-                          r.days <= 1 && !isLembur
-                              ? DateFormat('dd MMM yyyy').format(r.startDate)
+                          lr.days <= 1 && !isLembur
+                              ? DateFormat('dd MMM yyyy').format(lr.startDate)
                               : isLembur
-                              ? DateFormat('dd MMM yyyy').format(r.startDate)
-                              : '${DateFormat('dd MMM').format(r.startDate)} s/d ${DateFormat('dd MMM').format(r.endDate)}',
+                              ? DateFormat('dd MMM yyyy').format(lr.startDate)
+                              : '${DateFormat('dd MMM').format(lr.startDate)} s/d ${DateFormat('dd MMM').format(lr.endDate)}',
                           style: const TextStyle(
-                            fontSize: 12,
+                            fontSize: 11,
                             color: Color(0xFF135BEC),
                             fontWeight: FontWeight.w500,
                           ),
@@ -831,7 +850,7 @@ class _RequestPageState extends State<RequestPage> {
                     ),
                     const SizedBox(height: 8),
                     // ✅ Approval chain bertahap
-                    _buildApprovalChain(r),
+                    _buildApprovalChain(lr),
                   ],
                 ),
               ),
@@ -840,13 +859,13 @@ class _RequestPageState extends State<RequestPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  if (r.statusFinal == 'PENDING')
+                  if (lr.statusFinal == 'PENDING')
                     PopupMenuButton<String>(
                       icon: const Icon(Icons.more_horiz, size: 18),
                       onSelected: (v) {
-                        if (v == 'detail') _showRequestDetail(r);
-                        if (v == 'edit') _editRequest(r);
-                        if (v == 'cancel') _cancelRequest(r);
+                        if (v == 'detail') _showRequestDetail(lr);
+                        if (v == 'edit') _editRequest(lr);
+                        if (v == 'cancel') _cancelRequest(lr);
                       },
                       itemBuilder: (_) => const [
                         PopupMenuItem(
@@ -895,7 +914,7 @@ class _RequestPageState extends State<RequestPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      isLembur ? '— Jam' : '${r.days} Hari',
+                      isLembur ? '— Jam' : '${lr.days} Hari',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -910,6 +929,341 @@ class _RequestPageState extends State<RequestPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildOvertimeCard(OvertimeRequest r) {
+    final sc = _statusColor(r.finalStatus);
+    final sl = _statusLabel(r.finalStatus);
+    final fmt = DateFormat('EEE, dd MMM yyyy', 'id');
+    final timeFmt = DateFormat('HH:mm');
+
+    return GestureDetector(
+      onTap: () => _showOvertimeDetail(r),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: _kategoriColor('Lembur').withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _kategoriIcon('Lembur'),
+                  color: _kategoriColor('Lembur'),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 11,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Diajukan: ${fmt.format(r.createdAt)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Lembur',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.access_time_rounded,
+                          size: 13,
+                          color: Color(0xFF135BEC),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${DateFormat('dd MMM yyyy').format(r.date)} (${timeFmt.format(r.startTime)} - ${timeFmt.format(r.endTime)})',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF135BEC),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildApprovalChain(
+                      LeaveRequest(
+                        id: r.id, type: 'Lembur', namaKategori: 'Lembur', startDate: r.date, endDate: r.date, reason: r.reason, status: r.finalStatus, statusFinal: r.finalStatus, statusKepala: r.statusKepalaDepartemen, statusManagerHr: r.statusManagerHr, days: 1, createdAt: r.createdAt
+                      )
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (r.finalStatus == 'PENDING')
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_horiz, size: 18),
+                      onSelected: (v) {
+                        if (v == 'detail') _showOvertimeDetail(r);
+                        if (v == 'edit') _editOvertimeRequest(r);
+                        if (v == 'cancel') _cancelOvertimeRequest(r);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'detail', child: Text('Lihat Detail')),
+                        PopupMenuItem(value: 'edit', child: Text('Edit Pengajuan')),
+                        PopupMenuItem(value: 'cancel', child: Text('Batalkan Pengajuan')),
+                      ],
+                    )
+                  else
+                    const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: sc.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: sc.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      sl,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: sc),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      r.total.isEmpty ? '—' : r.total,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showOvertimeDetail(OvertimeRequest r) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        final dateFmt = DateFormat('dd MMM yyyy', 'id');
+        final timeFmt = DateFormat('HH:mm');
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(99))),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    height: 46, width: 46,
+                    decoration: BoxDecoration(color: _kategoriColor('Lembur').withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
+                    child: Icon(_kategoriIcon('Lembur'), color: _kategoriColor('Lembur')),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Lembur', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8, runSpacing: 8,
+                children: [
+                  _detailBadge('Kategori Lembur', _kategoriColor('Lembur')),
+                  _detailBadge('Status ${_statusLabel(r.finalStatus)}', _statusColor(r.finalStatus)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text('Tanggal: ${dateFmt.format(r.date)}'),
+              Text('Jam: ${timeFmt.format(r.startTime)} - ${timeFmt.format(r.endTime)}'),
+              Text('Total: ${r.total}'),
+              const SizedBox(height: 12),
+              const Text('Alasan / Deskripsi Pekerjaan', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 4),
+              Text(r.reason.isEmpty ? '-' : r.reason),
+              const SizedBox(height: 14),
+              const Text('Tahap Persetujuan', style: TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              _approvalRow('Kepala Departemen', r.statusKepalaDepartemen, actorName: r.kepalaDepartemenId),
+              const SizedBox(height: 6),
+              _approvalRow('Manager HR', r.statusManagerHr, actorName: r.managerHrId),
+              if (r.finalStatus == 'REJECTED') ...[
+                const SizedBox(height: 14),
+                const Text('Alasan Penolakan', style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                if ((r.rejectionReasonKepalaDept ?? '').trim().isNotEmpty)
+                  _rejectionReasonBox(label: 'Kepala Departemen', reason: r.rejectionReasonKepalaDept!.trim()),
+                if ((r.rejectionReasonManagerHr ?? '').trim().isNotEmpty)
+                  _rejectionReasonBox(label: 'Manager HR', reason: r.rejectionReasonManagerHr!.trim()),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _cancelOvertimeRequest(OvertimeRequest r) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Batalkan Lembur'),
+        content: const Text('Pengajuan lembur yang dibatalkan tidak bisa dikembalikan. Lanjutkan?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Tidak')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ya, Batalkan')),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await ApiService.cancelOvertime(r.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lembur berhasil dibatalkan')));
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal membatalkan lembur: $e'), backgroundColor: const Color(0xFFEF4444)));
+    }
+  }
+
+  Future<void> _editOvertimeRequest(OvertimeRequest r) async {
+    DateTime date = r.date;
+    TimeOfDay start = TimeOfDay.fromDateTime(r.startTime);
+    TimeOfDay end = TimeOfDay.fromDateTime(r.endTime);
+    final reasonCtrl = TextEditingController(text: r.reason);
+
+    final edited = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Edit Lembur'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildEditableDateRow(
+                  label: 'Tanggal',
+                  value: DateFormat('yyyy-MM-dd').format(date),
+                  icon: Icons.calendar_today,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      initialDate: date,
+                      firstDate: DateTime.now().subtract(const Duration(days: 7)),
+                      lastDate: DateTime.now().add(const Duration(days: 30)),
+                    );
+                    if (picked != null) setLocal(() => date = picked);
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildEditableDateRow(
+                  label: 'Jam Mulai',
+                  value: '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
+                  icon: Icons.access_time,
+                  onTap: () async {
+                    final picked = await showTimePicker(context: ctx, initialTime: start);
+                    if (picked != null) setLocal(() => start = picked);
+                  },
+                ),
+                const SizedBox(height: 8),
+                _buildEditableDateRow(
+                  label: 'Jam Selesai',
+                  value: '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}',
+                  icon: Icons.access_time_filled,
+                  onTap: () async {
+                    final picked = await showTimePicker(context: ctx, initialTime: end);
+                    if (picked != null) setLocal(() => end = picked);
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextField(controller: reasonCtrl, maxLines: 3, decoration: const InputDecoration(labelText: 'Deskripsi Pekerjaan', border: OutlineInputBorder())),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Simpan')),
+          ],
+        ),
+      ),
+    );
+
+    if (edited != true) return;
+
+    try {
+      final s = '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+      final e = '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
+      await ApiService.updateOvertime(
+        id: r.id,
+        tanggal: DateFormat('yyyy-MM-dd').format(date),
+        startTime: s,
+        endTime: e,
+        alasan: reasonCtrl.text.trim(),
+        total: _calcHours(s, e),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lembur berhasil diperbarui')));
+      await _loadRequests();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal mengedit lembur: $e'), backgroundColor: const Color(0xFFEF4444)));
+    } finally {
+      reasonCtrl.dispose();
+    }
   }
 
   Widget _buildApprovalChain(LeaveRequest r) {
