@@ -6,6 +6,7 @@ import 'package:mobile_app/pages/face_attendance_page.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
+import 'package:mobile_app/services/sse_service.dart';
 
 class EmployeeDashboardPage extends StatefulWidget {
   const EmployeeDashboardPage({super.key});
@@ -37,6 +38,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   // Real-time clock
   late Timer _clockTimer;
   Timer? _statsRefreshTimer;
+  StreamSubscription? _sseSubscription;
 
   // Break state
   bool isOnBreak = false;
@@ -84,6 +86,22 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
     _statsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) {
+        _loadMonthlyStats();
+      }
+    });
+
+    _setupSSE();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted) return;
+      // Refresh data jika ada update terkait absensi, pengajuan, atau statistik
+      if (event.type == 'attendance_updated' || 
+          event.type == 'leave_updated' || 
+          event.type == 'stats_updated') {
+        _loadTodayAttendance();
+        _loadWorkScheduleInfo();
         _loadMonthlyStats();
       }
     });
@@ -368,6 +386,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     ApiService.currentUser.removeListener(_syncProfile);
     _breakTimer?.cancel();
     _animationController.dispose();
+    _sseSubscription?.cancel();
     super.dispose();
   }
 
@@ -445,6 +464,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         !hasClockedOut &&
         !_isLoadingAttendance;
 
+    // Clock out: bisa sejak clock in, hingga 6 jam setelah jam pulang
+    // Backend mengirimkan canClockOut=true jika user sudah clock in dan belum melewati window
     bool canClockOut =
         (_workScheduleInfo?.todaySchedule?.canClockOut ?? false) &&
         isClockedIn &&

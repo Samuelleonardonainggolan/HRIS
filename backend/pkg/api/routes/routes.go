@@ -25,6 +25,7 @@ func SetupRoutes(
 	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
 	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
 	overtimeRequestHandler *handler.OvertimeRequestHandler,
+	sseHandler *handler.SSEHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -250,6 +251,14 @@ func SetupRoutes(
 				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
 				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
 			}
+		}
+
+		// REALTIME (SSE) — endpoint untuk real-time push notification ke Flutter
+		// Gunakan tanpa middleware AuthMiddleware karena token diambil dari query param
+		// (EventSource tidak support custom headers)
+		realtimeGroup := v1.Group("/realtime")
+		{
+			realtimeGroup.GET("/connect", sseHandler.Connect)
 		}
 	}
 }

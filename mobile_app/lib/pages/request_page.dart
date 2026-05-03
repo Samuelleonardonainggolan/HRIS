@@ -4,7 +4,9 @@ import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
 import 'package:mobile_app/models/overtime_request.dart';
+import 'package:mobile_app/services/sse_service.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import 'new_request_page.dart';
 
 class RequestPage extends StatefulWidget {
@@ -23,12 +25,21 @@ class _RequestPageState extends State<RequestPage> {
   List<LeaveRequest> _requests = [];
   List<OvertimeRequest> _overtimeRequests = [];
 
+  StreamSubscription? _sseSubscription;
+
   @override
   void initState() {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
+    SSEService().refreshCounter.addListener(_onRemoteUpdate);
     _loadUser();
     _loadRequests();
+  }
+
+  void _onRemoteUpdate() {
+    if (mounted) {
+      _loadRequests(silent: true);
+    }
   }
 
   void _syncProfile() {
@@ -46,11 +57,12 @@ class _RequestPageState extends State<RequestPage> {
   @override
   void dispose() {
     ApiService.currentUser.removeListener(_syncProfile);
+    SSEService().refreshCounter.removeListener(_onRemoteUpdate);
     super.dispose();
   }
 
-  Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadRequests({bool silent = false}) async {
+    if (!silent) setState(() => _isLoading = true);
     try {
       // ✅ Ambil data real dari backend
       final results = await Future.wait([

@@ -12,7 +12,7 @@ import '../models/overtime_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.170:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.68:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 

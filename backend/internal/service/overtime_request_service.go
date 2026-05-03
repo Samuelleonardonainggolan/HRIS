@@ -28,11 +28,13 @@ type OvertimeRequestService interface {
 	GetMyOvertimeRequestByID(ctx context.Context, userID string, id string) (*models.OvertimeRequestResponse, error)
 	UpdateMyOvertimeRequest(ctx context.Context, userID string, id string, req models.UpdateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error)
 	DeleteMyOvertimeRequest(ctx context.Context, userID string, id string) error
+	SetWSHub(hub *WSHub)
 }
 
 type overtimeRequestService struct {
 	overtimeRepo repository.OvertimeRequestRepository
 	userRepo     repository.UserRepository
+	wsHub        *WSHub
 }
 
 func NewOvertimeRequestService(
@@ -42,7 +44,12 @@ func NewOvertimeRequestService(
 	return &overtimeRequestService{
 		overtimeRepo: overtimeRepo,
 		userRepo:     userRepo,
+		wsHub:        nil,
 	}
+}
+
+func (s *overtimeRequestService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 // ============================================================
@@ -108,6 +115,19 @@ func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, req 
 	}
 
 	resp := created.ToResponse()
+
+	if s.wsHub != nil {
+		// Broadcast ke user
+		s.wsHub.BroadcastToUser(req.UserID, WSEventLeaveUpdated, map[string]any{
+			"action":  "overtime_create",
+			"message": "Pengajuan lembur berhasil dibuat",
+		})
+		// Broadcast ke semua (untuk manager)
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "new_overtime_request",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -213,6 +233,14 @@ func (s *overtimeRequestService) UpdateMyOvertimeRequest(ctx context.Context, us
 	}
 
 	resp := updated.ToResponse()
+
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(userID, WSEventLeaveUpdated, map[string]any{
+			"action":  "overtime_update",
+			"message": "Pengajuan lembur berhasil diperbarui",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -222,7 +250,14 @@ func (s *overtimeRequestService) DeleteMyOvertimeRequest(ctx context.Context, us
 		return errors.New("user ID tidak valid")
 	}
 
-	return s.overtimeRepo.Delete(ctx, id, userOID)
+	err = s.overtimeRepo.Delete(ctx, id, userOID)
+	if err == nil && s.wsHub != nil {
+		s.wsHub.BroadcastToUser(userID, WSEventLeaveUpdated, map[string]any{
+			"action":  "overtime_delete",
+			"message": "Pengajuan lembur berhasil dihapus",
+		})
+	}
+	return err
 }
 
 // ============================================================
@@ -332,6 +367,18 @@ func (s *overtimeRequestService) decideByManagerHR(ctx context.Context, id strin
 		return &resp, nil
 	}
 	resp := s.toApprovalResponse(*updated, true, u)
+
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(updated.UserID.Hex(), WSEventLeaveUpdated, map[string]any{
+			"action":  "overtime_status_updated",
+			"status":  updated.FinalStatus,
+			"message": "Pengajuan lembur Anda telah di-review Manager HR",
+		})
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "overtime_processed",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -470,6 +517,18 @@ func (s *overtimeRequestService) decideByKepalaDepartemen(ctx context.Context, i
 		return &resp, nil
 	}
 	resp := s.toApprovalResponse(*updated, true, u)
+
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(updated.UserID.Hex(), WSEventLeaveUpdated, map[string]any{
+			"action":  "overtime_status_updated",
+			"status":  updated.StatusKepalaDepartemen,
+			"message": "Pengajuan lembur Anda telah di-review Kepala Departemen",
+		})
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "overtime_processed",
+		})
+	}
+
 	return &resp, nil
 }
 

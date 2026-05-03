@@ -126,23 +126,12 @@ class _SplashScreenState extends State<SplashScreen>
                       child: Hero(
                         tag: "app_logo",
                         child: Container(
-                          height: 150,
-                          width: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
+                          height: 280, // Diperbesar dari 150 menjadi 280
+                          width: 400,  // Diperbesar dari 150 menjadi 280
                           child: Padding(
                             padding: const EdgeInsets.all(25),
                             child: Image.asset(
-                              "assets/Del_Institute_of_Technology_Logo.png", 
+                              "assets/logo-header.png", 
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -150,24 +139,57 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   SlideTransition(
                     position: _slideAnimation,
                     child: FadeTransition(
                       opacity: _controller,
                       child: Column(
-                        children: const [
-                          Text(
-                            "LABERSA ABSENSI",
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                              letterSpacing: 2,
+                        children: [
+                          // Teks LABERSA dengan ShaderMask
+                          ShaderMask(
+                            shaderCallback: (bounds) {
+                              return const LinearGradient(
+                                colors: [Colors.white, Colors.white70],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ).createShader(bounds);
+                            },
+                            child: const Text(
+                              "LABERSA",
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 3,
+                              ),
                             ),
                           ),
-                          SizedBox(height: 10),
-                          Text(
+                          const SizedBox(height: 10),
+                          // Garis dekoratif
+                          Container(
+                            width: 50,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Colors.white70, Colors.white],
+                              ),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          // Teks ABSENSI
+                          const Text(
+                            "ABSENSI",
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              letterSpacing: 5,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
                             "Sistem Absensi Karyawan",
                             style: TextStyle(
                               fontSize: 14,
@@ -191,9 +213,22 @@ class _SplashScreenState extends State<SplashScreen>
                   position: _slideAnimation,
                   child: FadeTransition(
                     opacity: _controller,
-                    child: const CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      strokeWidth: 2,
+                    child: Column(
+                      children: [
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          strokeWidth: 2,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Loading...",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

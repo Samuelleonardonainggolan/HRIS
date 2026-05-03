@@ -1,6 +1,7 @@
 // lib/pages/history_page.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/services/sse_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
 import 'package:mobile_app/models/overtime_request.dart';
@@ -8,6 +9,7 @@ import 'package:mobile_app/models/user_model.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:intl/date_symbol_data_local.dart';
+import 'dart:async';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -19,10 +21,14 @@ class _HistoryPageState extends State<HistoryPage> {
   DateTime _selectedMonth = DateTime.now();
   DateTime? _selectedDate;
   String _selectedFilter = 'Semua';
+  final ScrollController _scrollController = ScrollController();
 
   /// Gabungan record absensi real + sintetis dari pengajuan APPROVED
   List<AttendanceRecord> _all = [];
   List<AttendanceRecord> _filtered = [];
+
+  StreamSubscription? _sseSubscription;
+
   bool _isLoading = true;
   bool _localeReady = false;
   String? _error;
@@ -53,6 +59,9 @@ class _HistoryPageState extends State<HistoryPage> {
   void initState() {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
+    _sseSubscription = SSEService().events.listen((event) {
+      if (mounted) _loadData();
+    });
     _init();
   }
 
@@ -76,6 +85,8 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
+    _sseSubscription?.cancel();
     ApiService.currentUser.removeListener(_syncProfile);
     super.dispose();
   }
@@ -1389,7 +1400,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical:a 9),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: const BorderRadius.vertical(
