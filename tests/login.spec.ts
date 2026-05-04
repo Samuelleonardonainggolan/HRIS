@@ -5,7 +5,7 @@ test.describe("Login Page - Blackbox Testing", () => {
   test("Login sukses → redirect ke /dashboard", async ({ page }) => {
     await page.goto("/login");
 
-    await page.getByLabel("Email").fill("admin.it@company.com");
+    await page.getByLabel("Email").fill("manager.hr@company.com");
     await page.getByLabel("Password").fill("password123");
 
     await page.getByRole("button", { name: "Masuk" }).click();
@@ -16,7 +16,7 @@ test.describe("Login Page - Blackbox Testing", () => {
 test("Login gagal → tampil error", async ({ page }) => {
   await page.goto("/login");
 
-  await page.getByLabel("Email").fill("admin.it@company.com");
+  await page.getByLabel("Email").fill("manager@company.com");
   await page.getByLabel("Password").fill("salah");
 
   await page.getByRole("button", { name: "Masuk" }).click();

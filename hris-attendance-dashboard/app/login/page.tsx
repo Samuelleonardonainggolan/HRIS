@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   
   const { login, user, loading } = useAuth();
@@ -23,17 +24,35 @@ export default function LoginPage() {
     }
   }, [loading, user, router]);
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!email) newErrors.email = "Kolom Email tidak boleh kosong";
+    if (!password) newErrors.password = "Kolom Password tidak boleh kosong";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setErrors({});
+
+    if (!validateForm()) return;
+
     setIsLoading(true);
 
     try {
       await login({ email, password });
-      // ❌ jangan push di sini
-      // router.push('/dashboard');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed. Please check your credentials.");
+      const message = err instanceof Error ? err.message : "Login failed";
+      
+      if (message.toLowerCase().includes("email")) {
+        setErrors({ email: message });
+      } else if (message.toLowerCase().includes("password")) {
+        setErrors({ password: message });
+      } else {
+        setError(message);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -99,13 +118,20 @@ export default function LoginPage() {
                 name="email"
                 type="email"
                 autoComplete="email"
-                required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors((prev) => ({ ...prev, email: "" }));
+                }}
+                className={`appearance-none block w-full px-3 py-3 border rounded-lg placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                  errors.email ? "border-red-500 ring-1 ring-red-500" : "border-gray-300"
+                }`}
                 placeholder="you@company.com"
                 disabled={isLoading}
               />
+              {errors.email && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{errors.email}</p>
+              )}
             </div>
 
             {/* Password Input */}
@@ -119,10 +145,14 @@ export default function LoginPage() {
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
-                  required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password) setErrors((prev) => ({ ...prev, password: "" }));
+                  }}
+                  className={`appearance-none block w-full px-3 py-3 border rounded-lg placeholder-gray-400 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                    errors.password ? "border-red-500 ring-1 ring-red-500" : "border-gray-300"
+                  }`}
                   placeholder="••••••••"
                   disabled={isLoading}
                 />
@@ -133,12 +163,15 @@ export default function LoginPage() {
                   disabled={isLoading}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-400" />
+                    <EyeOff className={`h-5 w-5 ${errors.password ? 'text-red-400' : 'text-gray-400'}`} />
                   ) : (
-                    <Eye className="h-5 w-5 text-gray-400" />
+                    <Eye className={`h-5 w-5 ${errors.password ? 'text-red-400' : 'text-gray-400'}`} />
                   )}
                 </button>
               </div>
+              {errors.password && (
+                <p className="mt-1 text-xs text-red-600 font-medium">{errors.password}</p>
+              )}
             </div>
 
             {/* Remember Me & Forgot Password */}

@@ -104,6 +104,7 @@ export default function TambahJabatanPage() {
   const [loadingData, setLoadingData]   = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError]               = useState<string | null>(null);
+  const [errors, setErrors]             = useState<Record<string, string>>({});
 
   // departmentId yang dikunci dari query (tidak bisa diubah user)
   const [lockedDepartmentId, setLockedDepartmentId] = useState<string | null>(null);
@@ -192,21 +193,25 @@ export default function TambahJabatanPage() {
     setFormData((prev) => ({ ...prev, [field]: value }));
 
   // ── Validation ────────────────────────────────────────────────────────────
-  const validate = (): string | null => {
-    if (!formData.name.trim())      return "Nama jabatan wajib diisi";
-    if (!formData.department_id)    return "Departemen wajib dipilih";
-    if (!formData.level)            return "Level jabatan wajib dipilih";
-    return null;
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.name.trim())      newErrors.name = "Kolom Nama Jabatan tidak boleh kosong";
+    if (!formData.code.trim())      newErrors.code = "Kolom Kode Jabatan tidak boleh kosong";
+    if (!formData.department_id)    newErrors.department_id = "Kolom Departemen tidak boleh kosong";
+    if (!formData.level)            newErrors.level = "Kolom Level Jabatan tidak boleh kosong";
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setErrors({});
 
-    const validationError = validate();
-    if (validationError) {
-      setError(validationError);
+    if (!validateForm()) {
+      toast.error("Mohon lengkapi field wajib");
       return;
     }
 
@@ -349,6 +354,9 @@ export default function TambahJabatanPage() {
                   value={formData.name}
                   onChange={(e) => {
                     const nextName = e.target.value;
+                    if (errors.name) {
+                      setErrors((prev) => ({ ...prev, name: "" }));
+                    }
                     setFormData((prev) => {
                       const next = { ...prev, name: nextName };
                       if (editingId) return next;
@@ -362,9 +370,11 @@ export default function TambahJabatanPage() {
                       };
                     });
                   }}
-                  className="w-full"
-                  required
+                  className={`w-full ${errors.name ? "border-red-500 focus:ring-red-500" : ""}`}
                 />
+                {errors.name && (
+                  <p className="text-red-500 text-xs mt-1">{errors.name}</p>
+                )}
               </div>
 
               {/* 2. Kode Jabatan */}
@@ -378,11 +388,17 @@ export default function TambahJabatanPage() {
                   value={formData.code}
                   onChange={(e) => {
                     const nextCode = e.target.value.toUpperCase();
+                    if (errors.code) {
+                      setErrors((prev) => ({ ...prev, code: "" }));
+                    }
                     setIsCodeManuallyEdited(Boolean(nextCode.trim()));
                     set("code", nextCode);
                   }}
-                  className="w-full"
+                  className={`w-full ${errors.code ? "border-red-500 focus:ring-red-500" : ""}`}
                 />
+                {errors.code && (
+                  <p className="text-red-500 text-xs mt-1">{errors.code}</p>
+                )}
                 <p className="text-xs text-gray-500">
                   Terisi otomatis sesuai nama jabatan, tetapi tetap bisa diedit
                 </p>
@@ -407,10 +423,15 @@ export default function TambahJabatanPage() {
                 ) : (
                   <Select
                     value={formData.department_id}
-                    onValueChange={(val) => set("department_id", val)}
+                    onValueChange={(val) => {
+                      set("department_id", val);
+                      if (errors.department_id) {
+                        setErrors((prev) => ({ ...prev, department_id: "" }));
+                      }
+                    }}
                     disabled={loadingDepts}
                   >
-                    <SelectTrigger id="department_id" className="w-full">
+                    <SelectTrigger id="department_id" className={`w-full ${errors.department_id ? "border-red-500" : ""}`}>
                       <SelectValue
                         placeholder={
                           loadingDepts ? "Memuat departemen..." : "Pilih Departemen"
@@ -426,6 +447,9 @@ export default function TambahJabatanPage() {
                     </SelectContent>
                   </Select>
                 )}
+                {errors.department_id && (
+                  <p className="text-red-500 text-xs mt-1">{errors.department_id}</p>
+                )}
               </div>
 
               {/* 4. Level Jabatan */}
@@ -435,9 +459,14 @@ export default function TambahJabatanPage() {
                 </Label>
                 <Select
                   value={formData.level}
-                  onValueChange={(val) => set("level", val)}
+                  onValueChange={(val) => {
+                    set("level", val);
+                    if (errors.level) {
+                      setErrors((prev) => ({ ...prev, level: "" }));
+                    }
+                  }}
                 >
-                  <SelectTrigger id="level" className="w-full">
+                  <SelectTrigger id="level" className={`w-full ${errors.level ? "border-red-500" : ""}`}>
                     <SelectValue placeholder="Pilih Level Jabatan" />
                   </SelectTrigger>
                   <SelectContent>
@@ -448,6 +477,9 @@ export default function TambahJabatanPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {errors.level && (
+                  <p className="text-red-500 text-xs mt-1">{errors.level}</p>
+                )}
               </div>
 
               {/* 5. Deskripsi Jabatan */}

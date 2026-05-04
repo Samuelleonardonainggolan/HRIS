@@ -27,6 +27,7 @@ export default function EditEmployeePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Partial<Record<keyof CreateEmployeeRequest, string>>>({});
   const [departments, setDepartments] = useState<Department[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
 
@@ -103,6 +104,9 @@ export default function EditEmployeePage() {
 
   const handleDepartmentChange = async (value: string) => {
     setFormData((prev) => ({ ...prev, department_id: value, position_id: "" }));
+    if (errors.department_id) {
+      setErrors((prev) => ({ ...prev, department_id: undefined }));
+    }
     try {
       const data = await employeeService.getAllPositions(value);
       setPositions(data);
@@ -117,33 +121,42 @@ export default function EditEmployeePage() {
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name as keyof CreateEmployeeRequest]) {
+      setErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
+  };
+
+  const validateForm = () => {
+    const newErrors: Partial<Record<keyof CreateEmployeeRequest, string>> = {};
+    
+    if (!formData.payroll_number) newErrors.payroll_number = "Kolom Nomor Payroll tidak boleh kosong";
+    if (!formData.full_name) newErrors.full_name = "Kolom Nama Lengkap tidak boleh kosong";
+    if (!formData.birth_date) newErrors.birth_date = "Kolom Tanggal Lahir tidak boleh kosong";
+    if (!formData.religion) newErrors.religion = "Kolom Agama tidak boleh kosong";
+    if (!formData.last_education) newErrors.last_education = "Kolom Pendidikan Terakhir tidak boleh kosong";
+    if (!formData.year_enrolled) newErrors.year_enrolled = "Kolom Tanggal Masuk tidak boleh kosong";
+    if (!formData.employment_status) newErrors.employment_status = "Kolom Status Kepegawaian tidak boleh kosong";
+    if (!formData.department_id) newErrors.department_id = "Kolom Departemen tidak boleh kosong";
+    if (!formData.position_id) newErrors.position_id = "Kolom Jabatan tidak boleh kosong";
+    if (!formData.phone) newErrors.phone = "Kolom Nomor Telepon tidak boleh kosong";
+    if (!formData.address) newErrors.address = "Kolom Alamat Lengkap tidak boleh kosong";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      toast.error("Mohon lengkapi semua field wajib");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const missing: string[] = [];
-      if (!formData.payroll_number) missing.push("Nomor Payroll");
-      if (!formData.full_name) missing.push("Nama Lengkap");
-      if (!formData.birth_date) missing.push("Tanggal Lahir");
-      if (!formData.religion) missing.push("Agama");
-      if (!formData.last_education) missing.push("Pendidikan Terakhir");
-      if (!formData.year_enrolled) missing.push("Tanggal Masuk");
-      if (!formData.employment_status) missing.push("Status Kepegawaian");
-      if (!formData.department_id) missing.push("Departemen");
-      if (!formData.position_id) missing.push("Jabatan");
-      if (!formData.email) missing.push("Email Kantor");
-      if (!formData.phone) missing.push("Nomor Telepon");
-      if (!formData.address) missing.push("Alamat");
-
-      if (missing.length > 0) {
-        setError(`Field wajib belum diisi: ${missing.join(", ")}`);
-        return;
-      }
-
       await employeeService.updateEmployee(id, {
         payroll_number: formData.payroll_number,
         full_name: formData.full_name,
@@ -232,12 +245,14 @@ export default function EditEmployeePage() {
                     <Input
                       id="payroll_number"
                       name="payroll_number"
-                      required
                       placeholder="Contoh: PAY001"
                       value={formData.payroll_number}
                       onChange={handleChange}
-                      className="w-full"
+                      className={`w-full ${errors.payroll_number ? "border-red-500 focus:ring-red-500" : ""}`}
                     />
+                    {errors.payroll_number && (
+                      <p className="text-red-500 text-xs mt-1">{errors.payroll_number}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -247,12 +262,14 @@ export default function EditEmployeePage() {
                     <Input
                       id="full_name"
                       name="full_name"
-                      required
                       placeholder="Masukkan nama sesuai KTP"
                       value={formData.full_name}
                       onChange={handleChange}
-                      className="w-full"
+                      className={`w-full ${errors.full_name ? "border-red-500 focus:ring-red-500" : ""}`}
                     />
+                    {errors.full_name && (
+                      <p className="text-red-500 text-xs mt-1">{errors.full_name}</p>
+                    )}
                   </div>
                 </div>
 
@@ -265,11 +282,13 @@ export default function EditEmployeePage() {
                       id="birth_date"
                       name="birth_date"
                       type="date"
-                      required
                       value={formData.birth_date}
                       onChange={handleChange}
-                      className="w-full"
+                      className={`w-full ${errors.birth_date ? "border-red-500 focus:ring-red-500" : ""}`}
                     />
+                    {errors.birth_date && (
+                      <p className="text-red-500 text-xs mt-1">{errors.birth_date}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -278,11 +297,14 @@ export default function EditEmployeePage() {
                     </Label>
                     <Select
                       value={formData.religion}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, religion: value }))
-                      }
+                      onValueChange={(value) => {
+                        setFormData((prev) => ({ ...prev, religion: value }));
+                        if (errors.religion) {
+                          setErrors((prev) => ({ ...prev, religion: undefined }));
+                        }
+                      }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.religion ? "border-red-500" : ""}>
                         <SelectValue placeholder="Pilih Agama" />
                       </SelectTrigger>
                       <SelectContent>
@@ -294,6 +316,9 @@ export default function EditEmployeePage() {
                         <SelectItem value="Konghucu">Konghucu</SelectItem>
                       </SelectContent>
                     </Select>
+                    {errors.religion && (
+                      <p className="text-red-500 text-xs mt-1">{errors.religion}</p>
+                    )}
                   </div>
                 </div>
 
@@ -304,11 +329,14 @@ export default function EditEmployeePage() {
                     </Label>
                     <Select
                       value={formData.last_education}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, last_education: value }))
-                      }
+                      onValueChange={(value) => {
+                        setFormData((prev) => ({ ...prev, last_education: value }));
+                        if (errors.last_education) {
+                          setErrors((prev) => ({ ...prev, last_education: undefined }));
+                        }
+                      }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.last_education ? "border-red-500" : ""}>
                         <SelectValue placeholder="Pilih Pendidikan" />
                       </SelectTrigger>
                       <SelectContent>
@@ -321,6 +349,9 @@ export default function EditEmployeePage() {
                         <SelectItem value="S3">S3</SelectItem>
                       </SelectContent>
                     </Select>
+                    {errors.last_education && (
+                      <p className="text-red-500 text-xs mt-1">{errors.last_education}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -331,11 +362,13 @@ export default function EditEmployeePage() {
                       id="year_enrolled"
                       name="year_enrolled"
                       type="date"
-                      required
                       value={formData.year_enrolled}
                       onChange={handleChange}
-                      className="w-full"
+                      className={`w-full ${errors.year_enrolled ? "border-red-500 focus:ring-red-500" : ""}`}
                     />
+                    {errors.year_enrolled && (
+                      <p className="text-red-500 text-xs mt-1">{errors.year_enrolled}</p>
+                    )}
                   </div>
                 </div>
 
@@ -346,11 +379,14 @@ export default function EditEmployeePage() {
                     </Label>
                     <Select
                       value={formData.employment_status}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, employment_status: value }))
-                      }
+                      onValueChange={(value) => {
+                        setFormData((prev) => ({ ...prev, employment_status: value }));
+                        if (errors.employment_status) {
+                          setErrors((prev) => ({ ...prev, employment_status: undefined }));
+                        }
+                      }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.employment_status ? "border-red-500" : ""}>
                         <SelectValue placeholder="Pilih Status" />
                       </SelectTrigger>
                       <SelectContent>
@@ -360,6 +396,9 @@ export default function EditEmployeePage() {
                         <SelectItem value="Outsourcing">Outsourcing</SelectItem>
                       </SelectContent>
                     </Select>
+                    {errors.employment_status && (
+                      <p className="text-red-500 text-xs mt-1">{errors.employment_status}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -367,7 +406,7 @@ export default function EditEmployeePage() {
                       DEPARTEMEN <span className="text-red-500">*</span>
                     </Label>
                     <Select value={formData.department_id} onValueChange={handleDepartmentChange}>
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.department_id ? "border-red-500" : ""}>
                         <SelectValue placeholder="Pilih Departemen" />
                       </SelectTrigger>
                       <SelectContent>
@@ -378,6 +417,9 @@ export default function EditEmployeePage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {errors.department_id && (
+                      <p className="text-red-500 text-xs mt-1">{errors.department_id}</p>
+                    )}
                   </div>
                 </div>
 
@@ -388,12 +430,15 @@ export default function EditEmployeePage() {
                     </Label>
                     <Select
                       value={formData.position_id}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, position_id: value }))
-                      }
+                      onValueChange={(value) => {
+                        setFormData((prev) => ({ ...prev, position_id: value }));
+                        if (errors.position_id) {
+                          setErrors((prev) => ({ ...prev, position_id: undefined }));
+                        }
+                      }}
                       disabled={!formData.department_id}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={errors.position_id ? "border-red-500" : ""}>
                         <SelectValue
                           placeholder={
                             formData.department_id
@@ -410,6 +455,9 @@ export default function EditEmployeePage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {errors.position_id && (
+                      <p className="text-red-500 text-xs mt-1">{errors.position_id}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -437,12 +485,14 @@ export default function EditEmployeePage() {
                     <Input
                       id="phone"
                       name="phone"
-                      required
                       placeholder="+62 812 3456 7890"
                       value={formData.phone}
                       onChange={handleChange}
-                      className="w-full"
+                      className={`w-full ${errors.phone ? "border-red-500 focus:ring-red-500" : ""}`}
                     />
+                    {errors.phone && (
+                      <p className="text-red-500 text-xs mt-1">{errors.phone}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -472,12 +522,16 @@ export default function EditEmployeePage() {
                     id="address"
                     name="address"
                     rows={3}
-                    required
                     placeholder="Masukkan alamat lengkap sesuai KTP"
                     value={formData.address}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900 placeholder:text-gray-400"
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900 placeholder:text-gray-400 ${
+                      errors.address ? "border-red-500 focus:ring-red-500" : "border-gray-300"
+                    }`}
                   />
+                  {errors.address && (
+                    <p className="text-red-500 text-xs mt-1">{errors.address}</p>
+                  )}
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

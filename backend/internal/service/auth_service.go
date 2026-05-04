@@ -85,12 +85,12 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 
 	user, err := s.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil || user == nil {
-		return nil, errors.New("invalid email or password")
+		return nil, errors.New("email tidak terdaftar")
 	}
 
 	// Check password
 	if !auth.CheckPasswordHash(req.Password, user.Password) {
-		return nil, errors.New("invalid email or password")
+		return nil, errors.New("password salah")
 	}
 
 	if !user.IsActive {
