@@ -72,9 +72,8 @@ type BreakWindow struct {
 }
 
 var allowedBreakWindows = []BreakWindow{
-	{StartHour: 7, EndHour: 8},
 	{StartHour: 12, EndHour: 13},
-	{StartHour: 19, EndHour: 20},
+	{StartHour: 18, EndHour: 19},
 }
 
 func formatBreakWindowRange(w BreakWindow) string {
@@ -636,7 +635,7 @@ func (s *attendanceService) StartBreak(ctx context.Context, userID string) (*mod
 	nowWIB := time.Now().In(wib)
 	inWindow, _ := isInAllowedBreakWindow(nowWIB)
 	if !inWindow {
-		return nil, fmt.Errorf("break hanya dapat dimulai pada jam %s WIB", formatAllowedBreakWindows())
+		return nil, fmt.Errorf("istirahat hanya dapat dimulai pada jam %s WIB", formatAllowedBreakWindows())
 	}
 
 	activeBreak, err := s.breakTimeRepo.FindActiveTodayByUserID(ctx, userID)
@@ -701,7 +700,7 @@ func (s *attendanceService) EndBreak(ctx context.Context, userID string) (*model
 	nowWIB := time.Now().In(wib)
 	inWindow, _ := isInAllowedBreakWindow(nowWIB)
 	if !inWindow {
-		return nil, fmt.Errorf("break hanya dapat diakhiri pada jam %s WIB", formatAllowedBreakWindows())
+		return nil, fmt.Errorf("istirahat hanya dapat diakhiri pada jam %s WIB", formatAllowedBreakWindows())
 	}
 
 	if err := s.breakTimeRepo.UpdateEnd(ctx, breakRecord.ID, nowWIB, "DONE"); err != nil {

@@ -1,4 +1,4 @@
-// lib/pages/new_request_page.dart
+﻿// lib/pages/new_request_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,7 +11,7 @@ class NewRequestPage extends StatefulWidget {
 }
 
 class _NewRequestPageState extends State<NewRequestPage> {
-  // ─── State tipe pengajuan dari API ─────────────────────────────────────────
+  // â”€â”€â”€ State tipe pengajuan dari API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<TipePengajuan> _allTipes = [];
   TipePengajuan? _selectedTipe;
   bool _isLoadingTipes = true;
@@ -59,7 +59,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
     return '${(_lemburMins / 60).toStringAsFixed(1)} Jam Cuti';
   }
 
-  // ─── Filtered tipe berdasarkan kategori ────────────────────────────────────
+  // â”€â”€â”€ Filtered tipe berdasarkan kategori â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   List<TipePengajuan> get _filteredTipes {
     if (_category == 'Lembur') return [];
     return _allTipes.where((t) => t.namaKategori == _category).toList();
@@ -89,7 +89,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
     }
   }
 
-  // ✅ Load tipe pengajuan dari backend (GET /api/v1/pengajuan/tipe)
+  // âœ… Load tipe pengajuan dari backend (GET /api/v1/pengajuan/tipe)
   Future<void> _loadTipes() async {
     setState(() {
       _isLoadingTipes = true;
@@ -347,14 +347,14 @@ class _NewRequestPageState extends State<NewRequestPage> {
             _categorySelector(),
             const SizedBox(height: 20),
 
-            // ── Tipe pengajuan dari API ──
+            // â”€â”€ Tipe pengajuan dari API â”€â”€
             if (_category != 'Lembur') ...[
               _sectionLabel('Tipe Pengajuan'),
               _tipeSelector(),
               const SizedBox(height: 20),
             ],
 
-            if (_requiresQuotaDeduction) ...[
+            if (_showQuotaInfoCard) ...[
               _quotaInfoCard(),
               const SizedBox(height: 20),
             ],
@@ -404,7 +404,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
     ),
   );
 
-  // ── Selector kategori (Izin / Cuti / Lembur) ──────────────────────────────
+  // â”€â”€ Selector kategori (Izin / Cuti / Lembur) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _categorySelector() {
     final categories = ['Izin', 'Cuti', 'Lembur'];
     return Row(
@@ -462,7 +462,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
     );
   }
 
-  // ── Selector tipe dari API ─────────────────────────────────────────────────
+  // â”€â”€ Selector tipe dari API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   Widget _tipeSelector() {
     if (_isLoadingTipes) {
       return Container(
@@ -581,12 +581,12 @@ class _NewRequestPageState extends State<NewRequestPage> {
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      if (t.potongKuota || t.wajibLampiran)
+                      if ((t.potongKuota && _category != 'Izin') || t.wajibLampiran)
                         Row(
                           children: [
-                            if (t.potongKuota)
+                            if (_category != 'Izin' && t.potongKuota)
                               _badge('Potong Kuota', const Color(0xFFF59E0B)),
-                            if (t.potongKuota && t.wajibLampiran)
+                            if (_category != 'Izin' && t.potongKuota && t.wajibLampiran)
                               const SizedBox(width: 4),
                             if (t.wajibLampiran)
                               _badge('Wajib Lampiran', const Color(0xFFEF4444)),
@@ -650,7 +650,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
           ),
           child: Text(
             _isCurrentTypeSick()
-                ? 'Izin sakit dapat diajukan mulai hari ini.'
+                ? 'Izin sakit dapat diajukan hari ini.'
                 : 'Pengajuan untuk tipe ini hanya bisa diajukan minimal H-2.',
             style: TextStyle(
               fontSize: 12,
@@ -714,7 +714,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
                   color: Color(0xFF135BEC),
                 ),
               ),
-              if (_selectedTipe?.potongKuota == true) ...[
+              if (_selectedTipe?.potongKuota == true && _category == 'Cuti') ...[
                 const Spacer(),
                 const Icon(
                   Icons.info_outline_rounded,
@@ -736,6 +736,10 @@ class _NewRequestPageState extends State<NewRequestPage> {
 
   bool get _requiresQuotaDeduction {
     return _category != 'Lembur' && (_selectedTipe?.potongKuota ?? false);
+  }
+
+  bool get _showQuotaInfoCard {
+    return _category == 'Cuti' && _requiresQuotaDeduction;
   }
 
   Widget _quotaInfoCard() {
@@ -1319,3 +1323,4 @@ class _NewRequestPageState extends State<NewRequestPage> {
     );
   }
 }
+

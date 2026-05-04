@@ -97,8 +97,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted) return;
       // Refresh data jika ada update terkait absensi, pengajuan, atau statistik
-      if (event.type == 'attendance_updated' || 
-          event.type == 'leave_updated' || 
+      if (event.type == 'attendance_updated' ||
+          event.type == 'leave_updated' ||
           event.type == 'stats_updated') {
         _loadTodayAttendance();
         _loadWorkScheduleInfo();
@@ -365,7 +365,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           type == 'clock_in' ? "✓ Clock In Berhasil" : "✓ Clock Out Berhasil",
           type == 'clock_in'
               ? const Color(0xFF2ECC71)
-              : const Color(0xFFEF4444),
+              : const Color(0xFF2ECC71),
         );
       }
     }
@@ -1593,11 +1593,19 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   void _showInfoSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontSize: 14)),
-        backgroundColor: const Color(0xFF64748B),
+        content: Row(
+          children: [
+            const Icon(Icons.info, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 14)),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF135BEC),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 1),
+        duration: const Duration(seconds: 3),
         margin: const EdgeInsets.all(16),
       ),
     );

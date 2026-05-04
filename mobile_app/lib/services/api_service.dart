@@ -12,7 +12,7 @@ import '../models/overtime_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.68:8080/api/v1';
+  static const String baseUrl = 'http://10.248.222.213:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -566,7 +566,9 @@ class ApiService {
             rawList = data['pengajuan'] ?? [];
           }
         }
-        list.addAll(rawList.map((e) => LeaveRequest.fromJson(e as Map<String, dynamic>)));
+        list.addAll(
+          rawList.map((e) => LeaveRequest.fromJson(e as Map<String, dynamic>)),
+        );
       } else {
         print('[API] Gagal mengambil data pengajuan (${response.statusCode})');
       }
@@ -574,7 +576,6 @@ class ApiService {
       // Sort by start date descending
       list.sort((a, b) => b.startDate.compareTo(a.startDate));
       return list;
-
     } catch (e) {
       print('[API] getMyPengajuan error: $e');
       throw Exception('getMyPengajuan error: $e');
@@ -597,7 +598,11 @@ class ApiService {
         if (data['data'] is List) {
           rawOvertime = data['data'];
         }
-        list.addAll(rawOvertime.map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>)));
+        list.addAll(
+          rawOvertime.map(
+            (e) => OvertimeRequest.fromJson(e as Map<String, dynamic>),
+          ),
+        );
         list.sort((a, b) => b.date.compareTo(a.date));
       }
       return list;
@@ -638,18 +643,20 @@ class ApiService {
 
       final headers = await getHeaders();
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/my-overtime'),
-        headers: headers,
-        body: jsonEncode({
-          'user_id': userId,
-          'date': tanggal,
-          'start_time': startTime,
-          'end_time': endTime,
-          'reason': alasan,
-          'total': total,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-overtime'),
+            headers: headers,
+            body: jsonEncode({
+              'user_id': userId,
+              'date': tanggal,
+              'start_time': startTime,
+              'end_time': endTime,
+              'reason': alasan,
+              'total': total,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       print('[API] submitOvertime status: ${response.statusCode}');
       print('[API] submitOvertime body: ${response.body}');
@@ -679,17 +686,19 @@ class ApiService {
 
       final headers = await getHeaders();
 
-      final response = await http.put(
-        Uri.parse('$baseUrl/my-overtime/$id'),
-        headers: headers,
-        body: jsonEncode({
-          'date': tanggal,
-          'start_time': startTime,
-          'end_time': endTime,
-          'reason': alasan,
-          'total': total,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/my-overtime/$id'),
+            headers: headers,
+            body: jsonEncode({
+              'date': tanggal,
+              'start_time': startTime,
+              'end_time': endTime,
+              'reason': alasan,
+              'total': total,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         return;
@@ -709,10 +718,9 @@ class ApiService {
 
       final headers = await getHeaders();
 
-      final response = await http.delete(
-        Uri.parse('$baseUrl/my-overtime/$id'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .delete(Uri.parse('$baseUrl/my-overtime/$id'), headers: headers)
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
         final err = jsonDecode(response.body);
@@ -1143,8 +1151,13 @@ class ApiService {
 
         return embedding;
       } else {
-        final error = jsonDecode(response.body);
-        throw Exception(error['message'] ?? 'Gagal mengekstrak wajah');
+        final errorData = jsonDecode(response.body);
+        // Error details from Python API are in 'error' field
+        final detailedError =
+            errorData['error'] ??
+            errorData['message'] ??
+            'Gagal mengekstrak wajah';
+        throw Exception(detailedError);
       }
     } catch (e) {
       print('[API] Extract embedding error: $e');
