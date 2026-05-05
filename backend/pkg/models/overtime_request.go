@@ -31,3 +31,77 @@ type OvertimeRequest struct {
 
 	Employees      []OvertimeEmployee   `json:"employees" bson:"employees"`                 // array karyawan lembur
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────
+
+const (
+	StatusDraft     = "draft"
+	StatusSubmitted = "submitted"
+	StatusPublished = "published"
+
+	EmployeeStatusPending  = "pending"
+	EmployeeStatusAgreed   = "agreed"
+	EmployeeStatusRejected = "rejected"
+)
+
+// ─── Request Models ───────────────────────────────────────────────────────
+
+type OvertimeEmployeeInput struct {
+	UserID string `json:"user_id" binding:"required"`
+}
+
+type CreateOvertimeRequestRequest struct {
+	DepartmentID string                  `json:"department_id" binding:"required"`
+	Date         string                  `json:"date" binding:"required"` // YYYY-MM-DD
+	StartTime    string                  `json:"start_time" binding:"required"`
+	EndTime      string                  `json:"end_time" binding:"required"`
+	Reason       string                  `json:"reason" binding:"required"`
+	Employees    []OvertimeEmployeeInput `json:"employees" binding:"required"`
+}
+
+type UpdateOvertimeRequestRequest struct {
+	Date      *string                  `json:"date,omitempty"`
+	StartTime *string                  `json:"start_time,omitempty"`
+	EndTime   *string                  `json:"end_time,omitempty"`
+	Reason    *string                  `json:"reason,omitempty"`
+	Status    *string                  `json:"status,omitempty"`
+	Employees *[]OvertimeEmployeeInput `json:"employees,omitempty"`
+}
+
+type UpdateEmployeeStatusRequest struct {
+	Status        string `json:"status" binding:"required"` // agreed|rejected
+	RejectionNote string `json:"rejection_note,omitempty"`
+}
+
+// ─── Response Models ──────────────────────────────────────────────────────
+
+type OvertimeEmployeeResponse struct {
+	UserID         string     `json:"user_id"`
+	FullName       string     `json:"full_name"`
+	PayrollNumber  string     `json:"payroll_number"`
+	EmployeeStatus string     `json:"employee_status"`
+	RejectionNote  string     `json:"rejection_note,omitempty"`
+	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
+}
+
+type OvertimeRequestResponse struct {
+	ID            string                     `json:"id"`
+	DepartmentID  string                     `json:"department_id"`
+	DepartmentName string                    `json:"department_name"`
+	RequestedByID string                     `json:"requested_by_id"`
+	Date          time.Time                  `json:"date"`
+	StartTime     string                     `json:"start_time"`
+	EndTime       string                     `json:"end_time"`
+	Reason        string                     `json:"reason"`
+	Status        string                     `json:"status"`
+	Notes         string                     `json:"notes,omitempty"`
+	LetterURL     string                     `json:"letter_url,omitempty"`
+	CreatedAt     time.Time                  `json:"created_at"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
+	Employees     []OvertimeEmployeeResponse `json:"employees"`
+}
+
+// Legacy support or internal helper
+type OvertimeApprovalResponse struct {
+	Overtime OvertimeRequestResponse `json:"overtime"`
+}

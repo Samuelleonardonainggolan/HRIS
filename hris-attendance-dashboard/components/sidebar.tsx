@@ -20,7 +20,8 @@ import {
   Wallet,
   Receipt,
   FileImage,
-  FileCheckCorner
+  FileCheckCorner,
+  FilePlus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,7 +43,8 @@ const iconMap: { [key: string]: React.ElementType } = {
   Wallet,
   Receipt,
   FileImage,
-  FileCheckCorner
+  FileCheckCorner,
+  FilePlus
 };
 
 interface NavItem {
@@ -99,6 +101,7 @@ export function Sidebar() {
           { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
           { name: "Persetujuan Lembur", href: `${basePath}/persetujuan-lembur`, icon: "FileCheckCorner" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
+          { name: "Pengajuan Lembur", href: `${basePath}/lembur`, icon: "FilePlus" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
