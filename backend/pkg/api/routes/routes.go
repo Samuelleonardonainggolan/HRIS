@@ -126,6 +126,7 @@ func SetupRoutes(
 			}
 
 			protected.GET("/employees/my-department", middleware.ManagerDepartemenOnly(), userHandler.GetEmployeesMyDepartment)
+			protected.GET("/employees/search", userHandler.SearchEmployees)
 			protected.GET("/payroll/next-number", middleware.ManagerHROnly(), userHandler.GetNextPayrollNumber)
 
 			// EMPLOYEES (Admin Only)
@@ -230,6 +231,7 @@ func SetupRoutes(
 				deptOvertimeRequests.GET("/:id", overtimeRequestHandler.GetForKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByKepalaDepartemen)
+				deptOvertimeRequests.POST("", overtimeRequestHandler.Create)
 			}
 
 			// LEAVE REQUEST APPROVAL (Manager HR Only)

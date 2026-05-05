@@ -170,6 +170,28 @@ class DeptOvertimeRequestsApi {
     if (!res.ok) throw new Error(data.error || data.message || "Gagal menolak pengajuan lembur");
     return data.data as OvertimeApprovalResponse;
   }
+
+  async create(payload: {
+    department_id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    reason: string;
+    status: string;
+    employees: { user_id: string }[];
+  }): Promise<any> {
+    const res = await fetch(buildUrl("/dept-overtime-requests"), {
+      method: "POST",
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || data.message || "Gagal membuat pengajuan lembur");
+    return data.data;
+  }
 }
 
 export const overtimeRequestsApi = new OvertimeRequestsApi();

@@ -78,6 +78,11 @@ func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, requ
 		})
 	}
 
+	status := req.Status
+	if status == "" {
+		status = models.StatusDraft
+	}
+
 	overtime := &models.OvertimeRequest{
 		DepartmentID:  deptOID,
 		RequestedByID: reqOID,
@@ -85,7 +90,7 @@ func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, requ
 		StartTime:     req.StartTime,
 		EndTime:       req.EndTime,
 		Reason:        req.Reason,
-		Status:        models.StatusSubmitted, // Default to submitted for now
+		Status:        status,
 		Employees:     employees,
 	}
 

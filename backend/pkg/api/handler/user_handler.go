@@ -307,3 +307,17 @@ func (h *UserHandler) DownloadEmployeeTemplate(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", "Failed to generate template"))
 	}
 }
+
+func (h *UserHandler) SearchEmployees(c *gin.Context) {
+	q := c.Query("q")
+	exclude := c.QueryArray("exclude") // multiple exclude[] query params
+	deptID := c.Query("department_id")
+
+	results, err := h.userService.SearchEmployees(c.Request.Context(), q, exclude, deptID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Internal Server Error", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Search results retrieved", results))
+}

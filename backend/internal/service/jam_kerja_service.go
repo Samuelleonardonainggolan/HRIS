@@ -450,7 +450,7 @@ func (s *jamKerjaService) SearchAvailableEmployees(ctx context.Context, q string
 		return nil, err
 	}
 
-	users, err := s.userRepo.FindActiveExcludeIDsWithSearch(ctx, usedIDs, q)
+	users, err := s.userRepo.FindActiveExcludeIDsWithSearch(ctx, usedIDs, q, "")
 	if err != nil {
 		return nil, err
 	}

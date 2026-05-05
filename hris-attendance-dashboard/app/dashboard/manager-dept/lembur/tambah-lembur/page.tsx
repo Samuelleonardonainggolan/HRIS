@@ -1,32 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarDays, Clock, User } from "lucide-react";
+import { CalendarDays, Clock, User as UserIcon, Loader2 } from "lucide-react";
+import { employeeService, Employee } from "@/lib/api/employee";
+import { deptOvertimeRequestsApi } from "@/lib/api/overtime-requests";
+import { authService } from "@/lib/api/auth";
+import { useRouter } from "next/navigation";
+import { toast } from "react-hot-toast";
 
-type Employee = {
-  id: string;
-  name: string;
-  nik: string;
-};
-
-const MOCK_EMPLOYEES: Employee[] = [
-  { id: "1", name: "Aditya Pratama", nik: "IT-001" },
-  { id: "2", name: "Siska Amelia", nik: "IT-045" },
-  { id: "3", name: "Wawan Permadi", nik: "IT-118" },
-  // ... tambahkan lagi karyawan lain
-];
 
 export default function BuatPengajuanLemburBaru() {
+  const router = useRouter();
+  const currentUser = authService.getUser();
+
   // Form state
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [searchEmp, setSearchEmp] = useState("");
-  const [pickedEmployees, setPickedEmployees] = useState<Employee[]>([MOCK_EMPLOYEES[0], MOCK_EMPLOYEES[1]]);
+  const [searchResults, setSearchResults] = useState<Employee[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [pickedEmployees, setPickedEmployees] = useState<Employee[]>([]);
   const [reason, setReason] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Estimasi jam lembur
   const estHours = (() => {
@@ -35,33 +34,81 @@ export default function BuatPengajuanLemburBaru() {
     const [eH, eM] = endTime.split(":").map(Number);
     let jam = (eH + eM / 60) - (sH + sM / 60);
     if (jam < 0) jam += 24; // handle lewat tengah malam
-    return Math.max(jam, 0);
+    return Math.max(parseFloat(jam.toFixed(1)), 0);
   })();
 
-  // Multi-select karyawan: basic search, tidak autocomplete Highlighter
-  const filteredEmp = !searchEmp
-    ? MOCK_EMPLOYEES
-    : MOCK_EMPLOYEES.filter(
-        (e) =>
-          e.name.toLowerCase().includes(searchEmp.toLowerCase()) ||
-          e.nik.toLowerCase().includes(searchEmp.toLowerCase())
-      );
+  // Debounced Search
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (searchEmp.trim().length >= 1) {
+        setIsSearching(true);
+        try {
+          const exclude = pickedEmployees.map(e => e.id);
+          const results = await employeeService.searchEmployees(searchEmp, exclude, currentUser?.department_id);
+          // Map backend User to Employee type used here
+          const mapped = (results as any[]).map(u => ({
+            id: u.id,
+            name: u.full_name,
+            nik: u.payroll_number || u.nik || "N/A"
+          }));
+          setSearchResults(mapped);
+        } catch (error) {
+          console.error(error);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchEmp, pickedEmployees]);
+
   const isPicked = (id: string) => pickedEmployees.some((e) => e.id === id);
+  
   const addEmployee = (emp: Employee) => {
     if (!isPicked(emp.id)) setPickedEmployees((prev) => [...prev, emp]);
     setSearchEmp("");
+    setSearchResults([]);
   };
+
   const removeEmployee = (id: string) => setPickedEmployees((prev) => prev.filter((e) => e.id !== id));
 
-  // Submit / Simpan
-  const handleSimpanDraft = () => {
-    // TODO: Call API as draft
-    alert("Saved as draft (dummy).");
+  const validate = () => {
+    if (!date || !startTime || !endTime || !reason || pickedEmployees.length === 0) {
+      toast.error("Mohon lengkapi semua data dan pilih minimal satu karyawan.");
+      return false;
+    }
+    return true;
   };
-  const handleSubmitHR = () => {
-    // TODO: Call API for submit
-    alert("Submit ke HR (dummy).");
+
+  const handleSave = async (status: string) => {
+    if (!validate()) return;
+    
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        department_id: currentUser?.department_id || "",
+        date,
+        start_time: startTime,
+        end_time: endTime,
+        reason,
+        status,
+        employees: pickedEmployees.map(e => ({ user_id: e.id }))
+      };
+
+      await deptOvertimeRequestsApi.create(payload);
+      toast.success(status === "draft" ? "Draft berhasil disimpan" : "Pengajuan berhasil dikirim");
+      router.push("/dashboard/manager-dept/lembur");
+    } catch (error: any) {
+      toast.error(error.message || "Gagal membuat pengajuan");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  const handleSimpanDraft = () => handleSave("draft");
+  const handleSubmitHR = () => handleSave("submitted");
 
   return (
     <div className="px-8 py-8 max-w-[1300px] mx-auto">
@@ -125,7 +172,7 @@ export default function BuatPengajuanLemburBaru() {
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="font-semibold text-gray-700 flex items-center gap-1">
-                <User className="h-4 w-4" />
+                <UserIcon className="h-4 w-4" />
                 Pilih Karyawan
               </label>
               <a href="#all-karyawan" className="text-blue-600 text-sm hover:underline font-medium">
@@ -138,9 +185,14 @@ export default function BuatPengajuanLemburBaru() {
                 value={searchEmp}
                 onChange={e => setSearchEmp(e.target.value)}
               />
-              {searchEmp && filteredEmp.length > 0 && (
+              {isSearching && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                </div>
+              )}
+              {searchEmp && searchResults.length > 0 && (
                 <div className="absolute z-10 bg-white border rounded-lg mt-1 left-0 right-0 max-h-52 overflow-auto shadow-lg">
-                  {filteredEmp.map(emp => (
+                  {searchResults.map(emp => (
                     <div
                       key={emp.id}
                       className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm flex items-center"
@@ -177,10 +229,12 @@ export default function BuatPengajuanLemburBaru() {
           </div>
 
           <div className="flex items-center justify-end gap-3 mt-8">
-            <Button variant="outline" onClick={handleSimpanDraft}>
+            <Button variant="outline" onClick={handleSimpanDraft} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Simpan Draft
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow" onClick={handleSubmitHR}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow" onClick={handleSubmitHR} disabled={isSubmitting}>
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Submit ke HR
             </Button>
           </div>

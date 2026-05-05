@@ -26,7 +26,7 @@ type UserRepository interface {
 	UpdatePassword(ctx context.Context, id string, hashedPassword string) error
 	Delete(ctx context.Context, id string) error
 	// pkg/database/repository/user_repository.go (interface)
-	FindActiveExcludeIDsWithSearch(ctx context.Context, exclude []primitive.ObjectID, q string) ([]models.User, error)
+	FindActiveExcludeIDsWithSearch(ctx context.Context, exclude []primitive.ObjectID, q string, departmentID string) ([]models.User, error)
 	FindAllPayrollNumbers(ctx context.Context) ([]string, error)
 }
 
@@ -307,8 +307,16 @@ func (r *userRepository) FindActiveExcludeIDsWithSearch(
 	ctx context.Context,
 	exclude []primitive.ObjectID,
 	q string,
+	departmentID string,
 ) ([]models.User, error) {
 	filter := bson.M{"is_active": true}
+
+	if departmentID != "" {
+		deptOID, err := primitive.ObjectIDFromHex(departmentID)
+		if err == nil {
+			filter["department_id"] = deptOID
+		}
+	}
 
 	if len(exclude) > 0 {
 		filter["_id"] = bson.M{"$nin": exclude}

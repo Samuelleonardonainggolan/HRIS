@@ -56,6 +56,7 @@ type CreateOvertimeRequestRequest struct {
 	StartTime    string                  `json:"start_time" binding:"required"`
 	EndTime      string                  `json:"end_time" binding:"required"`
 	Reason       string                  `json:"reason" binding:"required"`
+	Status       string                  `json:"status,omitempty"`
 	Employees    []OvertimeEmployeeInput `json:"employees" binding:"required"`
 }
 
