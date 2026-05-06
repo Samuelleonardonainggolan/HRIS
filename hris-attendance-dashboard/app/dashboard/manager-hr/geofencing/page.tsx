@@ -227,8 +227,10 @@ export default function GeofencingPage() {
                 ) : (
                   <GeofencingMap
                     geofences={[
-                      ...geofences,
-                      ...(previewGeofence ? [previewGeofence] : []) // ✅ ADD: Show preview
+                      ...(previewGeofence
+                        ? geofences.filter((g) => g.id !== previewGeofence.id)
+                        : geofences),
+                      ...(previewGeofence ? [previewGeofence] : []),
                     ]}
                     selectedGeofence={previewGeofence || selectedGeofence}
                     onGeofenceSelect={handleGeofenceSelect}
