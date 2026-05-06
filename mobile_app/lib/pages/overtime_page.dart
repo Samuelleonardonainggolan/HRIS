@@ -26,19 +26,43 @@ class _OvertimePageState extends State<OvertimePage> {
     _loadData();
   }
 
+  bool _sameUserId(String a, String b) {
+    return a.trim().toLowerCase() == b.trim().toLowerCase();
+  }
+
+  bool _isAssignedToUser(OvertimeRequest request, String userId) {
+    return request.employees.any((e) => _sameUserId(e.userId, userId));
+  }
+
+  bool _canUserSeeRequest(User user, OvertimeRequest request) {
+    final assignedToMe = _isAssignedToUser(request, user.id);
+
+    // Di mobile, visibilitas lembur bersifat personal untuk aksi user.
+    // Hanya tampil jika user login memang termasuk di daftar employees.
+    return assignedToMe;
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
       final user = await ApiService.getProfile();
 
-      List<OvertimeRequest> data;
-      if (user.isManagerDept) {
-        data = await ApiService.getMyOvertimeRequests();
-      } else if (user.isManagerHR) {
-        data = await ApiService.getOvertimeRequestsForHR();
-      } else {
-        data = await ApiService.getAssignedOvertimeRequests();
+      // Mobile app menampilkan overtime requests yang perlu aksi user.
+      // Untuk kadep/hr, sebagian backend hanya menaruh self-request di endpoint "my-overtime",
+      // jadi kita gabungkan assigned + my agar konsisten dengan flow web -> mobile action.
+      List<OvertimeRequest> data = await ApiService.getAssignedOvertimeRequests();
+      final mine = await ApiService.getMyOvertimeRequests();
+      final shouldMergeMine = user.isManagerDept || user.isManagerHR;
+      if (shouldMergeMine) {
+        final merged = <String, OvertimeRequest>{
+          for (final item in data) item.id: item,
+          for (final item in mine) item.id: item,
+        };
+        data = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
       }
+
+      // Final guard: hanya tampilkan data yang relevan untuk user login.
+      data = data.where((item) => _canUserSeeRequest(user, item)).toList();
 
       if (!mounted) return;
       setState(() {
@@ -378,7 +402,9 @@ class _OvertimePageState extends State<OvertimePage> {
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : RefreshIndicator(
+                  : _user == null
+                      ? _buildLoadFailedState()
+                      : RefreshIndicator(
                       onRefresh: _loadData,
                       color: const Color(0xFF135BEC),
                       child: _items.isEmpty ? _buildEmptyState() : _buildList(),
@@ -387,14 +413,7 @@ class _OvertimePageState extends State<OvertimePage> {
           ],
         ),
       ),
-      floatingActionButton: _isKadep
-          ? FloatingActionButton.extended(
-              onPressed: _showCreateDialog,
-              backgroundColor: const Color(0xFF135BEC),
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text('Tambah Lembur', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            )
-          : null,
+      floatingActionButton: null, // Fitur pengajuan lembur hanya tersedia di web
     );
   }
 
@@ -417,12 +436,38 @@ class _OvertimePageState extends State<OvertimePage> {
               ),
               const SizedBox(height: 24),
               const Text(
-                'Belum Ada Data Lembur',
+                'Belum Ada Pengajuan Lembur',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
               ),
               const SizedBox(height: 8),
               Text(
-                'Semua pengajuan lembur akan tampil di sini.',
+                'Pengajuan lembur untuk Anda akan tampil di sini.',
+                style: TextStyle(color: Colors.grey.shade500),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadFailedState() {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 100),
+        Center(
+          child: Column(
+            children: [
+              const Icon(Icons.error_outline, size: 72, color: Color(0xFF94A3B8)),
+              const SizedBox(height: 16),
+              const Text(
+                'Gagal Memuat Data Lembur',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tarik ke bawah untuk mencoba lagi.',
                 style: TextStyle(color: Colors.grey.shade500),
               ),
             ],
@@ -475,187 +520,6 @@ class _OvertimePageState extends State<OvertimePage> {
     );
   }
 
-  Future<void> _showCreateDialog() async {
-    final selectedEmployeeIds = <String>{};
-    final employees = await ApiService.getEmployeesMyDepartment();
-    final reasonCtrl = TextEditingController();
-    DateTime date = DateTime.now();
-    TimeOfDay start = const TimeOfDay(hour: 17, minute: 0);
-    TimeOfDay end = const TimeOfDay(hour: 20, minute: 0);
-
-    if (!mounted) return;
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Buat Pengajuan Lembur', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Tanggal & Waktu', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF64748B))),
-                  const SizedBox(height: 8),
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate: date,
-                        firstDate: DateTime.now().subtract(const Duration(days: 1)),
-                        lastDate: DateTime.now().add(const Duration(days: 365)),
-                      );
-                      if (picked != null) setLocal(() => date = picked);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today, size: 18, color: Color(0xFF135BEC)),
-                          const SizedBox(width: 12),
-                          Text(DateFormat('EEEE, dd MMM yyyy', 'id').format(date)),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final t = await showTimePicker(context: ctx, initialTime: start);
-                            if (t != null) setLocal(() => start = t);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                            child: Column(
-                              children: [
-                                const Text('Mulai', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                                Text(start.format(ctx), style: const TextStyle(fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () async {
-                            final t = await showTimePicker(context: ctx, initialTime: end);
-                            if (t != null) setLocal(() => end = t);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)),
-                            child: Column(
-                              children: [
-                                const Text('Selesai', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
-                                Text(end.format(ctx), style: const TextStyle(fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Alasan Penugasan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF64748B))),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: reasonCtrl,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'Tulis penugasan di sini...',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey.shade50,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text('Pilih Karyawan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF64748B))),
-                  const SizedBox(height: 8),
-                  ...employees.map(
-                    (e) => CheckboxListTile(
-                      value: selectedEmployeeIds.contains(e.id),
-                      onChanged: (v) {
-                        setLocal(() {
-                          if (v == true) {
-                            selectedEmployeeIds.add(e.id);
-                          } else {
-                            selectedEmployeeIds.remove(e.id);
-                          }
-                        });
-                      },
-                      title: Text(e.fullName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-                      subtitle: Text(e.position, style: const TextStyle(fontSize: 12)),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      contentPadding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Batal', style: TextStyle(color: Colors.grey.shade600)),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF135BEC),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Simpan Draft'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (ok != true) {
-      reasonCtrl.dispose();
-      return;
-    }
-
-    if (selectedEmployeeIds.isEmpty || reasonCtrl.text.trim().isEmpty) {
-      _showSnackBar('Lengkapi alasan dan pilih minimal 1 karyawan', isError: true);
-      reasonCtrl.dispose();
-      return;
-    }
-
-    final startStr = '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
-    final endStr = '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
-
-    try {
-      await ApiService.createOvertimeRequest(
-        employeeIds: selectedEmployeeIds.toList(),
-        date: date,
-        startTime: startStr,
-        endTime: endStr,
-        reason: reasonCtrl.text.trim(),
-      );
-      if (!mounted) return;
-      _showSnackBar('Draft lembur berhasil dibuat', isError: false);
-      await _loadData();
-    } catch (e) {
-      _showSnackBar('Gagal membuat draft: $e', isError: true);
-    } finally {
-      reasonCtrl.dispose();
-    }
-  }
 }
 
 class _OvertimeCard extends StatelessWidget {
@@ -674,17 +538,13 @@ class _OvertimeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusColor(item.status);
-    final isKadep = user.isManagerDept;
-    final isHR = user.isManagerHR;
-    final isEmployee = !isKadep && !isHR;
 
+    // Cari entry untuk user saat ini di dalam list employees
     OvertimeEmployee? myEntry;
-    if (isEmployee) {
-      try {
-        myEntry = item.employees.firstWhere((e) => e.userId == user.id);
-      } catch (_) {
-        myEntry = null;
-      }
+    try {
+      myEntry = item.employees.firstWhere((e) => e.userId == user.id);
+    } catch (_) {
+      myEntry = null;
     }
 
     return Container(
@@ -727,10 +587,9 @@ class _OvertimeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (isEmployee && myEntry != null)
+                  // Tampilkan status user jika user ada di dalam list employees
+                  if (myEntry != null)
                     _MyStatusBadge(status: myEntry.employeeStatus),
-                  if (!isEmployee || myEntry == null)
-                    _ActionMenu(item: item, user: user, onAction: onAction),
                 ],
               ),
               const SizedBox(height: 16),
@@ -791,7 +650,7 @@ class _OvertimeCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (item.employees.isNotEmpty && !isEmployee) ...[
+              if (item.employees.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 const Divider(height: 1),
                 const SizedBox(height: 12),
@@ -799,6 +658,7 @@ class _OvertimeCard extends StatelessWidget {
                   children: [
                     SizedBox(
                       height: 24,
+                      width: ((item.employees.length > 3 ? 4 : item.employees.length) - 1) * 16.0 + 24.0,
                       child: Stack(
                         children: List.generate(
                           item.employees.length > 3 ? 4 : item.employees.length,
@@ -919,42 +779,6 @@ class _MyStatusBadge extends StatelessWidget {
   }
 }
 
-class _ActionMenu extends StatelessWidget {
-  final OvertimeRequest item;
-  final User user;
-  final Function(String) onAction;
-
-  const _ActionMenu({required this.item, required this.user, required this.onAction});
-
-  @override
-  Widget build(BuildContext context) {
-    final isKadep = user.isManagerDept;
-    final isHR = user.isManagerHR;
-
-    List<PopupMenuItem<String>> items = [];
-
-    if (isKadep && item.isDraft) {
-      items.addAll([
-        const PopupMenuItem(value: 'submit', child: Text('Kirim ke Karyawan')),
-        const PopupMenuItem(value: 'delete', child: Text('Hapus Draft')),
-      ]);
-    }
-
-    if (isHR && item.isSubmitted) {
-      items.add(const PopupMenuItem(value: 'publish', child: Text('Publish SPKL')));
-    }
-
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    return PopupMenuButton<String>(
-      onSelected: onAction,
-      icon: const Icon(Icons.more_vert, color: Color(0xFF64748B)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      itemBuilder: (_) => items,
-    );
-  }
-}
-
 class _OvertimeDetailSheet extends StatelessWidget {
   final OvertimeRequest request;
   final User user;
@@ -968,18 +792,19 @@ class _OvertimeDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEmployee = !user.isManagerDept && !user.isManagerHR;
-    
+    // Cari entry untuk user saat ini di dalam list employees
     OvertimeEmployee? myEntry;
-    if (isEmployee) {
-      try {
-        myEntry = request.employees.firstWhere((e) => e.userId == user.id);
-      } catch (_) {
-        myEntry = null;
-      }
+    try {
+      myEntry = request.employees.firstWhere((e) => e.userId == user.id);
+    } catch (_) {
+      myEntry = null;
     }
     
-    final canRespond = isEmployee && request.isSubmitted && (myEntry?.isPending ?? false);
+    // User bisa respond jika:
+    // 1. Pengajuan sudah submitted (bukan draft)
+    // 2. User ada di dalam list employees
+    // 3. Status user masih pending (belum respond)
+    final canRespond = request.isSubmitted && myEntry != null && (myEntry?.isPending ?? false);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
