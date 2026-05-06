@@ -145,8 +145,18 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   Future<void> _launchURL(String url) async {
-    final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    try {
+      final uri = Uri.parse(url);
+      // Buka di browser eksternal agar tidak langsung download
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        // Fallback ke in-app web view jika browser tidak tersedia
+        await launchUrl(uri, mode: LaunchMode.inAppWebView);
+      }
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Gagal membuka dokumen')),

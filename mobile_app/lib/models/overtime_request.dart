@@ -135,6 +135,7 @@ class OvertimeEmployee {
   final String userName; // Display name
   final String employeeStatus; // pending|agreed|rejected
   final String? rejectionNote;
+  final String? letterUrl; // URL dokumen SPKL untuk karyawan ini
   final DateTime? confirmedAt;
 
   OvertimeEmployee({
@@ -142,6 +143,7 @@ class OvertimeEmployee {
     required this.userName,
     required this.employeeStatus,
     this.rejectionNote,
+    this.letterUrl,
     this.confirmedAt,
   });
 
@@ -154,6 +156,7 @@ class OvertimeEmployee {
           .toString()
           .toLowerCase(),
       rejectionNote: json['rejection_note']?.toString(),
+      letterUrl: json['letter_url']?.toString(),
       confirmedAt: json['confirmed_at'] != null
           ? DateTime.tryParse(json['confirmed_at'].toString())
           : null,
