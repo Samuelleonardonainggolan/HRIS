@@ -11,6 +11,7 @@ type OvertimeEmployee struct {
 	UserID         primitive.ObjectID `json:"user_id" bson:"user_id"`
 	EmployeeStatus string             `json:"employee_status" bson:"employee_status"`                   // pending|agreed|rejected
 	RejectionNote  string             `json:"rejection_note,omitempty" bson:"rejection_note,omitempty"` // opsional, wajib jika rejected
+	LetterURL      string             `json:"letter_url,omitempty" bson:"letter_url,omitempty"`         // link SPKL per karyawan
 	ConfirmedAt    *time.Time         `json:"confirmed_at,omitempty" bson:"confirmed_at,omitempty"`
 }
 
@@ -82,8 +83,10 @@ type OvertimeEmployeeResponse struct {
 	UserID         string     `json:"user_id"`
 	FullName       string     `json:"full_name"`
 	PayrollNumber  string     `json:"payroll_number"`
+	PositionName   string     `json:"position_name"`
 	EmployeeStatus string     `json:"employee_status"`
 	RejectionNote  string     `json:"rejection_note,omitempty"`
+	LetterURL      string     `json:"letter_url,omitempty"`
 	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
 }
 

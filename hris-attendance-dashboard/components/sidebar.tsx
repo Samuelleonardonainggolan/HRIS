@@ -89,6 +89,7 @@ export function Sidebar() {
           { name: "Jam Kerja", href: `${basePath}/jam-kerja`, icon: "Clock" },
           { name: "Persetujuan Izin & Cuti", href: `${basePath}/persetujuan-izin-cuti`, icon: "FileText" },
           { name: "Persetujuan Lembur", href: `${basePath}/persetujuan-lembur`, icon: "FileCheckCorner" },
+          { name: "Lembur", href: `${basePath}/lembur`, icon: "FileCheckCorner" },
           { name: "Gaji Karyawan", href: `${basePath}/gaji-karyawan`, icon: "Receipt" },
         ];
 

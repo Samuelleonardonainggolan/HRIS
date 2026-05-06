@@ -21,6 +21,7 @@ type OvertimeRequestService interface {
 
 	// Employee Actions
 	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error
+	PublishEmployeeSPKL(ctx context.Context, overtimeID string, userID string, letterURL string) error
 	GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error)
 
 	// Legacy/Compat methods (to minimize handler changes)
@@ -141,6 +142,20 @@ func (s *overtimeRequestService) UpdateOvertimeRequest(ctx context.Context, id s
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
+	if req.Employees != nil {
+		employees := make([]models.OvertimeEmployee, 0, len(*req.Employees))
+		for _, emp := range *req.Employees {
+			empOID, err := primitive.ObjectIDFromHex(emp.UserID)
+			if err != nil {
+				continue
+			}
+			employees = append(employees, models.OvertimeEmployee{
+				UserID:         empOID,
+				EmployeeStatus: models.EmployeeStatusPending,
+			})
+		}
+		updates["employees"] = employees
+	}
 	if req.Notes != nil {
 		updates["notes"] = *req.Notes
 	}
@@ -162,6 +177,10 @@ func (s *overtimeRequestService) DeleteOvertimeRequest(ctx context.Context, id s
 
 func (s *overtimeRequestService) UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error {
 	return s.overtimeRepo.UpdateEmployeeStatus(ctx, overtimeID, userID, req.Status, req.RejectionNote)
+}
+
+func (s *overtimeRequestService) PublishEmployeeSPKL(ctx context.Context, overtimeID string, userID string, letterURL string) error {
+	return s.overtimeRepo.UpdateEmployeeLetterURL(ctx, overtimeID, userID, letterURL)
 }
 
 func (s *overtimeRequestService) GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error) {
@@ -226,8 +245,10 @@ func (s *overtimeRequestService) toResponse(ctx context.Context, r *models.Overt
 			UserID:         e.UserID.Hex(),
 			FullName:       u.FullName,
 			PayrollNumber:  u.PayrollNumber,
+			PositionName:   u.PositionName,
 			EmployeeStatus: e.EmployeeStatus,
 			RejectionNote:  e.RejectionNote,
+			LetterURL:      e.LetterURL,
 			ConfirmedAt:    e.ConfirmedAt,
 		})
 	}

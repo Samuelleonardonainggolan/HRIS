@@ -235,7 +235,10 @@ func SetupRoutes(
 				deptOvertimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByKepalaDepartemen)
 				deptOvertimeRequests.POST("", overtimeRequestHandler.Create)
+				deptOvertimeRequests.PUT("/:id", overtimeRequestHandler.Update)
 				deptOvertimeRequests.POST("/:id/submit", overtimeRequestHandler.Submit)
+				deptOvertimeRequests.POST("/:id/publish", overtimeRequestHandler.Publish)
+				deptOvertimeRequests.POST("/:id/employees/:user_id/publish", overtimeRequestHandler.PublishEmployee)
 				deptOvertimeRequests.DELETE("/:id", overtimeRequestHandler.Delete)
 			}
 
