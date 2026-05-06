@@ -133,7 +133,6 @@ func (h *PengajuanIzinCutiHandler) RejectByKepalaDepartemen(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.SuccessResponse("Pengajuan rejected successfully", item))
 }
-
 func (h *PengajuanIzinCutiHandler) GetLeaveBalance(c *gin.Context) {
 	userID := c.GetString("userID")
 	balance, err := h.service.GetLeaveBalance(c.Request.Context(), userID)
