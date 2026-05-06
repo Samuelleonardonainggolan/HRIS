@@ -20,7 +20,7 @@ func NewOvertimeRequestHandler(service service.OvertimeRequestService) *Overtime
 // Create - Submit new overtime (usually by Manager Dept)
 func (h *OvertimeRequestHandler) Create(c *gin.Context) {
 	requestedByID := c.GetString("userID")
-	
+
 	var req models.CreateOvertimeRequestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Data pengajuan tidak valid", err.Error()))
@@ -41,7 +41,7 @@ func (h *OvertimeRequestHandler) List(c *gin.Context) {
 	role := c.GetString("role")
 	deptID := c.Query("department_id")
 	status := c.Query("status")
-	
+
 	filter := bson.M{}
 	if deptID != "" {
 		filter["department_id"] = deptID
@@ -102,7 +102,7 @@ func (h *OvertimeRequestHandler) Delete(c *gin.Context) {
 func (h *OvertimeRequestHandler) UpdateStatus(c *gin.Context) {
 	id := c.Param("id")
 	userID := c.GetString("userID")
-	
+
 	var req models.UpdateEmployeeStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse("Status tidak valid", err.Error()))
@@ -126,14 +126,108 @@ func (h *OvertimeRequestHandler) GetMine(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Riwayat lembur berhasil diambil", items))
 }
 
+// New route-compatible wrappers (route names expected elsewhere)
+func (h *OvertimeRequestHandler) GetForMe(c *gin.Context) {
+	h.GetMine(c)
+}
+
+func (h *OvertimeRequestHandler) GetForMeByID(c *gin.Context) {
+	h.GetMineByID(c)
+}
+
+func (h *OvertimeRequestHandler) AgreeOvertimeRequest(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("userID")
+
+	req := models.UpdateEmployeeStatusRequest{Status: models.EmployeeStatusAgreed}
+	if err := h.service.UpdateEmployeeStatus(c.Request.Context(), id, userID, req); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal memperbarui status", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Status berhasil diperbarui", nil))
+}
+
+func (h *OvertimeRequestHandler) RejectOvertimeRequest(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("userID")
+
+	var body struct {
+		RejectionNote string `json:"rejection_note"`
+	}
+	// it's okay if client doesn't send a body; default to empty note
+	_ = c.ShouldBindJSON(&body)
+
+	req := models.UpdateEmployeeStatusRequest{Status: models.EmployeeStatusRejected, RejectionNote: body.RejectionNote}
+	if err := h.service.UpdateEmployeeStatus(c.Request.Context(), id, userID, req); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal memperbarui status", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Status berhasil diperbarui", nil))
+}
+
+func (h *OvertimeRequestHandler) Submit(c *gin.Context) {
+	id := c.Param("id")
+	status := models.StatusSubmitted
+	req := models.UpdateOvertimeRequestRequest{Status: &status}
+	item, err := h.service.UpdateOvertimeRequest(c.Request.Context(), id, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal mengirim pengajuan lembur", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Pengajuan lembur berhasil dikirim", item))
+}
+
+func (h *OvertimeRequestHandler) Publish(c *gin.Context) {
+	id := c.Param("id")
+	var body struct {
+		LetterURL string `json:"letter_url"`
+		Notes     string `json:"notes"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Data tidak valid", err.Error()))
+		return
+	}
+
+	status := models.StatusPublished
+	item, err := h.service.UpdateOvertimeRequest(c.Request.Context(), id, models.UpdateOvertimeRequestRequest{
+		Status:    &status,
+		LetterURL: &body.LetterURL,
+		Notes:     &body.Notes,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal publish lembur", err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, models.SuccessResponse("Lembur berhasil dipublish", item))
+}
+
 // ─── Legacy compatibility methods ──────────────────────────────────────────
 
 func (h *OvertimeRequestHandler) ListForManagerHR(c *gin.Context) {
-	h.List(c)
+	status := c.Query("status")
+	search := c.Query("search")
+
+	items, err := h.service.ListForManagerHR(c.Request.Context(), status, search)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal mengambil data lembur", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Data lembur berhasil diambil", items))
 }
 
 func (h *OvertimeRequestHandler) ListForKepalaDepartemen(c *gin.Context) {
-	h.List(c)
+	userID := c.GetString("userID")
+	status := c.Query("status")
+	search := c.Query("search")
+
+	items, err := h.service.ListForKepalaDepartemen(c.Request.Context(), status, search, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal mengambil data lembur", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("Data lembur berhasil diambil", items))
 }
 
 func (h *OvertimeRequestHandler) GetForManagerHR(c *gin.Context) {

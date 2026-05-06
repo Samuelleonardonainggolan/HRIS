@@ -12,7 +12,7 @@ import '../models/overtime_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.248.222.213:8080/api/v1';
+  static const String baseUrl = 'http://10.169.139.60:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -617,11 +617,32 @@ class ApiService {
     required int year,
   }) async {
     try {
-      // Sama seperti getMyOvertime, tapi filter yang APPROVED dan bulan/tahun sesuai
-      final all = await getMyOvertime();
-      return all.where((o) {
-        return o.isApproved && o.date.month == month && o.date.year == year;
+      final userId = await getUserId();
+      final user = currentUser.value;
+
+      List<OvertimeRequest> source = [];
+      if (user?.isManagerDept == true) {
+        source = await getMyOvertimeRequests();
+      } else if (user?.isManagerHR == true) {
+        source = await getOvertimeRequestsForHR();
+      } else {
+        source = await getAssignedOvertimeRequests();
+      }
+
+      final filtered = source.where((o) {
+        final inMonth = o.date.month == month && o.date.year == year;
+        if (!inMonth) return false;
+
+        if (o.isPublished) return true;
+
+        if (userId == null || userId.isEmpty) return false;
+        final myEmployeeEntry = o.employees.where((e) => e.userId == userId).toList();
+        if (myEmployeeEntry.isEmpty) return false;
+        return myEmployeeEntry.any((e) => e.isAgreed || e.isRejected);
       }).toList();
+
+      filtered.sort((a, b) => b.date.compareTo(a.date));
+      return filtered;
     } catch (e) {
       print('[API] getApprovedOvertimeByMonth error: $e');
       return [];
@@ -1380,6 +1401,301 @@ class ApiService {
       }
     } catch (e) {
       print('[API] Confirm attendance error: $e');
+      rethrow;
+    }
+  }
+
+  // ─── Overtime Request (New Flow - Department Head Directed) ───────────────
+
+  /// Get my draft overtime requests (for department heads)
+  static Future<List<OvertimeRequest>> getMyOvertimeRequests() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/dept-overtime-requests'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      List<OvertimeRequest> list = [];
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['data'] is List) {
+          list = (data['data'] as List)
+              .map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>))
+              .toList();
+          list.sort((a, b) => b.date.compareTo(a.date));
+        }
+      }
+      return list;
+    } catch (e) {
+      print('[API] getMyOvertimeRequests error: $e');
+      return [];
+    }
+  }
+
+  /// Get assigned overtime requests (for employees)
+  static Future<List<OvertimeRequest>> getAssignedOvertimeRequests() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/my-overtime'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      List<OvertimeRequest> list = [];
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['data'] is List) {
+          list = (data['data'] as List)
+              .map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>))
+              .toList();
+          list.sort((a, b) => b.date.compareTo(a.date));
+        }
+      }
+      return list;
+    } catch (e) {
+      print('[API] getAssignedOvertimeRequests error: $e');
+      return [];
+    }
+  }
+
+  /// Get overtime requests for HR review
+  static Future<List<OvertimeRequest>> getOvertimeRequestsForHR({
+    String status = 'ALL',
+    String search = '',
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final uri = Uri.parse('$baseUrl/overtime-requests').replace(
+        queryParameters: {
+          'status': status,
+          if (search.trim().isNotEmpty) 'search': search.trim(),
+        },
+      );
+
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      List<OvertimeRequest> list = [];
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['data'] is List) {
+          list = (data['data'] as List)
+              .map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>))
+              .toList();
+          list.sort((a, b) => b.date.compareTo(a.date));
+        }
+      }
+      return list;
+    } catch (e) {
+      print('[API] getOvertimeRequestsForHR error: $e');
+      return [];
+    }
+  }
+
+  /// Delete draft overtime request (kepala departemen only)
+  static Future<void> deleteDraftOvertimeRequest(String requestId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/dept-overtime-requests/$requestId'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menghapus draft lembur');
+      }
+    } catch (e) {
+      print('[API] deleteDraftOvertimeRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Get employees in my department (for kepala departemen)
+  static Future<List<User>> getEmployeesMyDepartment() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/employees/my-department'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        return [];
+      }
+
+      final data = jsonDecode(response.body);
+      final raw = data['data'];
+      if (raw is! List) return [];
+
+      return raw
+          .whereType<Map<String, dynamic>>()
+          .map(User.fromJson)
+          .toList();
+    } catch (e) {
+      print('[API] getEmployeesMyDepartment error: $e');
+      return [];
+    }
+  }
+
+  /// Create new overtime request (department head creates for multiple employees)
+  static Future<String> createOvertimeRequest({
+    required List<String> employeeIds,
+    required DateTime date,
+    required String startTime,
+    required String endTime,
+    required String reason,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/dept-overtime-requests'),
+            headers: headers,
+            body: jsonEncode({
+              'employee_ids': employeeIds,
+              'date': date.toIso8601String().split('T')[0], // YYYY-MM-DD
+              'start_time': startTime,
+              'end_time': endTime,
+              'reason': reason,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        return data['data']['id'] ?? '';
+      } else {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal membuat pengajuan lembur');
+      }
+    } catch (e) {
+      print('[API] createOvertimeRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Submit overtime request (change from draft to submitted)
+  static Future<void> submitOvertimeRequest(String requestId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/dept-overtime-requests/$requestId/submit'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal mengirim pengajuan lembur');
+      }
+    } catch (e) {
+      print('[API] submitOvertimeRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Employee agrees to overtime request
+  static Future<void> agreeOvertimeRequest(String requestId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-overtime/$requestId/agree'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menyetujui pengajuan lembur');
+      }
+    } catch (e) {
+      print('[API] agreeOvertimeRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Employee rejects overtime request with optional note
+  static Future<void> rejectOvertimeRequest(
+    String requestId, {
+    String? rejectionNote,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-overtime/$requestId/reject'),
+            headers: headers,
+            body: jsonEncode({
+              'rejection_note': rejectionNote ?? '',
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menolak pengajuan lembur');
+      }
+    } catch (e) {
+      print('[API] rejectOvertimeRequest error: $e');
+      rethrow;
+    }
+  }
+
+  /// Publish overtime letter (HR action)
+  static Future<void> publishOvertimeLetter({
+    required String requestId,
+    required String letterUrl,
+    String? notes,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/overtime-requests/$requestId/publish-letter'),
+            headers: headers,
+            body: jsonEncode({
+              'letter_url': letterUrl,
+              'notes': notes ?? '',
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(
+            err['message'] ?? 'Gagal menerbitkan surat lembur resmi');
+      }
+    } catch (e) {
+      print('[API] publishOvertimeLetter error: $e');
       rethrow;
     }
   }

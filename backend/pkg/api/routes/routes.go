@@ -211,6 +211,8 @@ func SetupRoutes(
 				myOvertime.GET("/:id", overtimeRequestHandler.GetMineByID)
 				myOvertime.PUT("/:id", overtimeRequestHandler.UpdateMine)
 				myOvertime.DELETE("/:id", overtimeRequestHandler.DeleteMine)
+				myOvertime.POST("/:id/agree", overtimeRequestHandler.AgreeOvertimeRequest)
+				myOvertime.POST("/:id/reject", overtimeRequestHandler.RejectOvertimeRequest)
 			}
 
 			// OVERTIME REQUEST APPROVAL (Manager HR Only)
@@ -221,6 +223,7 @@ func SetupRoutes(
 				overtimeRequests.GET("/:id", overtimeRequestHandler.GetForManagerHR)
 				overtimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByManagerHR)
 				overtimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByManagerHR)
+				overtimeRequests.POST("/:id/publish-letter", overtimeRequestHandler.Publish)
 			}
 
 			// OVERTIME REQUEST APPROVAL (Kepala Departemen Only)
@@ -232,6 +235,8 @@ func SetupRoutes(
 				deptOvertimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByKepalaDepartemen)
 				deptOvertimeRequests.POST("", overtimeRequestHandler.Create)
+				deptOvertimeRequests.POST("/:id/submit", overtimeRequestHandler.Submit)
+				deptOvertimeRequests.DELETE("/:id", overtimeRequestHandler.Delete)
 			}
 
 			// LEAVE REQUEST APPROVAL (Manager HR Only)

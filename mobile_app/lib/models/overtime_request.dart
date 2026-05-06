@@ -1,38 +1,40 @@
 // lib/models/overtime_request.dart
 
+// NEW FLOW: Kepala departemen mengajukan lembur untuk karyawan mereka
+// Employees kemudian bisa agree/reject
+// HR bisa publish surat
+
 class OvertimeRequest {
   final String id;
-  final String userId;
+  final String departmentId;
+  final String departmentName;
+  final String requestedById; // Kepala departemen yang submit
+  final String requestedByName; // Display name
   final DateTime date;
-  final DateTime startTime;
-  final DateTime endTime;
+  final String startTime; // format HH:mm
+  final String endTime; // format HH:mm
   final String reason;
-  final String total;
-  final String statusKepalaDepartemen;
-  final String? kepalaDepartemenId;
-  final String statusManagerHr;
-  final String? managerHrId;
-  final String finalStatus;
-  final String? rejectionReasonKepalaDept;
-  final String? rejectionReasonManagerHr;
+  final String status; // draft|submitted|published
+  final String? notes;
+  final String? letterUrl;
+  final List<OvertimeEmployee> employees;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   OvertimeRequest({
     required this.id,
-    required this.userId,
+    required this.departmentId,
+    required this.departmentName,
+    required this.requestedById,
+    required this.requestedByName,
     required this.date,
     required this.startTime,
     required this.endTime,
     required this.reason,
-    required this.total,
-    required this.statusKepalaDepartemen,
-    this.kepalaDepartemenId,
-    required this.statusManagerHr,
-    this.managerHrId,
-    required this.finalStatus,
-    this.rejectionReasonKepalaDept,
-    this.rejectionReasonManagerHr,
+    required this.status,
+    this.notes,
+    this.letterUrl,
+    required this.employees,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -40,19 +42,29 @@ class OvertimeRequest {
   factory OvertimeRequest.fromJson(Map<String, dynamic> json) {
     return OvertimeRequest(
       id: json['id']?.toString() ?? '',
-      userId: json['user_id']?.toString() ?? '',
+      departmentId: json['department_id']?.toString() ?? '',
+      departmentName: (json['department_name'] ?? json['departmentName'] ?? '')
+          .toString(),
+      requestedById: json['requested_by_id']?.toString() ?? '',
+      requestedByName:
+          (json['requested_by_name'] ??
+                  json['requestedByName'] ??
+                  json['requested_by_id'] ??
+                  '')
+              .toString(),
       date: _parseDate(json['date']),
-      startTime: _parseDate(json['start_time']),
-      endTime: _parseDate(json['end_time']),
+      startTime: json['start_time']?.toString() ?? '',
+      endTime: json['end_time']?.toString() ?? '',
       reason: json['reason']?.toString() ?? '',
-      total: json['total']?.toString() ?? '',
-      statusKepalaDepartemen: (json['status_kepala_departemen'] ?? 'PENDING').toString().toUpperCase(),
-      kepalaDepartemenId: _normalizeString(json['kepala_departemen_id']),
-      statusManagerHr: (json['status_manager_hr'] ?? 'PENDING').toString().toUpperCase(),
-      managerHrId: _normalizeString(json['manager_hr_id']),
-      finalStatus: (json['final_status'] ?? 'PENDING').toString().toUpperCase(),
-      rejectionReasonKepalaDept: json['rejection_reason_kepala_dept']?.toString(),
-      rejectionReasonManagerHr: json['rejection_reason_manager_hr']?.toString(),
+      status: (json['status'] ?? 'draft').toString().toLowerCase(),
+      notes: json['notes']?.toString(),
+      letterUrl: json['letter_url']?.toString(),
+      employees:
+          (json['employees'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(OvertimeEmployee.fromJson)
+              .toList() ??
+          [],
       createdAt: _parseDate(json['created_at']),
       updatedAt: _parseDate(json['updated_at']),
     );
@@ -67,34 +79,103 @@ class OvertimeRequest {
     }
   }
 
-  static String? _normalizeString(dynamic value) {
-    final str = value?.toString().trim();
-    return (str != null && str.isNotEmpty) ? str : null;
-  }
-
-  /// Helper untuk UI
+  // Helper untuk UI
   String get statusDisplay {
-    switch (finalStatus) {
-      case 'APPROVED':
-        return 'Disetujui';
-      case 'REJECTED':
-        return 'Ditolak';
-      case 'CANCELLED':
-        return 'Dibatalkan';
+    switch (status) {
+      case 'draft':
+        return 'Draft';
+      case 'submitted':
+        return 'Dikirim';
+      case 'published':
+        return 'Dipublikasikan';
       default:
-        return 'Menunggu';
+        return 'Unknown';
     }
   }
 
-  bool get isApproved => finalStatus == 'APPROVED';
-  bool get isPending => finalStatus == 'PENDING';
-  bool get isRejected => finalStatus == 'REJECTED';
+  bool get isDraft => status == 'draft';
+  bool get isSubmitted => status == 'submitted';
+  bool get isPublished => status == 'published';
 
-  String? get primaryRejectionReason {
-    final hr = rejectionReasonManagerHr?.trim();
-    if (hr != null && hr.isNotEmpty) return hr;
-    final kepala = rejectionReasonKepalaDept?.trim();
-    if (kepala != null && kepala.isNotEmpty) return kepala;
-    return null;
+  // Get hour & minute from time string
+  (int, int) getStartTimeHourMin() {
+    try {
+      final parts = startTime.split(':');
+      return (int.parse(parts[0]), int.parse(parts[1]));
+    } catch (_) {
+      return (0, 0);
+    }
   }
+
+  (int, int) getEndTimeHourMin() {
+    try {
+      final parts = endTime.split(':');
+      return (int.parse(parts[0]), int.parse(parts[1]));
+    } catch (_) {
+      return (0, 0);
+    }
+  }
+
+  // Calculate duration in hours
+  double getDurationHours() {
+    try {
+      final start = startTime.split(':');
+      final end = endTime.split(':');
+      final startMins = int.parse(start[0]) * 60 + int.parse(start[1]);
+      final endMins = int.parse(end[0]) * 60 + int.parse(end[1]);
+      return (endMins - startMins) / 60;
+    } catch (_) {
+      return 0;
+    }
+  }
+}
+
+class OvertimeEmployee {
+  final String userId;
+  final String userName; // Display name
+  final String employeeStatus; // pending|agreed|rejected
+  final String? rejectionNote;
+  final DateTime? confirmedAt;
+
+  OvertimeEmployee({
+    required this.userId,
+    required this.userName,
+    required this.employeeStatus,
+    this.rejectionNote,
+    this.confirmedAt,
+  });
+
+  factory OvertimeEmployee.fromJson(Map<String, dynamic> json) {
+    return OvertimeEmployee(
+      userId: json['user_id']?.toString() ?? '',
+      userName: (json['full_name'] ?? json['user_name'] ?? json['name'] ?? '')
+          .toString(),
+      employeeStatus: (json['employee_status'] ?? 'pending')
+          .toString()
+          .toLowerCase(),
+      rejectionNote: json['rejection_note']?.toString(),
+      confirmedAt: json['confirmed_at'] != null
+          ? DateTime.tryParse(json['confirmed_at'].toString())
+          : null,
+    );
+  }
+
+  String get displayName => userName.isNotEmpty ? userName : userId;
+
+  String get statusDisplay {
+    switch (employeeStatus) {
+      case 'pending':
+        return 'Menunggu';
+      case 'agreed':
+        return 'Setuju';
+      case 'rejected':
+        return 'Tolak';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  bool get isPending => employeeStatus == 'pending';
+  bool get isAgreed => employeeStatus == 'agreed';
+  bool get isRejected => employeeStatus == 'rejected';
 }

@@ -114,26 +114,28 @@ class AttendanceRecord {
   factory AttendanceRecord.fromOvertime({
     required String id,
     required DateTime date,
-    required DateTime startTime,
-    required DateTime endTime,
+    required String startTime,
+    required String endTime,
     required String reason,
-    required String total,
+    String? summary,
   }) {
     final d = DateTime(date.year, date.month, date.day);
-    // Kita simpan durasi di leaveReason atau buat field spesifik. 
-    // leaveReason bisa dipakai untuk menyimpan "(Total) Alasan"
+    final startDisplay = startTime.trim().isEmpty ? '--:--' : startTime.trim();
+    final endDisplay = endTime.trim().isEmpty ? '--:--' : endTime.trim();
     return AttendanceRecord(
       id: '${id}_overtime',
       date: d,
-      clockIn: '${startTime.hour.toString().padLeft(2, '0')}:${startTime.minute.toString().padLeft(2, '0')}',
-      clockOut: '${endTime.hour.toString().padLeft(2, '0')}:${endTime.minute.toString().padLeft(2, '0')}',
+      clockIn: startDisplay,
+      clockOut: endDisplay,
       status: 'Lembur',
       workHours: 0,
       overtimeHours: 0,
       isLeaveRecord: true,
       leaveType: 'Lembur',
       leaveKategori: 'Lembur',
-      leaveReason: '$total - $reason',
+      leaveReason: summary == null || summary.trim().isEmpty
+          ? reason
+          : '$summary • $reason',
     );
   }
 

@@ -18,15 +18,15 @@ type OvertimeRequestService interface {
 	CreateOvertimeRequest(ctx context.Context, requestedByID string, req models.CreateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error)
 	UpdateOvertimeRequest(ctx context.Context, id string, req models.UpdateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error)
 	DeleteOvertimeRequest(ctx context.Context, id string) error
-	
+
 	// Employee Actions
 	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error
 	GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error)
 
 	// Legacy/Compat methods (to minimize handler changes)
-	ListForManagerHR(ctx context.Context, status string, search string) ([]models.OvertimeApprovalResponse, error)
-	ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaUserID string) ([]models.OvertimeApprovalResponse, error)
-	
+	ListForManagerHR(ctx context.Context, status string, search string) ([]models.OvertimeRequestResponse, error)
+	ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaUserID string) ([]models.OvertimeRequestResponse, error)
+
 	SetWSHub(hub *WSHub)
 }
 
@@ -141,6 +141,12 @@ func (s *overtimeRequestService) UpdateOvertimeRequest(ctx context.Context, id s
 	if req.Status != nil {
 		updates["status"] = *req.Status
 	}
+	if req.Notes != nil {
+		updates["notes"] = *req.Notes
+	}
+	if req.LetterURL != nil {
+		updates["letter_url"] = *req.LetterURL
+	}
 
 	updated, err := s.overtimeRepo.Update(ctx, id, updates)
 	if err != nil {
@@ -159,58 +165,55 @@ func (s *overtimeRequestService) UpdateEmployeeStatus(ctx context.Context, overt
 }
 
 func (s *overtimeRequestService) GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error) {
-	uoid, _ := primitive.ObjectIDFromHex(userID)
-	filter := bson.M{"employees.user_id": uoid}
+	uoid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return []models.OvertimeRequestResponse{}, nil
+	}
+
+	filter := bson.M{
+		"$or": []bson.M{
+			{"employees.user_id": uoid},
+			{"requested_by_id": uoid},
+		},
+	}
 	return s.ListOvertimeRequests(ctx, filter)
 }
 
 // ─── Legacy/Compat methods ────────────────────────────────────────────────
 
-func (s *overtimeRequestService) ListForManagerHR(ctx context.Context, status string, search string) ([]models.OvertimeApprovalResponse, error) {
+func (s *overtimeRequestService) ListForManagerHR(ctx context.Context, status string, search string) ([]models.OvertimeRequestResponse, error) {
 	filter := bson.M{}
 	if status != "" && status != "ALL" {
 		filter["status"] = status
 	}
-	
-	reqs, err := s.ListOvertimeRequests(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
 
-	resp := make([]models.OvertimeApprovalResponse, 0, len(reqs))
-	for _, r := range reqs {
-		resp = append(resp, models.OvertimeApprovalResponse{Overtime: r})
-	}
-	return resp, nil
+	return s.ListOvertimeRequests(ctx, filter)
 }
 
-func (s *overtimeRequestService) ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaUserID string) ([]models.OvertimeApprovalResponse, error) {
+func (s *overtimeRequestService) ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaUserID string) ([]models.OvertimeRequestResponse, error) {
 	kepala, _ := s.userRepo.FindByID(ctx, kepalaUserID)
 	filter := bson.M{"department_id": kepala.DepartmentID}
-	
-	reqs, err := s.ListOvertimeRequests(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
 
-	resp := make([]models.OvertimeApprovalResponse, 0, len(reqs))
-	for _, r := range reqs {
-		resp = append(resp, models.OvertimeApprovalResponse{Overtime: r})
-	}
-	return resp, nil
+	return s.ListOvertimeRequests(ctx, filter)
 }
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────
 
 func (s *overtimeRequestService) toResponse(ctx context.Context, r *models.OvertimeRequest) *models.OvertimeRequestResponse {
 	empResp := make([]models.OvertimeEmployeeResponse, 0, len(r.Employees))
-	
+	requestedByName := ""
+	departmentName := ""
+	if requester, err := s.userRepo.FindByID(ctx, r.RequestedByID.Hex()); err == nil && requester != nil {
+		requestedByName = requester.FullName
+		departmentName = requester.DepartmentName
+	}
+
 	// Fetch user details for employees
 	userIDs := make([]string, 0, len(r.Employees))
 	for _, e := range r.Employees {
 		userIDs = append(userIDs, e.UserID.Hex())
 	}
-	
+
 	users, _ := s.userRepo.FindByIDs(ctx, userIDs)
 	userMap := make(map[string]models.User)
 	for _, u := range users {
@@ -230,18 +233,20 @@ func (s *overtimeRequestService) toResponse(ctx context.Context, r *models.Overt
 	}
 
 	return &models.OvertimeRequestResponse{
-		ID:            r.ID.Hex(),
-		DepartmentID:  r.DepartmentID.Hex(),
-		RequestedByID: r.RequestedByID.Hex(),
-		Date:          r.Date,
-		StartTime:     r.StartTime,
-		EndTime:       r.EndTime,
-		Reason:        r.Reason,
-		Status:        r.Status,
-		Notes:         r.Notes,
-		LetterURL:     r.LetterURL,
-		CreatedAt:     r.CreatedAt,
-		UpdatedAt:     r.UpdatedAt,
-		Employees:     empResp,
+		ID:              r.ID.Hex(),
+		DepartmentID:    r.DepartmentID.Hex(),
+		DepartmentName:  departmentName,
+		RequestedByID:   r.RequestedByID.Hex(),
+		RequestedByName: requestedByName,
+		Date:            r.Date,
+		StartTime:       r.StartTime,
+		EndTime:         r.EndTime,
+		Reason:          r.Reason,
+		Status:          r.Status,
+		Notes:           r.Notes,
+		LetterURL:       r.LetterURL,
+		CreatedAt:       r.CreatedAt,
+		UpdatedAt:       r.UpdatedAt,
+		Employees:       empResp,
 	}
 }

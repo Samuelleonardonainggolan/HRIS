@@ -174,13 +174,14 @@ class _HistoryPageState extends State<HistoryPage> {
       // Merge Overtime Requests
       for (final o in overtime) {
         if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
+          final approvalSummary = _overtimeApprovalSummary(o);
           final rec = AttendanceRecord.fromOvertime(
             id: o.id,
             date: o.date,
             startTime: o.startTime,
             endTime: o.endTime,
             reason: o.reason,
-            total: o.total,
+            summary: approvalSummary,
           );
           merged.add(rec);
         }
@@ -212,6 +213,20 @@ class _HistoryPageState extends State<HistoryPage> {
 
   String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _overtimeApprovalSummary(OvertimeRequest o) {
+    final agreed = o.employees.where((e) => e.isAgreed).length;
+    final rejected = o.employees.where((e) => e.isRejected).length;
+    final pending = o.employees.where((e) => e.isPending).length;
+
+    if (o.isPublished) {
+      return 'SPKL dipublikasikan • $agreed setuju, $rejected menolak, $pending menunggu';
+    }
+    if (o.isSubmitted) {
+      return 'Menunggu respons karyawan • $agreed setuju, $rejected menolak, $pending menunggu';
+    }
+    return 'Draft lembur • $agreed setuju, $rejected menolak, $pending menunggu';
+  }
 
   // ── Filter ────────────────────────────────────────────────────────────────
   void _applyFilter() {

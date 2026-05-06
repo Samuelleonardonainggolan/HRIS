@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_app/pages/dashboard_page.dart';
 import 'package:mobile_app/pages/history_page.dart';
+import 'package:mobile_app/pages/overtime_page.dart';
 import 'package:mobile_app/pages/request_page.dart';
 import 'package:mobile_app/pages/profile_page.dart';
 import 'package:mobile_app/services/sse_service.dart';
@@ -36,6 +37,7 @@ class _MainNavigationPageState extends State<MainNavigationPage>
     EmployeeDashboardPage(),
     HistoryPage(),
     RequestPage(),
+    OvertimePage(),
     ProfilePage(),
   ];
 
@@ -44,6 +46,7 @@ class _MainNavigationPageState extends State<MainNavigationPage>
     _NavItem(icon: Icons.home_rounded,          activeIcon: Icons.home_rounded,          label: 'Beranda'),
     _NavItem(icon: Icons.history_rounded,        activeIcon: Icons.history_rounded,        label: 'Riwayat'),
     _NavItem(icon: Icons.assignment_rounded,     activeIcon: Icons.assignment_rounded,     label: 'Pengajuan'),
+    _NavItem(icon: Icons.schedule_rounded,       activeIcon: Icons.schedule_rounded,       label: 'Lembur'),
     _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded,         label: 'Profil'),
   ];
 
