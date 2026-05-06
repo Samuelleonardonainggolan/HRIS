@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_app/models/leave_request.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'new_request_page.dart';
 
@@ -68,6 +69,17 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   Future<void> _cancelRequest(LeaveRequest request) async {
+    // Restrict cancellation if Kadep has already approved
+    if (request.statusKepala == 'APPROVED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pengajuan tidak dapat dibatalkan karena sudah disetujui Kepala Departemen'),
+          backgroundColor: Color(0xFFF59E0B),
+        ),
+      );
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -109,159 +121,37 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   Future<void> _editRequest(LeaveRequest request) async {
-    DateTime startDate = request.startDate;
-    DateTime endDate = request.endDate;
-    final reasonCtrl = TextEditingController(text: request.reason);
-    final isSick = _isSickType(request.type);
-    final minStartDate = isSick
-        ? DateTime.now()
-        : DateTime.now().add(const Duration(days: 2));
-
-    final edited = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDBEAFE),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.edit_note_rounded,
-                  color: Color(0xFF135BEC),
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Text('Edit Pengajuan'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isSick
-                        ? const Color(0xFFDCFCE7)
-                        : const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    isSick
-                        ? 'Izin sakit dapat diajukan mulai hari ini.'
-                        : 'Untuk tipe ini, tanggal mulai minimal H-2.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isSick
-                          ? const Color(0xFF166534)
-                          : const Color(0xFF92400E),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _buildEditableDateRow(
-                  label: 'Tanggal Mulai',
-                  value: DateFormat('yyyy-MM-dd').format(startDate),
-                  icon: Icons.calendar_today,
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: startDate.isBefore(minStartDate)
-                          ? minStartDate
-                          : startDate,
-                      firstDate: minStartDate,
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setLocal(() {
-                        startDate = picked;
-                        if (endDate.isBefore(startDate)) {
-                          endDate = startDate;
-                        }
-                      });
-                    }
-                  },
-                ),
-                const SizedBox(height: 8),
-                _buildEditableDateRow(
-                  label: 'Tanggal Selesai',
-                  value: DateFormat('yyyy-MM-dd').format(endDate),
-                  icon: Icons.calendar_month,
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: endDate,
-                      firstDate: startDate,
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) {
-                      setLocal(() => endDate = picked);
-                    }
-                  },
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: reasonCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Alasan',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Simpan'),
-            ),
-          ],
+    // Restrict editing if Kadep has already approved
+    if (request.statusKepala == 'APPROVED') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pengajuan tidak dapat diubah karena sudah disetujui Kepala Departemen'),
+          backgroundColor: Color(0xFFF59E0B),
         ),
-      ),
-    );
-
-    if (edited != true) {
-      reasonCtrl.dispose();
+      );
       return;
     }
 
-    try {
-      final totalHari = endDate.difference(startDate).inDays + 1;
-      await ApiService.updatePengajuan(
-        pengajuanId: request.id,
-        tanggalMulai: DateFormat('yyyy-MM-dd').format(startDate),
-        tanggalSelesai: DateFormat('yyyy-MM-dd').format(endDate),
-        totalHari: totalHari,
-        alasan: reasonCtrl.text.trim(),
-      );
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewRequestPage(requestToEdit: request),
+      ),
+    );
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pengajuan berhasil diperbarui')),
-      );
+    if (result == true) {
       await _loadRequests();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal mengedit pengajuan: $e'),
-          backgroundColor: const Color(0xFFEF4444),
-        ),
-      );
-    } finally {
-      reasonCtrl.dispose();
+    }
+  }
+
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal membuka dokumen')),
+        );
+      }
     }
   }
 
@@ -393,6 +283,46 @@ class _RequestPageState extends State<RequestPage> {
                     reason: 'Pengajuan ditolak.',
                   ),
               ],
+              if (request.dokumenUrl != null && request.dokumenUrl!.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F9FF),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFBAE6FD)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0284C7).withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF0284C7), size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Dokumen Lampiran',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const Text('Ketuk untuk melihat dokumen', style: TextStyle(fontSize: 12, color: Color(0xFF0369A1))),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new_rounded, color: Color(0xFF0284C7)),
+                        onPressed: () => _launchURL(request.dokumenUrl!),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               if (_canEditRequest(request))
                 Row(
@@ -403,7 +333,12 @@ class _RequestPageState extends State<RequestPage> {
                           Navigator.pop(context);
                           _editRequest(request);
                         },
-                        child: const Text('Edit'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: Color(0xFF135BEC)),
+                        ),
+                        child: const Text('Edit', style: TextStyle(color: Color(0xFF135BEC), fontWeight: FontWeight.bold)),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -411,6 +346,9 @@ class _RequestPageState extends State<RequestPage> {
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFEF4444),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
                         ),
                         onPressed: () {
                           Navigator.pop(context);
@@ -418,7 +356,7 @@ class _RequestPageState extends State<RequestPage> {
                         },
                         child: const Text(
                           'Batalkan',
-                          style: TextStyle(color: Colors.white),
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -781,37 +719,41 @@ class _RequestPageState extends State<RequestPage> {
 
   Widget _buildTabs() {
     return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: List.generate(_tabs.length, (i) {
             final selected = _selectedTab == i;
             return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
+              padding: const EdgeInsets.only(right: 10),
+              child: InkWell(
                 onTap: () => setState(() => _selectedTab = i),
+                borderRadius: BorderRadius.circular(20),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                  duration: const Duration(milliseconds: 250),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   decoration: BoxDecoration(
-                    color: selected ? const Color(0xFF135BEC) : Colors.white,
+                    color: selected ? const Color(0xFF135BEC) : const Color(0xFFF1F5F9),
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    boxShadow: selected
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF135BEC).withOpacity(0.3),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            )
+                          ]
+                        : null,
                   ),
                   child: Text(
                     _tabs[i],
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: selected ? Colors.white : Colors.grey.shade600,
+                      fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                      color: selected ? Colors.white : const Color(0xFF64748B),
                     ),
                   ),
                 ),
@@ -1039,11 +981,14 @@ class _RequestPageState extends State<RequestPage> {
   }
 
   bool _canEditRequest(LeaveRequest request) {
-    final status = request.status.toLowerCase();
-    return status == 'pending' ||
-        status == 'menunggu' ||
-        status == 'rejected' ||
-        status == 'ditolak';
+    // Cannot edit if final status is APPROVED
+    if (request.statusFinal == 'APPROVED') return false;
+    // Cannot edit if Kadep has already approved (as requested)
+    if (request.statusKepala == 'APPROVED') return false;
+    // Cannot edit if CANCELLED
+    if (request.statusFinal == 'CANCELLED') return false;
+
+    return true; // Pending or Rejected can be edited
   }
 
   String _greeting() {
