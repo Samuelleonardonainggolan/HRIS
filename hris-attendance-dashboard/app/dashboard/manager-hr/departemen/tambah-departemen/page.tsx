@@ -60,6 +60,7 @@ export default function AddDepartmentPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [existingDepartmentCodes, setExistingDepartmentCodes] = useState<string[]>(
     []
@@ -141,16 +142,26 @@ export default function AddDepartmentPage() {
     }
   };
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.name.trim()) newErrors.name = "Kolom Nama Departemen tidak boleh kosong";
+    if (!formData.code.trim()) newErrors.code = "Kolom Kode Departemen tidak boleh kosong";
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError(null);
+    setErrors({});
 
-    if (!formData.name.trim()) {
-      setError("Nama departemen wajib diisi");
-      setIsSubmitting(false);
+    if (!validateForm()) {
+      toast.error("Mohon lengkapi field wajib");
       return;
     }
+
+    setIsSubmitting(true);
 
     try {
       if (editingId) {
@@ -200,7 +211,9 @@ export default function AddDepartmentPage() {
             Manajemen Departemen
           </button>
           <span>/</span>
-          <span className="text-gray-900 font-medium">Tambah Departemen Baru</span>
+          <span className="text-gray-900 font-medium">
+            {editingId ? "Edit Departemen" : "Tambah Departemen Baru"}
+          </span>
         </div>
 
         {/* Main Card */}
@@ -215,7 +228,7 @@ export default function AddDepartmentPage() {
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </button>
               <h1 className="text-xl font-semibold text-gray-900">
-                Tambah Departemen Baru
+                {editingId ? "Edit Departemen" : "Tambah Departemen Baru"}
               </h1>
             </div>
 
@@ -235,6 +248,9 @@ export default function AddDepartmentPage() {
                   value={formData.name}
                   onChange={(e) => {
                     const nextName = e.target.value;
+                    if (errors.name) {
+                      setErrors((prev) => ({ ...prev, name: "" }));
+                    }
                     setFormData((prev) => {
                       const next = { ...prev, name: nextName };
                       if (editingId) return next;
@@ -248,9 +264,11 @@ export default function AddDepartmentPage() {
                       };
                     });
                   }}
-                  required
-                  className="w-full"
+                  className={`w-full ${errors.name ? "border-red-500 focus:ring-red-500" : ""}`}
                 />
+                {errors.name && (
+                  <p className="text-red-500 text-xs mt-1">{errors.name}</p>
+                )}
               </div>
 
               {/* Kode Departemen */}
@@ -264,11 +282,17 @@ export default function AddDepartmentPage() {
                   value={formData.code}
                   onChange={(e) => {
                     const nextCode = e.target.value.toUpperCase();
+                    if (errors.code) {
+                      setErrors((prev) => ({ ...prev, code: "" }));
+                    }
                     setIsCodeManuallyEdited(Boolean(nextCode.trim()));
                     setFormData((prev) => ({ ...prev, code: nextCode }));
                   }}
-                  className="w-full"
+                  className={`w-full ${errors.code ? "border-red-500 focus:ring-red-500" : ""}`}
                 />
+                {errors.code && (
+                  <p className="text-red-500 text-xs mt-1">{errors.code}</p>
+                )}
                 <p className="text-xs text-gray-500">
                   Terisi otomatis sesuai nama departemen, tetapi tetap bisa diedit
                 </p>

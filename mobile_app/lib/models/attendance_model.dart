@@ -110,6 +110,35 @@ class AttendanceRecord {
     );
   }
 
+  /// Buat record sintetis untuk SATU HARI dari pengajuan Lembur APPROVED.
+  factory AttendanceRecord.fromOvertime({
+    required String id,
+    required DateTime date,
+    required String startTime,
+    required String endTime,
+    required String reason,
+    String? summary,
+  }) {
+    final d = DateTime(date.year, date.month, date.day);
+    final startDisplay = startTime.trim().isEmpty ? '--:--' : startTime.trim();
+    final endDisplay = endTime.trim().isEmpty ? '--:--' : endTime.trim();
+    return AttendanceRecord(
+      id: '${id}_overtime',
+      date: d,
+      clockIn: startDisplay,
+      clockOut: endDisplay,
+      status: 'Lembur',
+      workHours: 0,
+      overtimeHours: 0,
+      isLeaveRecord: true,
+      leaveType: 'Lembur',
+      leaveKategori: 'Lembur',
+      leaveReason: summary == null || summary.trim().isEmpty
+          ? reason
+          : '$summary • $reason',
+    );
+  }
+
   static String _kategoriToStatus(String k) {
     switch (k.trim().toLowerCase()) {
       case 'cuti':

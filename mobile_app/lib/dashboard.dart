@@ -7,11 +7,12 @@ class EmployeeDashboardPage extends StatefulWidget {
   State<EmployeeDashboardPage> createState() => _EmployeeDashboardPageState();
 }
 
-class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with SingleTickerProviderStateMixin {
+class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   // Status untuk demo
   bool isClockedIn = false;
   bool isOnBreak = false;
@@ -31,7 +32,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
       curve: Curves.easeOut,
     );
     _animationController.forward();
-    
+
     // Simulasi update waktu setiap detik
     _updateCurrentTime();
   }
@@ -41,7 +42,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
       if (mounted) {
         final now = DateTime.now();
         setState(() {
-          currentTime = "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
+          currentTime =
+              "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
         });
         _updateCurrentTime();
       }
@@ -64,8 +66,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
           child: LayoutBuilder(
             builder: (context, constraints) {
               double horizontalPadding = constraints.maxWidth > 600 ? 40 : 20;
-              double maxWidth = constraints.maxWidth > 600 ? 600 : double.infinity;
-              
+              double maxWidth = constraints.maxWidth > 600
+                  ? 600
+                  : double.infinity;
+
               return Center(
                 child: Container(
                   constraints: BoxConstraints(maxWidth: maxWidth),
@@ -75,34 +79,36 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                       children: [
                         // Header dengan desain lebih elegan
                         _buildHeader(horizontalPadding),
-                        
+
                         // Main scrollable content
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
-                            padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding,
+                            ),
                             child: Column(
                               children: [
                                 const SizedBox(height: 16),
-                                
+
                                 // MAIN CLOCK SECTION - FOKUS UTAMA
                                 _buildMainClockSection(),
-                                
+
                                 const SizedBox(height: 20),
-                                
+
                                 // QUICK STATS
                                 _buildQuickStats(),
-                                
+
                                 const SizedBox(height: 24),
-                                
+
                                 // TODAY'S ACTIVITY dengan desain lebih menarik
                                 _buildTodaysActivity(),
-                                
+
                                 const SizedBox(height: 20),
-                                
+
                                 // LIVE LOCATION
                                 _buildLiveLocationCard(),
-                                
+
                                 const SizedBox(height: 80),
                               ],
                             ),
@@ -123,7 +129,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
 
   Widget _buildHeader(double horizontalPadding) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 16,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.only(
@@ -200,10 +209,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: const Color(0xFF2ECC71),
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2.5,
-                        ),
+                        border: Border.all(color: Colors.white, width: 2.5),
                       ),
                     ),
                   ),
@@ -234,7 +240,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
               ),
             ],
           ),
-          
+
           // Notification dengan badge
           Stack(
             children: [
@@ -284,14 +290,24 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: isClockedIn 
-              ? [const Color(0xFF059669), const Color(0xFF10B981)] // Hijau jika sudah clock in
-              : [const Color(0xFF135BEC), const Color(0xFF3B7BF6)], // Biru default
+          colors: isClockedIn
+              ? [
+                  const Color(0xFF059669),
+                  const Color(0xFF10B981),
+                ] // Hijau jika sudah clock in
+              : [
+                  const Color(0xFF135BEC),
+                  const Color(0xFF3B7BF6),
+                ], // Biru default
         ),
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: (isClockedIn ? const Color(0xFF059669) : const Color(0xFF135BEC)).withOpacity(0.3),
+            color:
+                (isClockedIn
+                        ? const Color(0xFF059669)
+                        : const Color(0xFF135BEC))
+                    .withOpacity(0.3),
             blurRadius: 25,
             offset: const Offset(0, 10),
           ),
@@ -307,7 +323,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -319,7 +338,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                           width: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: isClockedIn ? Colors.white : const Color(0xFFFCD34D),
+                            color: isClockedIn
+                                ? Colors.white
+                                : const Color(0xFFFCD34D),
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -348,9 +369,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
               ),
             ],
           ),
-          
+
           const SizedBox(height: 2),
-          
+
           // Waktu Clock In dengan animasi
           TweenAnimationBuilder(
             duration: const Duration(milliseconds: 500),
@@ -395,7 +416,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                     ),
                     const SizedBox(height: 2),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(20),
@@ -414,9 +438,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
               );
             },
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Clock In/Out Buttons dengan desain lebih user-friendly
           Row(
             children: [
@@ -432,7 +456,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                       isClockedIn = true;
                       clockInTime = currentTime;
                     });
-                    _showSuccessSnackBar("✓ Clock In Successful", const Color(0xFF2ECC71));
+                    _showSuccessSnackBar(
+                      "✓ Clock In Successful",
+                      const Color(0xFF2ECC71),
+                    );
                   },
                 ),
               ),
@@ -449,33 +476,41 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                       isClockedIn = false;
                       clockInTime = "--:--";
                     });
-                    _showSuccessSnackBar("✓ Clock Out Successful", const Color(0xFFEF4444));
+                    _showSuccessSnackBar(
+                      "✓ Clock Out Successful",
+                      const Color(0xFFEF4444),
+                    );
                   },
                 ),
               ),
             ],
           ),
-          
+
           const SizedBox(height: 15),
-          
+
           // Break Button dengan desain lebih interaktif
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: isClockedIn ? () {
-                setState(() {
-                  isOnBreak = !isOnBreak;
-                });
-                _showInfoSnackBar(
-                  isOnBreak ? "Break started" : "Break ended",
-                );
-              } : null,
+              onTap: isClockedIn
+                  ? () {
+                      setState(() {
+                        isOnBreak = !isOnBreak;
+                      });
+                      _showInfoSnackBar(
+                        isOnBreak ? "Break started" : "Break ended",
+                      );
+                    }
+                  : null,
               borderRadius: BorderRadius.circular(50),
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
-                  color: isClockedIn 
+                  color: isClockedIn
                       ? Colors.white.withOpacity(0.15)
                       : Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(50),
@@ -489,7 +524,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                       height: 40,
                       width: 40,
                       decoration: BoxDecoration(
-                        color: isOnBreak 
+                        color: isOnBreak
                             ? const Color(0xFFF59E0B)
                             : Colors.white.withOpacity(0.2),
                         shape: BoxShape.circle,
@@ -510,7 +545,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 15,
-                              fontWeight: isOnBreak ? FontWeight.bold : FontWeight.w600,
+                              fontWeight: isOnBreak
+                                  ? FontWeight.bold
+                                  : FontWeight.w600,
                             ),
                           ),
                           if (!isOnBreak) ...[
@@ -545,13 +582,17 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: isOnBreak ? Colors.white : Colors.white.withOpacity(0.2),
+                          color: isOnBreak
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(30),
                         ),
                         child: Text(
                           isOnBreak ? "END" : "START",
                           style: TextStyle(
-                            color: isOnBreak ? const Color(0xFFF59E0B) : Colors.white,
+                            color: isOnBreak
+                                ? const Color(0xFFF59E0B)
+                                : Colors.white,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -588,22 +629,20 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(20),
-              boxShadow: isEnabled ? [
-                BoxShadow(
-                  color: iconColor.withOpacity(0.4),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ] : null,
+              boxShadow: isEnabled
+                  ? [
+                      BoxShadow(
+                        color: iconColor.withOpacity(0.4),
+                        blurRadius: 15,
+                        offset: const Offset(0, 5),
+                      ),
+                    ]
+                  : null,
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: iconColor,
-                  size: 22,
-                ),
+                Icon(icon, color: iconColor, size: 22),
                 const SizedBox(width: 8),
                 Text(
                   label,
@@ -646,22 +685,14 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
             label: "Days Present",
             color: const Color(0xFF135BEC),
           ),
-          Container(
-            height: 30,
-            width: 1,
-            color: Colors.grey.shade200,
-          ),
+          Container(height: 30, width: 1, color: Colors.grey.shade200),
           _buildStatItem(
             icon: Icons.beach_access,
             value: "2",
             label: "Leave Left",
             color: const Color(0xFFF59E0B),
           ),
-          Container(
-            height: 30,
-            width: 1,
-            color: Colors.grey.shade200,
-          ),
+          Container(height: 30, width: 1, color: Colors.grey.shade200),
           _buildStatItem(
             icon: Icons.timelapse,
             value: "8",
@@ -700,10 +731,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
         ),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 10,
-            color: Colors.grey.shade600,
-          ),
+          style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
         ),
       ],
     );
@@ -742,7 +770,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
               TextButton(
                 onPressed: () {},
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
                   minimumSize: Size.zero,
                 ),
                 child: const Text(
@@ -799,7 +830,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
       children: List.generate(activities.length, (index) {
         final activity = activities[index];
         final isLast = index == activities.length - 1;
-        
+
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -819,11 +850,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                   ),
                 ),
                 if (!isLast)
-                  Container(
-                    height: 30,
-                    width: 2,
-                    color: Colors.grey.shade200,
-                  ),
+                  Container(height: 30, width: 2, color: Colors.grey.shade200),
               ],
             ),
             const SizedBox(width: 16),
@@ -896,9 +923,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFE2E8F0),
-        ),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: Row(
         children: [
@@ -930,19 +955,13 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
                 const SizedBox(height: 4),
                 Text(
                   "Office HQ - Jl. Sudirman No. 123",
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade600,
-                  ),
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                 ),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xFF2ECC71).withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -1001,9 +1020,14 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
     );
   }
 
-  Widget _buildNavItem(IconData icon, String label, int index, {bool isCenter = false}) {
+  Widget _buildNavItem(
+    IconData icon,
+    String label,
+    int index, {
+    bool isCenter = false,
+  }) {
     final isSelected = _selectedIndex == index;
-    
+
     if (isCenter) {
       return GestureDetector(
         onTap: () {
@@ -1050,7 +1074,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
           children: [
             Icon(
               icon,
-              color: isSelected 
+              color: isSelected
                   ? const Color(0xFF135BEC)
                   : const Color(0xFF94A3B8),
               size: 22,
@@ -1061,7 +1085,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
               style: TextStyle(
                 fontSize: 10,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected 
+                color: isSelected
                     ? const Color(0xFF135BEC)
                     : const Color(0xFF64748B),
               ),
@@ -1079,11 +1103,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
       SnackBar(
         content: Row(
           children: [
-            Icon(
-              Icons.check_circle,
-              color: Colors.white,
-              size: 20,
-            ),
+            Icon(Icons.check_circle, color: Colors.white, size: 20),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -1098,9 +1118,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
         ),
         backgroundColor: color,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         duration: const Duration(seconds: 2),
         margin: const EdgeInsets.all(16),
       ),
@@ -1110,16 +1128,19 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
   void _showInfoSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          message,
-          style: const TextStyle(fontSize: 14),
+        content: Row(
+          children: [
+            const Icon(Icons.info, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 14)),
+            ),
+          ],
         ),
-        backgroundColor: const Color(0xFF64748B),
+        backgroundColor: const Color(0xFF135BEC),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
         margin: const EdgeInsets.all(16),
       ),
     );
@@ -1141,11 +1162,29 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage> with Sing
   String _getCurrentDate() {
     final now = DateTime.now();
     final months = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
-    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    
+    final days = [
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+      'Minggu',
+    ];
+
     return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 }

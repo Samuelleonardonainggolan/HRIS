@@ -25,6 +25,7 @@ func SetupRoutes(
 	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
 	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
 	overtimeRequestHandler *handler.OvertimeRequestHandler,
+	sseHandler *handler.SSEHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -125,6 +126,7 @@ func SetupRoutes(
 			}
 
 			protected.GET("/employees/my-department", middleware.ManagerDepartemenOnly(), userHandler.GetEmployeesMyDepartment)
+			protected.GET("/employees/search", userHandler.SearchEmployees)
 			protected.GET("/payroll/next-number", middleware.ManagerHROnly(), userHandler.GetNextPayrollNumber)
 
 			// EMPLOYEES (Admin Only)
@@ -201,6 +203,18 @@ func SetupRoutes(
 			// Check user location against geofence
 			protected.POST("/geofences/check", geofenceHandler.CheckUserInGeofence)
 
+			// MY OVERTIME REQUEST (Employee)
+			myOvertime := protected.Group("/my-overtime")
+			{
+				myOvertime.POST("", overtimeRequestHandler.Create)
+				myOvertime.GET("", overtimeRequestHandler.GetMine)
+				myOvertime.GET("/:id", overtimeRequestHandler.GetMineByID)
+				myOvertime.PUT("/:id", overtimeRequestHandler.UpdateMine)
+				myOvertime.DELETE("/:id", overtimeRequestHandler.DeleteMine)
+				myOvertime.POST("/:id/agree", overtimeRequestHandler.AgreeOvertimeRequest)
+				myOvertime.POST("/:id/reject", overtimeRequestHandler.RejectOvertimeRequest)
+			}
+
 			// OVERTIME REQUEST APPROVAL (Manager HR Only)
 			overtimeRequests := protected.Group("/overtime-requests")
 			overtimeRequests.Use(middleware.ManagerHROnly())
@@ -209,6 +223,7 @@ func SetupRoutes(
 				overtimeRequests.GET("/:id", overtimeRequestHandler.GetForManagerHR)
 				overtimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByManagerHR)
 				overtimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByManagerHR)
+				overtimeRequests.POST("/:id/publish-letter", overtimeRequestHandler.Publish)
 			}
 
 			// OVERTIME REQUEST APPROVAL (Kepala Departemen Only)
@@ -219,6 +234,9 @@ func SetupRoutes(
 				deptOvertimeRequests.GET("/:id", overtimeRequestHandler.GetForKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/approve", overtimeRequestHandler.ApproveByKepalaDepartemen)
 				deptOvertimeRequests.POST("/:id/reject", overtimeRequestHandler.RejectByKepalaDepartemen)
+				deptOvertimeRequests.POST("", overtimeRequestHandler.Create)
+				deptOvertimeRequests.POST("/:id/submit", overtimeRequestHandler.Submit)
+				deptOvertimeRequests.DELETE("/:id", overtimeRequestHandler.Delete)
 			}
 
 			// LEAVE REQUEST APPROVAL (Manager HR Only)
@@ -240,6 +258,14 @@ func SetupRoutes(
 				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
 				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
 			}
+		}
+
+		// REALTIME (SSE) — endpoint untuk real-time push notification ke Flutter
+		// Gunakan tanpa middleware AuthMiddleware karena token diambil dari query param
+		// (EventSource tidak support custom headers)
+		realtimeGroup := v1.Group("/realtime")
+		{
+			realtimeGroup.GET("/connect", sseHandler.Connect)
 		}
 	}
 }

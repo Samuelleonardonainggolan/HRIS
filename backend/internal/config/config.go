@@ -14,7 +14,7 @@ type Config struct {
 	MongoURI               string
 	DatabaseName           string
 	JWTSecret              string
-	JWTExpiry              string // Keep as string for '24h' format support
+	JWTExpiry              string 
 	FaceServiceURL         string
 	FaceAPIKey             string
 	FaceHTTPTimeout        string
@@ -33,8 +33,8 @@ func LoadConfig() *Config {
 		log.Println("Warning: .env file not found, using environment variables")
 	}
 
-	// Gunakan string langsung agar support format "24h", "60m", dll.
-	jwtExpiryStr := getEnv("JWT_EXPIRY", "24h")
+	
+	jwtExpiryStr := getEnv("JWT_EXPIRY", "4h")
 
 	return &Config{
 		ServerPort:             getEnv("SERVER_PORT", "8080"),

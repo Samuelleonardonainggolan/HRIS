@@ -1,4 +1,4 @@
-// lib/pages/new_request_page.dart
+﻿// lib/pages/new_request_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -11,15 +11,14 @@ class NewRequestPage extends StatefulWidget {
 }
 
 class _NewRequestPageState extends State<NewRequestPage> {
-  // ─── State tipe pengajuan dari API ─────────────────────────────────────────
+  // ─── State tipe pengajuan dari API ───────────────────────────────────────
   List<TipePengajuan> _allTipes = [];
   TipePengajuan? _selectedTipe;
   bool _isLoadingTipes = true;
   String? _tipeError;
 
-  // 'Izin' | 'Cuti' | 'Lembur'
+  // 'Izin' | 'Cuti'
   // Kategori ini dipakai untuk filter tampilan form.
-  // Saat tipe dipilih dari API, kategori akan mengikuti tipe tersebut.
   String _category = 'Izin';
 
   // Common
@@ -31,37 +30,12 @@ class _NewRequestPageState extends State<NewRequestPage> {
   bool _isLoadingLeaveQuota = true;
   int _remainingLeaveQuota = 0;
 
-  // Lembur-only
-  TimeOfDay _startTime = const TimeOfDay(hour: 17, minute: 0);
-  TimeOfDay _endTime = const TimeOfDay(hour: 20, minute: 0);
-  String _compensation = 'Upah';
-
   final _fmt = DateFormat('MM/dd/yyyy');
 
   int get _days => _endDate.difference(_startDate).inDays + 1;
 
-  int get _lemburMins {
-    final s = _startTime.hour * 60 + _startTime.minute;
-    final e = _endTime.hour * 60 + _endTime.minute;
-    return e > s ? e - s : 0;
-  }
-
-  String get _lemburStr {
-    final h = _lemburMins ~/ 60;
-    final m = _lemburMins % 60;
-    return m == 0 ? '$h Jam 00 Menit' : '$h Jam $m Menit';
-  }
-
-  String get _kompensasiStr {
-    final rp = _lemburMins * 10000 ~/ 60;
-    if (_compensation == 'Upah')
-      return 'Rp ${NumberFormat('#,###', 'id').format(rp)}';
-    return '${(_lemburMins / 60).toStringAsFixed(1)} Jam Cuti';
-  }
-
-  // ─── Filtered tipe berdasarkan kategori ────────────────────────────────────
+  // ─── Filtered tipe berdasarkan kategori ──────────────────────────────────
   List<TipePengajuan> get _filteredTipes {
-    if (_category == 'Lembur') return [];
     return _allTipes.where((t) => t.namaKategori == _category).toList();
   }
 
@@ -120,9 +94,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
 
   Future<void> _pickDate({required bool isStart}) async {
     final minStartDate = _minimumStartDateForCurrentType();
-    final firstAllowedDate = isStart
-        ? (_category == 'Lembur' ? DateTime.now() : minStartDate)
-        : _startDate;
+    final firstAllowedDate = isStart ? minStartDate : _startDate;
     final normalizedFirst = DateTime(
       firstAllowedDate.year,
       firstAllowedDate.month,
@@ -158,26 +130,6 @@ class _NewRequestPageState extends State<NewRequestPage> {
     });
   }
 
-  Future<void> _pickTime({required bool isStart}) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: isStart ? _startTime : _endTime,
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.light(primary: Color(0xFF135BEC)),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked == null) return;
-    setState(() {
-      if (isStart)
-        _startTime = picked;
-      else
-        _endTime = picked;
-    });
-  }
-
   Future<void> _pickFile() async {
     final res = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -192,7 +144,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
       return;
     }
 
-    if (_category != 'Lembur' && _selectedTipe == null) {
+    if (_selectedTipe == null) {
       _showSnack('Pilih tipe pengajuan terlebih dahulu', isError: true);
       return;
     }
@@ -214,18 +166,6 @@ class _NewRequestPageState extends State<NewRequestPage> {
     setState(() => _submitting = true);
 
     try {
-      if (_category == 'Lembur') {
-        // ── Lembur: belum ada endpoint khusus di backend, kirim sebagai pengajuan
-        // dengan tipe "Lembur" jika ada, atau tampilkan informasi sementara.
-        // TODO: sesuaikan dengan endpoint lembur backend Anda
-        await Future.delayed(const Duration(seconds: 1));
-        if (mounted) {
-          Navigator.pop(context, true);
-          _showSnack('Pengajuan Lembur berhasil dikirim');
-        }
-        return;
-      }
-
       final dateFormat = DateFormat('yyyy-MM-dd');
       if (_endDate.isBefore(_startDate)) {
         _showSnack(
@@ -340,37 +280,23 @@ class _NewRequestPageState extends State<NewRequestPage> {
             const SizedBox(height: 20),
 
             // ── Tipe pengajuan dari API ──
-            if (_category != 'Lembur') ...[
-              _sectionLabel('Tipe Pengajuan'),
-              _tipeSelector(),
-              const SizedBox(height: 20),
-            ],
+            _sectionLabel('Tipe Pengajuan'),
+            _tipeSelector(),
+            const SizedBox(height: 20),
 
-            if (_requiresQuotaDeduction) ...[
+            if (_showQuotaInfoCard) ...[
               _quotaInfoCard(),
               const SizedBox(height: 20),
             ],
 
-            if (_category == 'Lembur') _lemburFields(),
-            if (_category != 'Lembur') _leaveFields(),
+            _leaveFields(),
             const SizedBox(height: 20),
 
-            _sectionLabel(
-              _category == 'Lembur' ? 'Alasan / Deskripsi Pekerjaan' : 'Alasan',
-            ),
+            _sectionLabel('Alasan'),
             _reasonField(),
 
-            if (_category != 'Lembur') ...[
-              const SizedBox(height: 20),
-              _attachmentField(),
-            ],
-
-            if (_category == 'Lembur') ...[
-              const SizedBox(height: 20),
-              _compensationSection(),
-              const SizedBox(height: 16),
-              _lemburSummary(),
-            ],
+            const SizedBox(height: 20),
+            _attachmentField(),
 
             const SizedBox(height: 32),
             _submitBtn(),
@@ -396,9 +322,9 @@ class _NewRequestPageState extends State<NewRequestPage> {
     ),
   );
 
-  // ── Selector kategori (Izin / Cuti / Lembur) ──────────────────────────────
+  // ── Selector kategori (Izin / Cuti) ────────────────────────────────────
   Widget _categorySelector() {
-    final categories = ['Izin', 'Cuti', 'Lembur'];
+    final categories = ['Izin', 'Cuti'];
     return Row(
       children: categories.map((cat) {
         final sel = _category == cat;
@@ -423,7 +349,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              margin: EdgeInsets.only(right: cat != 'Lembur' ? 8 : 0),
+              margin: EdgeInsets.only(right: cat != categories.last ? 8 : 0),
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
                 color: sel ? const Color(0xFF135BEC) : Colors.white,
@@ -433,7 +359,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
+                    color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 6,
                   ),
                 ],
@@ -454,7 +380,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
     );
   }
 
-  // ── Selector tipe dari API ─────────────────────────────────────────────────
+  // ── Selector tipe dari API ──────────────────────────────────────────────
   Widget _tipeSelector() {
     if (_isLoadingTipes) {
       return Container(
@@ -541,7 +467,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -573,12 +499,12 @@ class _NewRequestPageState extends State<NewRequestPage> {
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      if (t.potongKuota || t.wajibLampiran)
+                      if ((_category == 'Cuti' && t.potongKuota) || t.wajibLampiran)
                         Row(
                           children: [
-                            if (t.potongKuota)
+                            if (_category == 'Cuti' && t.potongKuota)
                               _badge('Potong Kuota', const Color(0xFFF59E0B)),
-                            if (t.potongKuota && t.wajibLampiran)
+                            if (_category == 'Cuti' && t.potongKuota && t.wajibLampiran)
                               const SizedBox(width: 4),
                             if (t.wajibLampiran)
                               _badge('Wajib Lampiran', const Color(0xFFEF4444)),
@@ -612,7 +538,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
       margin: const EdgeInsets.only(top: 2),
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
@@ -642,7 +568,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
           ),
           child: Text(
             _isCurrentTypeSick()
-                ? 'Izin sakit dapat diajukan mulai hari ini.'
+                ? 'Izin sakit dapat diajukan hari ini.'
                 : 'Pengajuan untuk tipe ini hanya bisa diajukan minimal H-2.',
             style: TextStyle(
               fontSize: 12,
@@ -706,7 +632,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
                   color: Color(0xFF135BEC),
                 ),
               ),
-              if (_selectedTipe?.potongKuota == true) ...[
+              if (_selectedTipe?.potongKuota == true && _category == 'Cuti') ...[
                 const Spacer(),
                 const Icon(
                   Icons.info_outline_rounded,
@@ -727,7 +653,11 @@ class _NewRequestPageState extends State<NewRequestPage> {
   }
 
   bool get _requiresQuotaDeduction {
-    return _category != 'Lembur' && (_selectedTipe?.potongKuota ?? false);
+    return _category == 'Cuti' && (_selectedTipe?.potongKuota ?? false);
+  }
+
+  bool get _showQuotaInfoCard {
+    return _category == 'Cuti' && _requiresQuotaDeduction;
   }
 
   Widget _quotaInfoCard() {
@@ -822,7 +752,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
 
   DateTime _minimumStartDateForCurrentType() {
     final now = DateTime.now();
-    if (_category == 'Lembur' || _isCurrentTypeSick()) {
+    if (_isCurrentTypeSick()) {
       return DateTime(now.year, now.month, now.day);
     }
     final min = now.add(const Duration(days: 2));
@@ -832,46 +762,6 @@ class _NewRequestPageState extends State<NewRequestPage> {
   bool _isCurrentTypeSick() {
     final typeName = _selectedTipe?.namaTipe.toLowerCase() ?? '';
     return typeName.contains('sakit');
-  }
-
-  Widget _lemburFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _sectionLabel('Tanggal'),
-        _dateBox(_fmt.format(_startDate), () => _pickDate(isStart: true)),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionLabel('Jam Mulai'),
-                  _timeBox(
-                    _startTime.format(context),
-                    () => _pickTime(isStart: true),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _sectionLabel('Jam Selesai'),
-                  _timeBox(
-                    _endTime.format(context),
-                    () => _pickTime(isStart: false),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
   }
 
   Widget _dateBox(String label, VoidCallback onTap) {
@@ -884,45 +774,13 @@ class _NewRequestPageState extends State<NewRequestPage> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade200),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6),
           ],
         ),
         child: Row(
           children: [
             const Icon(
               Icons.calendar_today_rounded,
-              size: 16,
-              color: Color(0xFF135BEC),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _timeBox(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.access_time_rounded,
               size: 16,
               color: Color(0xFF135BEC),
             ),
@@ -953,9 +811,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
         maxLines: 4,
         style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
         decoration: InputDecoration(
-          hintText: _category == 'Lembur'
-              ? 'Jelaskan detail pekerjaan yang dilakukan saat lembur...'
-              : 'Jelaskan secara singkat alasan pengajuan ${_category.toLowerCase()} Anda...',
+          hintText: 'Jelaskan secara singkat alasan pengajuan ${_category.toLowerCase()} Anda...',
           hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
@@ -996,7 +852,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
                 color: _file != null
                     ? const Color(0xFF135BEC)
                     : (wajib
-                          ? const Color(0xFFEF4444).withOpacity(0.4)
+                          ? const Color(0xFFEF4444).withValues(alpha: 0.4)
                           : Colors.grey.shade200),
                 width: _file != null || wajib ? 1.5 : 1,
               ),
@@ -1091,201 +947,35 @@ class _NewRequestPageState extends State<NewRequestPage> {
     );
   }
 
-  Widget _compensationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 8),
-          child: Text(
-            'OPSI KOMPENSASI',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF64748B),
-              letterSpacing: 0.8,
-            ),
-          ),
-        ),
-        ...['Upah', 'Cuti'].map((opt) {
-          final sel = _compensation == opt;
-          return GestureDetector(
-            onTap: () => setState(() => _compensation = opt),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: sel ? const Color(0xFF135BEC) : Colors.grey.shade200,
-                  width: sel ? 1.5 : 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 8,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    height: 20,
-                    width: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: sel
-                            ? const Color(0xFF135BEC)
-                            : Colors.grey.shade400,
-                        width: 2,
-                      ),
-                      color: sel ? const Color(0xFF135BEC) : Colors.transparent,
-                    ),
-                    child: sel
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: Colors.white,
-                            size: 12,
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        opt == 'Upah'
-                            ? 'Upah Lembur (Uang)'
-                            : 'Pertukaran Jam Kerja (Cuti/Off)',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      Text(
-                        opt == 'Upah'
-                            ? 'Kompensasi dibayarkan dalam bentuk uang'
-                            : 'Ganti waktu lembur dengan pengurangan jam kerja',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ],
-    );
-  }
-
-  Widget _lemburSummary() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10),
-        ],
-      ),
-      child: Column(
-        children: [
-          _summaryRow(
-            Icons.timelapse_rounded,
-            'Total Durasi',
-            _lemburStr,
-            const Color(0xFF135BEC),
-          ),
-          const SizedBox(height: 8),
-          _summaryRow(
-            Icons.payments_rounded,
-            'Estimasi Kompensasi',
-            _kompensasiStr,
-            const Color(0xFF2ECC71),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryRow(IconData icon, String label, String value, Color color) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _submitBtn() {
-    final quotaBlocked =
-        _requiresQuotaDeduction && _days > _remainingLeaveQuota;
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: (_submitting || quotaBlocked) ? null : _submit,
+        onPressed: _submitting ? null : _submit,
         style: ElevatedButton.styleFrom(
-          backgroundColor: quotaBlocked
-              ? const Color(0xFF94A3B8)
-              : const Color(0xFF135BEC),
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          backgroundColor: const Color(0xFF135BEC),
+          disabledBackgroundColor: Colors.grey.shade300,
+          padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          elevation: 0,
         ),
         child: _submitting
             ? const SizedBox(
-                height: 20,
-                width: 20,
+                height: 18,
+                width: 18,
                 child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    'Kirim Pengajuan',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.send_rounded, size: 14),
-                  ),
-                ],
+            : const Text(
+                'Kirim Pengajuan',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
       ),
     );
@@ -1294,17 +984,21 @@ class _NewRequestPageState extends State<NewRequestPage> {
   Widget _cancelBtn() {
     return SizedBox(
       width: double.infinity,
-      child: TextButton(
+      child: OutlinedButton(
         onPressed: () => Navigator.pop(context),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.grey.shade300),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
         child: Text(
           'Batal',
           style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade500,
-            fontWeight: FontWeight.w500,
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade600,
           ),
         ),
       ),

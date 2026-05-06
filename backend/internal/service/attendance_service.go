@@ -39,6 +39,7 @@ type AttendanceService interface {
 	ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
 	GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error)
 	GetWorkScheduleInfo(ctx context.Context, userID string) (*WorkScheduleInfo, error)
+	SetWSHub(hub *WSHub) // inject WSHub untuk real-time broadcast
 	// Manager-only: rekap presensi & export CSV
 	GetManagerAttendance(ctx context.Context, from, to time.Time, departmentName, q string, page, pageSize int64) (*models.ManagerAttendanceListResponse, error)
 	ExportManagerAttendanceCSV(ctx context.Context, from, to time.Time, departmentName, q string) ([]byte, string, error)
@@ -71,9 +72,8 @@ type BreakWindow struct {
 }
 
 var allowedBreakWindows = []BreakWindow{
-	{StartHour: 7, EndHour: 8},
 	{StartHour: 12, EndHour: 13},
-	{StartHour: 19, EndHour: 20},
+	{StartHour: 18, EndHour: 19},
 }
 
 func formatBreakWindowRange(w BreakWindow) string {
@@ -146,6 +146,7 @@ type attendanceService struct {
 	jamKerjaRepo      repository.JamKerjaRepository
 	geofenceRepo      repository.GeofenceRepository // dari V2: dynamic geofence
 	faceClient        *faceclient.Client
+	wsHub             *WSHub // untuk broadcast real-time events
 	// dari V1: fallback statis jika DB geofence kosong
 	officeLat    float64
 	officeLng    float64
@@ -173,11 +174,17 @@ func NewAttendanceService(
 		jamKerjaRepo:      jamKerjaRepo,
 		geofenceRepo:      geofenceRepo,
 		faceClient:        faceClient,
+		wsHub:             nil, // set via SetWSHub jika diperlukan
 		// Fallback statis (Labersa Hotel) digunakan jika tidak ada geofence aktif di DB
 		officeLat:    2.3561,
 		officeLng:    99.1431,
 		radiusMeters: 10000,
 	}
+}
+
+// SetWSHub mengatur WebSocket hub untuk broadcast real-time events.
+func (s *attendanceService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 func (s *attendanceService) hasApprovedLeaveToday(ctx context.Context, userID primitive.ObjectID) (*models.LeaveRequest, error) {
@@ -263,10 +270,18 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
-	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+	// Clock out window: tutup 6 jam setelah jam pulang (bukan 30 menit)
+	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
+
+	// Cek apakah user sudah clock in hari ini untuk canClockOut
+	hasClockIn := false
+	if todayAtt, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID); todayAtt != nil && todayAtt.ClockInTime != nil {
+		hasClockIn = true
+	}
 
 	canClockIn := isWorkDay && !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(endTimeToday)
-	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
+	// Clock out bisa dilakukan sejak clock in hingga 6 jam setelah jam pulang
+	canClockOut := isWorkDay && hasClockIn && !nowWIB.After(clockOutWindowClose)
 
 	message := s.buildScheduleMessage(isWorkDay, canClockIn, canClockOut, nowWIB, clockInWindowOpen, clockOutWindowClose)
 	if leaveToday != nil {
@@ -278,7 +293,7 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	info.TodaySchedule = &TodaySchedule{
 		IsWorkDay:      isWorkDay,
 		ClockInWindow:  clockInWindowOpen.Format("15:04") + " - " + endTimeToday.Format("15:04"),
-		ClockOutWindow: endTimeToday.Format("15:04") + " - " + clockOutWindowClose.Format("15:04"),
+		ClockOutWindow: "Sejak Clock In - " + clockOutWindowClose.Format("15:04"),
 		CanClockIn:     canClockIn,
 		CanClockOut:    canClockOut,
 		Message:        message,
@@ -324,10 +339,18 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
-	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+	// Clock out window: tutup 6 jam setelah jam pulang
+	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
+
+	// Cek apakah user sudah clock in hari ini
+	hasClockIn := false
+	if todayAtt, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID); todayAtt != nil && todayAtt.ClockInTime != nil {
+		hasClockIn = true
+	}
 
 	canClockIn := isWorkDay && !nowWIB.Before(clockInWindowOpen) && !nowWIB.After(endTimeToday)
-	canClockOut := isWorkDay && !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
+	// Clock out bisa dilakukan sejak clock in hingga 6 jam setelah jam pulang
+	canClockOut := isWorkDay && hasClockIn && !nowWIB.After(clockOutWindowClose)
 
 	message := s.buildScheduleMessage(isWorkDay, canClockIn, canClockOut, nowWIB, clockInWindowOpen, clockOutWindowClose)
 	if leaveToday != nil {
@@ -339,7 +362,7 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	info.TodaySchedule = &TodayScheduleInfoResponse{
 		IsWorkDay:      isWorkDay,
 		ClockInWindow:  clockInWindowOpen.Format("15:04") + " - " + endTimeToday.Format("15:04"),
-		ClockOutWindow: endTimeToday.Format("15:04") + " - " + clockOutWindowClose.Format("15:04"),
+		ClockOutWindow: "Sejak Clock In - " + clockOutWindowClose.Format("15:04"),
 		CanClockIn:     canClockIn,
 		CanClockOut:    canClockOut,
 		Message:        message,
@@ -420,10 +443,19 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 		return false, jamKerja, errors.New("hari ini bukan hari kerja")
 	}
 
+	// ValidateClockOutWindow: window buka sejak clock in, tutup 6 jam setelah jam pulang
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
-	clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+	// Clock out window tutup 6 jam setelah jam pulang kerja
+	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
 
-	isInWindow := !nowWIB.Before(endTimeToday) && !nowWIB.After(clockOutWindowClose)
+	// Cek apakah user sudah clock in hari ini
+	existingAtt, _ := s.attendanceRepo.FindTodayByUserID(ctx, userObjID)
+	if existingAtt == nil || existingAtt.ClockInTime == nil {
+		return false, jamKerja, errors.New("belum melakukan clock in hari ini")
+	}
+
+	// Window terbuka: sejak clock in, sampai 6 jam setelah jam pulang
+	isInWindow := !nowWIB.After(clockOutWindowClose)
 	return isInWindow, jamKerja, nil
 }
 
@@ -530,12 +562,12 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 	if !isInWindow {
 		nowWIB := time.Now().In(wib)
 		endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
-		clockOutWindowClose := endTimeToday.Add(30 * time.Minute)
+		clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
 		var message string
-		if nowWIB.Before(endTimeToday) {
-			message = "jendela clock out belum dibuka (buka pada " + endTimeToday.Format("15:04") + " WIB)"
-		} else if nowWIB.After(clockOutWindowClose) {
-			message = "jendela clock out sudah tutup (buka kembali besok jam " + endTimeToday.Format("15:04") + " WIB)"
+		if nowWIB.After(clockOutWindowClose) {
+			message = "jendela clock out sudah tutup (buka kembali setelah clock in besok)"
+		} else {
+			message = "clock out hanya dapat dilakukan setelah clock in"
 		}
 		return nil, errors.New(message)
 	}
@@ -603,7 +635,7 @@ func (s *attendanceService) StartBreak(ctx context.Context, userID string) (*mod
 	nowWIB := time.Now().In(wib)
 	inWindow, _ := isInAllowedBreakWindow(nowWIB)
 	if !inWindow {
-		return nil, fmt.Errorf("break hanya dapat dimulai pada jam %s WIB", formatAllowedBreakWindows())
+		return nil, fmt.Errorf("istirahat hanya dapat dimulai pada jam %s WIB", formatAllowedBreakWindows())
 	}
 
 	activeBreak, err := s.breakTimeRepo.FindActiveTodayByUserID(ctx, userID)
@@ -668,7 +700,7 @@ func (s *attendanceService) EndBreak(ctx context.Context, userID string) (*model
 	nowWIB := time.Now().In(wib)
 	inWindow, _ := isInAllowedBreakWindow(nowWIB)
 	if !inWindow {
-		return nil, fmt.Errorf("break hanya dapat diakhiri pada jam %s WIB", formatAllowedBreakWindows())
+		return nil, fmt.Errorf("istirahat hanya dapat diakhiri pada jam %s WIB", formatAllowedBreakWindows())
 	}
 
 	if err := s.breakTimeRepo.UpdateEnd(ctx, breakRecord.ID, nowWIB, "DONE"); err != nil {
@@ -912,6 +944,18 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		actionMsg = "Clock Out"
 	}
 	fmt.Printf("✅ [SUCCESS] %s disimpan — Status: %s\n", actionMsg, attendance.Status)
+
+	// 8. Broadcast real-time event ke client Flutter yang sedang subscribe
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(resolvedUserID, WSEventAttendanceUpdated, map[string]any{
+			"record_type": recordType,
+			"status":      attendance.Status,
+			"message":     actionMsg + " berhasil dicatat",
+		})
+		s.wsHub.BroadcastToUser(resolvedUserID, WSEventStatsUpdated, map[string]any{
+			"reason": "attendance_changed",
+		})
+	}
 
 	return &AttendanceProcessResult{
 		Success: true, Message: actionMsg + " berhasil dicatat",

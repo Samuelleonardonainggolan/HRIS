@@ -490,6 +490,30 @@ class EmployeeService {
       throw error;
     }
   }
+
+  async searchEmployees(q: string, exclude: string[] = [], departmentId?: string): Promise<User[]> {
+    try {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (departmentId) params.set('department_id', departmentId);
+      exclude.forEach(id => params.append('exclude', id));
+
+      const response = await fetch(`${API_BASE}/employees/search?${params.toString()}`, {
+        method: 'GET',
+        headers: authService.getAuthHeaders(),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Gagal mencari karyawan');
+      }
+
+      return data.data || [];
+    } catch (error) {
+      console.error('Search employees error:', error);
+      throw error;
+    }
+  }
 }
 
 export const employeeService = new EmployeeService();

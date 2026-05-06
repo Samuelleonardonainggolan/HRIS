@@ -28,6 +28,7 @@ type UserService interface {
 	DeleteEmployee(ctx context.Context, id string) error
 	ImportEmployees(ctx context.Context, employees []models.CreateEmployeeRequest) (int, []string, error)
 	GenerateNextPayrollNumber(ctx context.Context) (string, error)
+	SearchEmployees(ctx context.Context, q string, excludeIDs []string, departmentID string) ([]models.UserResponse, error)
 }
 
 type userService struct {
@@ -432,4 +433,26 @@ func (s *userService) GenerateNextPayrollNumber(ctx context.Context) (string, er
 	}
 
 	return fmt.Sprintf("PAY%03d", maxNum+1), nil
+}
+
+func (s *userService) SearchEmployees(ctx context.Context, q string, excludeIDs []string, departmentID string) ([]models.UserResponse, error) {
+	excludeOIDs := make([]primitive.ObjectID, 0, len(excludeIDs))
+	for _, id := range excludeIDs {
+		oid, err := primitive.ObjectIDFromHex(id)
+		if err == nil {
+			excludeOIDs = append(excludeOIDs, oid)
+		}
+	}
+
+	users, err := s.userRepo.FindActiveExcludeIDsWithSearch(ctx, excludeOIDs, q, departmentID)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]models.UserResponse, 0, len(users))
+	for _, u := range users {
+		responses = append(responses, u.ToResponse())
+	}
+
+	return responses, nil
 }

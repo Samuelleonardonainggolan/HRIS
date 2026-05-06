@@ -184,7 +184,7 @@ func (s *faceService) ExtractEmbeddingOnly(ctx context.Context, userID string, p
 	embedding, err := s.faceClient.ExtractEmbedding(userID, photo, filename)
 	if err != nil {
 		log.Printf("[FaceService] ExtractEmbedding error: %v", err)
-		return nil, fmt.Errorf("extract embedding failed: %w", err)
+		return nil, fmt.Errorf("gagal mengekstrak embedding: %w", err)
 	}
 
 	if len(embedding) == 0 {
@@ -258,7 +258,7 @@ func (s *faceService) ProcessAttendance(
 				Matched:    false,
 				Similarity: similarity,
 				Threshold:  0.75,
-				Message:    "Face verification failed",
+				Message:    "Verifikasi wajah gagal",
 			},
 		}, nil
 	}

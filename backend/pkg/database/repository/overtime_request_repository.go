@@ -16,8 +16,9 @@ type OvertimeRequestRepository interface {
 	FindByID(ctx context.Context, id string) (*models.OvertimeRequest, error)
 	Find(ctx context.Context, filter bson.M) ([]models.OvertimeRequest, error)
 	Create(ctx context.Context, req *models.OvertimeRequest) (*models.OvertimeRequest, error)
-	UpdateKepalaDepartemenDecision(ctx context.Context, id string, kepalaID primitive.ObjectID, status string, finalStatus string, rejectionReason string) (*models.OvertimeRequest, error)
-	UpdateManagerHRDecision(ctx context.Context, id string, managerHRID primitive.ObjectID, status string, finalStatus string, rejectionReason string) (*models.OvertimeRequest, error)
+	Update(ctx context.Context, id string, updates bson.M) (*models.OvertimeRequest, error)
+	Delete(ctx context.Context, id string) error
+	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, status string, rejectionNote string) error
 }
 
 type overtimeRequestRepository struct {
@@ -51,7 +52,7 @@ func (r *overtimeRequestRepository) Find(ctx context.Context, filter bson.M) ([]
 		filter = bson.M{}
 	}
 
-	opts := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
+	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}, {Key: "created_at", Value: -1}})
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, err
@@ -70,14 +71,8 @@ func (r *overtimeRequestRepository) Create(ctx context.Context, req *models.Over
 	now := time.Now()
 	req.CreatedAt = now
 	req.UpdatedAt = now
-	if req.StatusKepalaDepartemen == "" {
-		req.StatusKepalaDepartemen = models.StatusPending
-	}
-	if req.StatusManagerHR == "" {
-		req.StatusManagerHR = models.StatusPending
-	}
-	if req.FinalStatus == "" {
-		req.FinalStatus = models.StatusPending
+	if req.Status == "" {
+		req.Status = models.StatusDraft
 	}
 
 	result, err := r.collection.InsertOne(ctx, req)
@@ -89,38 +84,21 @@ func (r *overtimeRequestRepository) Create(ctx context.Context, req *models.Over
 	return req, nil
 }
 
-func (r *overtimeRequestRepository) UpdateKepalaDepartemenDecision(
-	ctx context.Context,
-	id string,
-	kepalaID primitive.ObjectID,
-	status string,
-	finalStatus string,
-	rejectionReason string,
-) (*models.OvertimeRequest, error) {
+func (r *overtimeRequestRepository) Update(ctx context.Context, id string, updates bson.M) (*models.OvertimeRequest, error) {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
 		return nil, errors.New("invalid overtime request ID")
 	}
 
-	now := time.Now()
-	filter := bson.M{"_id": objectID, "status_kepala_departemen": models.StatusPending}
-	setFields := bson.M{
-		"kepala_departemen_id":     kepalaID,
-		"status_kepala_departemen": status,
-		"final_status":             finalStatus,
-		"updated_at":               now,
-	}
-	if status == models.StatusRejected && rejectionReason != "" {
-		setFields["rejection_reason_kepala_dept"] = rejectionReason
-	}
-	update := bson.M{"$set": setFields}
+	updates["updated_at"] = time.Now()
+	update := bson.M{"$set": updates}
 	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 
 	var updated models.OvertimeRequest
-	err = r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
+	err = r.collection.FindOneAndUpdate(ctx, bson.M{"_id": objectID}, update, opts).Decode(&updated)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("pengajuan lembur sudah diproses atau bukan wewenang Anda")
+			return nil, errors.New("pengajuan lembur tidak ditemukan")
 		}
 		return nil, err
 	}
@@ -128,41 +106,57 @@ func (r *overtimeRequestRepository) UpdateKepalaDepartemenDecision(
 	return &updated, nil
 }
 
-func (r *overtimeRequestRepository) UpdateManagerHRDecision(
-	ctx context.Context,
-	id string,
-	managerHRID primitive.ObjectID,
-	status string,
-	finalStatus string,
-	rejectionReason string,
-) (*models.OvertimeRequest, error) {
+func (r *overtimeRequestRepository) Delete(ctx context.Context, id string) error {
 	objectID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
-		return nil, errors.New("invalid overtime request ID")
+		return errors.New("invalid overtime request ID")
+	}
+
+	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objectID, "status": models.StatusDraft})
+	if err != nil {
+		return err
+	}
+
+	if result.DeletedCount == 0 {
+		return errors.New("pengajuan lembur tidak ditemukan atau tidak dapat dihapus (sudah submitted/published)")
+	}
+
+	return nil
+}
+
+func (r *overtimeRequestRepository) UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, status string, rejectionNote string) error {
+	oid, err := primitive.ObjectIDFromHex(overtimeID)
+	if err != nil {
+		return errors.New("invalid overtime ID")
+	}
+	uoid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return errors.New("invalid user ID")
+	}
+
+	filter := bson.M{
+		"_id":               oid,
+		"employees.user_id": uoid,
 	}
 
 	now := time.Now()
-	filter := bson.M{"_id": objectID, "status_manager_hr": models.StatusPending}
-	setFields := bson.M{
-		"manager_hr_id":     managerHRID,
-		"status_manager_hr": status,
-		"final_status":      finalStatus,
-		"updated_at":        now,
+	update := bson.M{
+		"$set": bson.M{
+			"employees.$.employee_status": status,
+			"employees.$.rejection_note":  rejectionNote,
+			"employees.$.confirmed_at":    &now,
+			"updated_at":                 now,
+		},
 	}
-	if status == models.StatusRejected && rejectionReason != "" {
-		setFields["rejection_reason_manager_hr"] = rejectionReason
-	}
-	update := bson.M{"$set": setFields}
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
 
-	var updated models.OvertimeRequest
-	err = r.collection.FindOneAndUpdate(ctx, filter, update, opts).Decode(&updated)
+	result, err := r.collection.UpdateOne(ctx, filter, update)
 	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, errors.New("pengajuan lembur sudah diproses")
-		}
-		return nil, err
+		return err
 	}
 
-	return &updated, nil
+	if result.ModifiedCount == 0 {
+		return errors.New("karyawan tidak ditemukan dalam pengajuan lembur ini")
+	}
+
+	return nil
 }

@@ -6,6 +6,7 @@ import 'package:mobile_app/pages/face_attendance_page.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
+import 'package:mobile_app/services/sse_service.dart';
 
 class EmployeeDashboardPage extends StatefulWidget {
   const EmployeeDashboardPage({super.key});
@@ -37,6 +38,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   // Real-time clock
   late Timer _clockTimer;
   Timer? _statsRefreshTimer;
+  StreamSubscription? _sseSubscription;
 
   // Break state
   bool isOnBreak = false;
@@ -84,6 +86,22 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
     _statsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) {
+        _loadMonthlyStats();
+      }
+    });
+
+    _setupSSE();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted) return;
+      // Refresh data jika ada update terkait absensi, pengajuan, atau statistik
+      if (event.type == 'attendance_updated' ||
+          event.type == 'leave_updated' ||
+          event.type == 'stats_updated') {
+        _loadTodayAttendance();
+        _loadWorkScheduleInfo();
         _loadMonthlyStats();
       }
     });
@@ -347,7 +365,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           type == 'clock_in' ? "✓ Clock In Berhasil" : "✓ Clock Out Berhasil",
           type == 'clock_in'
               ? const Color(0xFF2ECC71)
-              : const Color(0xFFEF4444),
+              : const Color(0xFF2ECC71),
         );
       }
     }
@@ -368,6 +386,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     ApiService.currentUser.removeListener(_syncProfile);
     _breakTimer?.cancel();
     _animationController.dispose();
+    _sseSubscription?.cancel();
     super.dispose();
   }
 
@@ -445,6 +464,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         !hasClockedOut &&
         !_isLoadingAttendance;
 
+    // Clock out: bisa sejak clock in, hingga 6 jam setelah jam pulang
+    // Backend mengirimkan canClockOut=true jika user sudah clock in dan belum melewati window
     bool canClockOut =
         (_workScheduleInfo?.todaySchedule?.canClockOut ?? false) &&
         isClockedIn &&
@@ -1572,11 +1593,19 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   void _showInfoSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontSize: 14)),
-        backgroundColor: const Color(0xFF64748B),
+        content: Row(
+          children: [
+            const Icon(Icons.info, color: Colors.white, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(message, style: const TextStyle(fontSize: 14)),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF135BEC),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 1),
+        duration: const Duration(seconds: 3),
         margin: const EdgeInsets.all(16),
       ),
     );

@@ -23,16 +23,23 @@ type PengajuanIzinCutiService interface {
 	ApproveByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	GetLeaveBalance(ctx context.Context, userID string) (*models.LeaveBalanceResponse, error)
+	SetWSHub(hub *WSHub) // inject WSHub untuk real-time broadcast
 }
 
 type pengajuanIzinCutiService struct {
 	pengajuanRepo repository.PengajuanIzinCutiRepository
 	userRepo      repository.UserRepository
 	db            *mongo.Database
+	wsHub         *WSHub // untuk broadcast real-time events
 }
 
 func NewPengajuanIzinCutiService(pengajuanRepo repository.PengajuanIzinCutiRepository, userRepo repository.UserRepository, db *mongo.Database) PengajuanIzinCutiService {
-	return &pengajuanIzinCutiService{pengajuanRepo: pengajuanRepo, userRepo: userRepo, db: db}
+	return &pengajuanIzinCutiService{pengajuanRepo: pengajuanRepo, userRepo: userRepo, db: db, wsHub: nil}
+}
+
+// SetWSHub mengatur WebSocket hub untuk broadcast real-time events.
+func (s *pengajuanIzinCutiService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 func (s *pengajuanIzinCutiService) ListForManagerHR(ctx context.Context, status string, search string) ([]models.PengajuanIzinCutiApprovalResponse, error) {
@@ -236,6 +243,20 @@ func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context,
 		return &resp, nil
 	}
 	resp := s.toApprovalResponse(*updated, true, u)
+
+	// Broadcast real-time event
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(updated.UserID.Hex(), WSEventLeaveUpdated, map[string]any{
+			"action":  "status_updated",
+			"status":  updated.StatusKepalaDepartemen,
+			"message": "Pengajuan Anda telah di-review Kepala Departemen",
+		})
+		// Notifikasi ke manager lain (agar list terupdate)
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "leave_request_processed",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -267,23 +288,31 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 	}
 
 	if strings.ToUpper(updated.FinalStatus) == models.StatusApproved && !updated.UserID.IsZero() {
-		leaveBalance, err := syncLeaveBalanceForYear(ctx, s.db, updated.UserID, updated.StartDate.Year())
+		// Hanya kurangi kuota jika tipe pengajuan memang memotong kuota (kategori Cuti).
+		// Pengajuan Izin tidak memotong kuota cuti.
+		consumesQuota, err := requestTypeConsumesQuota(ctx, s.db, updated.RequestTypeID)
 		if err != nil {
 			return nil, err
 		}
-		if updated.DaysTotal > leaveBalance.RemainingKuota {
-			return nil, errors.New("sisa kuota cuti tidak mencukupi")
-		}
-		if updated.LeaveBalanceID == nil || updated.LeaveBalanceID.IsZero() {
-			_, err = s.db.Collection("leave_request").UpdateOne(
-				ctx,
-				bson.M{"_id": updated.ID},
-				bson.M{"$set": bson.M{"leave_balance_id": leaveBalance.ID, "updated_at": time.Now()}},
-			)
+		if consumesQuota {
+			leaveBalance, err := syncLeaveBalanceForYear(ctx, s.db, updated.UserID, updated.StartDate.Year())
 			if err != nil {
 				return nil, err
 			}
-			updated.LeaveBalanceID = &leaveBalance.ID
+			if updated.DaysTotal > leaveBalance.RemainingKuota {
+				return nil, errors.New("sisa kuota cuti tidak mencukupi")
+			}
+			if updated.LeaveBalanceID == nil || updated.LeaveBalanceID.IsZero() {
+				_, err = s.db.Collection("leave_request").UpdateOne(
+					ctx,
+					bson.M{"_id": updated.ID},
+					bson.M{"$set": bson.M{"leave_balance_id": leaveBalance.ID, "updated_at": time.Now()}},
+				)
+				if err != nil {
+					return nil, err
+				}
+				updated.LeaveBalanceID = &leaveBalance.ID
+			}
 		}
 	}
 
@@ -293,6 +322,23 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 		return &resp, nil
 	}
 	resp := s.toApprovalResponse(*updated, true, u)
+
+	// Broadcast real-time event
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(updated.UserID.Hex(), WSEventLeaveUpdated, map[string]any{
+			"action":  "status_updated",
+			"status":  updated.FinalStatus,
+			"message": "Pengajuan Anda telah di-review Manager HR",
+		})
+		s.wsHub.BroadcastToUser(updated.UserID.Hex(), WSEventStatsUpdated, map[string]any{
+			"reason": "leave_approved",
+		})
+		// Notifikasi ke manager lain (agar list terupdate)
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "leave_request_processed",
+		})
+	}
+
 	return &resp, nil
 }
 

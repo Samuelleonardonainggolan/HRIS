@@ -1,12 +1,15 @@
 // lib/pages/history_page.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/services/sse_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/leave_request.dart';
+import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:intl/date_symbol_data_local.dart';
+import 'dart:async';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -18,10 +21,14 @@ class _HistoryPageState extends State<HistoryPage> {
   DateTime _selectedMonth = DateTime.now();
   DateTime? _selectedDate;
   String _selectedFilter = 'Semua';
+  final ScrollController _scrollController = ScrollController();
 
   /// Gabungan record absensi real + sintetis dari pengajuan APPROVED
   List<AttendanceRecord> _all = [];
   List<AttendanceRecord> _filtered = [];
+
+  StreamSubscription? _sseSubscription;
+
   bool _isLoading = true;
   bool _localeReady = false;
   String? _error;
@@ -52,6 +59,9 @@ class _HistoryPageState extends State<HistoryPage> {
   void initState() {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
+    _sseSubscription = SSEService().events.listen((event) {
+      if (mounted) _loadData();
+    });
     _init();
   }
 
@@ -75,6 +85,8 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
+    _sseSubscription?.cancel();
     ApiService.currentUser.removeListener(_syncProfile);
     super.dispose();
   }
@@ -86,7 +98,7 @@ class _HistoryPageState extends State<HistoryPage> {
       _error = null;
     });
     try {
-      // Ambil dua sumber data secara paralel
+      // Ambil tiga sumber data secara paralel
       final results = await Future.wait([
         ApiService.getMonthlyAttendance(
           month: _selectedMonth.month,
@@ -96,10 +108,15 @@ class _HistoryPageState extends State<HistoryPage> {
           month: _selectedMonth.month,
           year: _selectedMonth.year,
         ),
+        ApiService.getApprovedOvertimeByMonth(
+          month: _selectedMonth.month,
+          year: _selectedMonth.year,
+        ),
       ]);
 
       final summary = results[0] as MonthlyAttendanceSummary;
       final pengajuan = results[1] as List<LeaveRequest>;
+      final overtime = results[2] as List<OvertimeRequest>;
 
       print('[History] attendance records: ${summary.records.length}');
       print('[History] approved pengajuan for this month: ${pengajuan.length}');
@@ -149,8 +166,24 @@ class _HistoryPageState extends State<HistoryPage> {
                 '[History]   ~ skip ${_fmtDate(cur)} (absensi real sudah ada)',
               );
             }
+            cur = cur.add(const Duration(days: 1));
           }
-          cur = cur.add(const Duration(days: 1));
+        }
+      }
+
+      // Merge Overtime Requests
+      for (final o in overtime) {
+        if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
+          final approvalSummary = _overtimeApprovalSummary(o);
+          final rec = AttendanceRecord.fromOvertime(
+            id: o.id,
+            date: o.date,
+            startTime: o.startTime,
+            endTime: o.endTime,
+            reason: o.reason,
+            summary: approvalSummary,
+          );
+          merged.add(rec);
         }
       }
 
@@ -180,6 +213,20 @@ class _HistoryPageState extends State<HistoryPage> {
 
   String _fmtDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  String _overtimeApprovalSummary(OvertimeRequest o) {
+    final agreed = o.employees.where((e) => e.isAgreed).length;
+    final rejected = o.employees.where((e) => e.isRejected).length;
+    final pending = o.employees.where((e) => e.isPending).length;
+
+    if (o.isPublished) {
+      return 'SPKL dipublikasikan • $agreed setuju, $rejected menolak, $pending menunggu';
+    }
+    if (o.isSubmitted) {
+      return 'Menunggu respons karyawan • $agreed setuju, $rejected menolak, $pending menunggu';
+    }
+    return 'Draft lembur • $agreed setuju, $rejected menolak, $pending menunggu';
+  }
 
   // ── Filter ────────────────────────────────────────────────────────────────
   void _applyFilter() {
@@ -1284,6 +1331,27 @@ class _HistoryPageState extends State<HistoryPage> {
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      if (r.leaveType == 'Lembur') ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.access_time_rounded,
+                              size: 13,
+                              color: Color(0xFF135BEC),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${r.clockIn} - ${r.clockOut} WIB',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF135BEC),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                       const SizedBox(height: 8),

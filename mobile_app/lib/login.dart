@@ -148,10 +148,10 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
           children: [
             Icon(Icons.check_circle, color: Colors.white),
             SizedBox(width: 10),
-            Expanded(child: Text("Login successful! Redirecting...")),
+            Expanded(child: Text("Login berhasil...")),
           ],
         ),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Colors.green,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         duration: const Duration(seconds: 1),
@@ -234,7 +234,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  "Forgot Password?",
+                  "Lupa Kata Sandi?",
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -243,14 +243,14 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  "Enter your email to reset your password",
+                  "Masukkan email Anda untuk mereset kata sandi",
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
                   decoration: InputDecoration(
-                    hintText: "email@company.com",
+                    hintText: "email@perusahaan.com",
                     prefixIcon: const Icon(
                       Icons.email_outlined,
                       color: AppTheme.primaryColor,
@@ -276,7 +276,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                         ),
                         onPressed: () => Navigator.pop(context),
                         child: const Text(
-                          "Cancel",
+                          "Batal",
                           style: TextStyle(color: AppTheme.textSecondary),
                         ),
                       ),
@@ -296,10 +296,18 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                           Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: const Text(
-                                "Reset link sent to your email",
+                              content: const Row(
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.white),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Link reset telah dikirim ke email Anda",
+                                    ),
+                                  ),
+                                ],
                               ),
-                              backgroundColor: AppTheme.primaryColor,
+                              backgroundColor: const Color(0xFF2ECC71),
                               behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(15),
@@ -308,7 +316,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                           );
                         },
                         child: const Text(
-                          "Send",
+                          "Kirim",
                           style: TextStyle(color: Colors.white),
                         ),
                       ),
@@ -367,9 +375,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _buildLogoSection(),
-                          const SizedBox(height: 30),
+                          const SizedBox(height: 5),
                           _buildHeaderText(),
-                          const SizedBox(height: 40),
+                          const SizedBox(height: 20),
                           Form(
                             key: _formKey,
                             child: Column(
@@ -407,23 +415,12 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
         return Transform.scale(
           scale: value,
           child: Container(
-            height: 90,
-            width: 90,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withOpacity(0.3),
-                  blurRadius: 25,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
+            height: 180,
+            width:400,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(25),
               child: Image.asset(
-                'assets/Del_Institute_of_Technology_Logo.png',
+                'assets/logo-header.png',
                 fit: BoxFit.contain,
                 errorBuilder: (context, error, stackTrace) {
                   return Container(
@@ -457,7 +454,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
             child: Column(
               children: [
                 const Text(
-                  "Welcome Back!",
+                  "Selamat Datang!",
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -467,7 +464,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "Sign in to continue",
+                  "Masuk untuk melanjutkan",
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white.withOpacity(0.9),
@@ -734,8 +731,6 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, size: 20),
                         ],
                       ),
               ),

@@ -144,9 +144,10 @@ func calculateUsedQuotaForYear(ctx context.Context, db *mongo.Database, userID p
 }
 
 func getQuotaDeductingRequestTypeIDs(ctx context.Context, db *mongo.Database) ([]primitive.ObjectID, error) {
+	// Hanya kategori "Cuti" yang memotong kuota. Kategori "Izin" tidak memotong kuota.
 	cursor, err := db.Collection("request_type").Find(ctx, bson.M{
 		"$or": []bson.M{
-			{"category_name": bson.M{"$in": []string{"Izin", "Cuti"}}},
+			{"category_name": bson.M{"$in": []string{"Cuti"}}},
 			{"quota_deduction": true},
 			{"potong_kuota": true},
 		},
@@ -173,9 +174,11 @@ func getQuotaDeductingRequestTypeIDs(ctx context.Context, db *mongo.Database) ([
 	return ids, nil
 }
 
+// categoryConsumesQuota mengembalikan true hanya untuk kategori "Cuti".
+// Kategori "Izin" TIDAK memotong kuota cuti.
 func categoryConsumesQuota(categoryName string) bool {
 	switch strings.ToLower(strings.TrimSpace(categoryName)) {
-	case "izin", "cuti":
+	case "cuti":
 		return true
 	default:
 		return false

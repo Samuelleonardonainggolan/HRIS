@@ -142,6 +142,10 @@ func main() {
 
 	log.Println("⚙️  Services initialized")
 
+	// ==================== Initialize WebSocket/SSE Hub ====================
+	wsHub := service.NewWSHub()
+	log.Println("📡 WebSocket/SSE Hub initialized")
+
 	// ==================== Initialize Handlers ====================
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
@@ -157,6 +161,14 @@ func main() {
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
 	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // ✅ Dari kode kedua
+	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
+
+	// ==================== Inject WSHub ke services ====================
+	// Agar services bisa broadcast event real-time setelah operasi berhasil
+	attendanceService.SetWSHub(wsHub)
+	pengajuanService.SetWSHub(wsHub)
+	pengajuanIzinCutiService.SetWSHub(wsHub)
+	overtimeRequestService.SetWSHub(wsHub)
 
 	log.Println("🎯 Handlers initialized")
 
@@ -185,6 +197,7 @@ func main() {
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
 		overtimeRequestHandler, // ✅ Dari kode kedua
+		sseHandler,             // ✅ Real-time SSE handler
 	)
 
 	log.Println("🛣️  Routes configured")

@@ -1,42 +1,39 @@
-// pkg/migration/migrations/00X_create_overtime_requests.go
 package migrations
 
 import (
 	"context"
-
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func CreateOvertimeRequests() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
-	// ✅ sesuaikan nomor version dengan urutan migration Anda
-	version := 14
+	version := 14 // atau sesuaikan dengan nomor migration Anda
 	name := "create_overtime_requests"
-	description := "Create overtime_requests collection and indexes"
+	description := "Create overtime_requests collection and indexes (support employess status)"
 
 	up := func(db *mongo.Database) error {
 		ctx := context.Background()
 		collection := db.Collection("overtime_requests")
 
 		indexes := []mongo.IndexModel{
-			// Query cepat: history lembur per user per tanggal
+			// Percepat cari/riwayat lembur per karyawan (subdoc)
 			{
-				Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "date", Value: -1}},
+				Keys: bson.D{{Key: "employees.user_id", Value: 1}},
 				Options: options.Index().
-					SetName("idx_user_date"),
+					SetName("idx_employees_userid"),
 			},
-			// Approval Kepala Departemen
+			// Filter per departemen, status, tanggal
 			{
-				Keys: bson.D{{Key: "status_kepala_departemen", Value: 1}, {Key: "created_at", Value: -1}},
+				Keys: bson.D{{Key: "department_id", Value: 1}, {Key: "date", Value: -1}},
 				Options: options.Index().
-					SetName("idx_status_kadep_created"),
+					SetName("idx_dept_date"),
 			},
-			// Approval Manager HR
+			// Untuk filter submitted/published/draft
 			{
-				Keys: bson.D{{Key: "status_manager_hr", Value: 1}, {Key: "created_at", Value: -1}},
+				Keys: bson.D{{Key: "status", Value: 1}, {Key: "date", Value: -1}},
 				Options: options.Index().
-					SetName("idx_status_hr_created"),
+					SetName("idx_status_date"),
 			},
 		}
 

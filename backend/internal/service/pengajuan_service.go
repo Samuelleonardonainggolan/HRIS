@@ -25,6 +25,7 @@ type PengajuanService interface {
 	UpdatePengajuan(ctx context.Context, userID, pengajuanID string, req UpdatePengajuanRequest) (*models.PengajuanIzinCutiResponse, error)
 	CancelPengajuan(ctx context.Context, userID, pengajuanID string) error
 	UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error)
+	SetWSHub(hub *WSHub) // inject WSHub untuk real-time broadcast
 }
 
 // CreatePengajuanRequest adalah request untuk membuat pengajuan baru.
@@ -104,6 +105,12 @@ type pengajuanServiceImpl struct {
 	publicBaseURL     string
 	documentUploadDir string
 	supabaseUploader  *storage.SupabaseUploader
+	wsHub             *WSHub // untuk broadcast real-time events
+}
+
+// SetWSHub mengatur WebSocket hub untuk broadcast real-time events.
+func (s *pengajuanServiceImpl) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 func (s *pengajuanServiceImpl) UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error) {
@@ -294,6 +301,19 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	}
 
 	resp := pengajuan.ToResponse()
+
+	// Broadcast real-time event
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(req.UserID, WSEventLeaveUpdated, map[string]any{
+			"action":  "create",
+			"message": "Pengajuan baru berhasil dibuat",
+		})
+		// Broadcast ke semua (untuk manager agar list terupdate otomatis)
+		s.wsHub.BroadcastToAll(WSEventLeaveUpdated, map[string]any{
+			"action": "new_leave_request",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -534,6 +554,15 @@ func (s *pengajuanServiceImpl) UpdatePengajuan(ctx context.Context, userID, peng
 	}
 
 	resp := updated.ToResponse()
+
+	// Broadcast real-time event
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(userID, WSEventLeaveUpdated, map[string]any{
+			"action":  "update",
+			"message": "Pengajuan berhasil diperbarui",
+		})
+	}
+
 	return &resp, nil
 }
 
@@ -564,6 +593,14 @@ func (s *pengajuanServiceImpl) CancelPengajuan(ctx context.Context, userID, peng
 
 	if res.MatchedCount == 0 {
 		return errors.New("pengajuan tidak ditemukan atau sudah diproses")
+	}
+
+	// Broadcast real-time event
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(userID, WSEventLeaveUpdated, map[string]any{
+			"action":  "cancel",
+			"message": "Pengajuan berhasil dibatalkan",
+		})
 	}
 
 	return nil
