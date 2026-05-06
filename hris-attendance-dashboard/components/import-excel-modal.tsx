@@ -364,7 +364,7 @@ export function ImportExcelModal({ open, onOpenChange }: ImportExcelModalProps) 
                     </div>
                 </div>
                 
-                {importResult.errors.length > 0 && (
+                {importResult.errors && importResult.errors.length > 0 && (
                     <div className="mt-4 text-left bg-white p-3 rounded border border-gray-200 max-h-40 overflow-y-auto">
                         <p className="text-xs font-semibold text-red-600 mb-1 flex items-center gap-1">
                             <AlertCircle className="h-3 w-3" /> Detail Error:

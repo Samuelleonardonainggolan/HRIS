@@ -225,11 +225,11 @@ func (h *UserHandler) ImportEmployees(c *gin.Context) {
 			LastEducation:    get(6),
 			YearEnrolled:     get(7),
 			EmploymentStatus: get(8),
-			DepartmentID:     get(9),
-			PositionID:       get(10),
-			Phone:            get(11),
-			Address:          get(12),
-			Role:             get(13),
+			Phone:            get(9),
+			Address:          get(10),
+			Role:             get(11),
+			DepartmentName:   get(12),
+			PositionName:     get(13),
 		}
 		employees = append(employees, emp)
 	}
@@ -264,11 +264,11 @@ func (h *UserHandler) DownloadEmployeeTemplate(c *gin.Context) {
 		"last_education",
 		"year_enrolled",
 		"employment_status",
-		"department_id",
-		"position_id",
 		"phone",
 		"address",
 		"role",
+		"nama_departemen",
+		"nama_jabatan",
 	}
 
 	// Set headers
@@ -288,11 +288,11 @@ func (h *UserHandler) DownloadEmployeeTemplate(c *gin.Context) {
 		"S1",
 		"2023",
 		"Tetap",
-		"<department_id>",
-		"<position_id>",
 		"+6281234567890",
 		"Alamat lengkap",
 		models.RoleStaf,
+		"IT Support",
+		"Software Engineer",
 	}
 
 	for i, val := range example {

@@ -1,22 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarDays, Clock, User as UserIcon, Loader2 } from "lucide-react";
+import { CalendarDays, Clock, User as UserIcon, Loader2, ArrowLeft } from "lucide-react";
 import { employeeService, Employee } from "@/lib/api/employee";
 import { deptOvertimeRequestsApi } from "@/lib/api/overtime-requests";
 import { authService } from "@/lib/api/auth";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
+import Link from "next/link";
 import { Calendar } from "@/components/ui/calender";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-
-
 
 function formatDate(dateStr: string) {
   if (!dateStr) return "-";
@@ -28,12 +27,13 @@ function formatDate(dateStr: string) {
   });
 }
 
-export default function BuatPengajuanLemburBaru() {
+export default function EditPengajuanLembur({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { id } = use(params);
   const currentUser = authService.getUser();
 
   // Form state
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [searchEmp, setSearchEmp] = useState("");
@@ -41,7 +41,46 @@ export default function BuatPengajuanLemburBaru() {
   const [isSearching, setIsSearching] = useState(false);
   const [pickedEmployees, setPickedEmployees] = useState<Employee[]>([]);
   const [reason, setReason] = useState("");
+  const [status, setStatus] = useState("draft");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch initial data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const data = await deptOvertimeRequestsApi.get(id);
+        const overtime = (data as any).overtime || data;
+        
+        // Cek employees di level atas data atau di dalam objek overtime
+        const employeesList = (data as any).employees || (overtime as any).employees || [];
+        
+        setDate(overtime.date ? overtime.date.substring(0, 10) : "");
+        setStartTime(overtime.start_time || "");
+        setEndTime(overtime.end_time || "");
+        setReason(overtime.reason || "");
+        setStatus(overtime.status || "draft");
+        
+        if (employeesList && Array.isArray(employeesList)) {
+          const mappedEmps = employeesList.map((e: any) => ({
+            id: e.user?.id || e.user_id || e.id,
+            name: e.user?.full_name || e.full_name || e.name || e.employee_name || e.user?.name || "Unknown",
+            nik: e.user?.payroll_number || e.payroll_number || e.nik || e.user?.nik || "N/A",
+            position: e.user?.position_name || e.position_name || "-"
+          }));
+          setPickedEmployees(mappedEmps);
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error("Gagal mengambil data pengajuan lembur");
+        router.push("/dashboard/manager-dept/lembur");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, [id, router]);
 
   // Estimasi jam lembur
   const estHours = (() => {
@@ -49,7 +88,7 @@ export default function BuatPengajuanLemburBaru() {
     const [sH, sM] = startTime.split(":").map(Number);
     const [eH, eM] = endTime.split(":").map(Number);
     let jam = (eH + eM / 60) - (sH + sM / 60);
-    if (jam < 0) jam += 24; // handle lewat tengah malam
+    if (jam < 0) jam += 24; 
     return Math.max(parseFloat(jam.toFixed(1)), 0);
   })();
 
@@ -61,7 +100,6 @@ export default function BuatPengajuanLemburBaru() {
         try {
           const exclude = pickedEmployees.map(e => e.id);
           const results = await employeeService.searchEmployees(searchEmp, exclude, currentUser?.department_id);
-          // Map backend User to Employee type used here
           const mapped = (results as any[]).map(u => ({
             id: u.id,
             name: u.full_name,
@@ -78,7 +116,7 @@ export default function BuatPengajuanLemburBaru() {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [searchEmp, pickedEmployees]);
+  }, [searchEmp, pickedEmployees, currentUser?.department_id]);
 
   const isPicked = (id: string) => pickedEmployees.some((e) => e.id === id);
   
@@ -98,53 +136,53 @@ export default function BuatPengajuanLemburBaru() {
     return true;
   };
 
-  const handleSave = async (status: string) => {
+  const handleUpdate = async (newStatus: string) => {
     if (!validate()) return;
     
     setIsSubmitting(true);
     try {
       const payload = {
-        department_id: currentUser?.department_id || "",
         date,
         start_time: startTime,
         end_time: endTime,
         reason,
-        status,
+        status: newStatus,
         employees: pickedEmployees.map(e => ({ user_id: e.id }))
       };
 
-      await deptOvertimeRequestsApi.create(payload);
-      toast.success(status === "draft" ? "Draft berhasil disimpan" : "Pengajuan berhasil dikirim");
+      await deptOvertimeRequestsApi.update(id, payload);
+      toast.success(newStatus === "draft" ? "Draft berhasil diperbarui" : "Pengajuan berhasil dikirim");
       router.push("/dashboard/manager-dept/lembur");
     } catch (error: any) {
-      toast.error(error.message || "Gagal membuat pengajuan");
+      toast.error(error.message || "Gagal memperbarui pengajuan");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleSimpanDraft = () => handleSave("draft");
-  const handleSubmitHR = () => handleSave("submitted");
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="px-8 py-8 max-w-[1300px] mx-auto">
-      {/* Breadcrumb */}
-      <div className="mb-4 text-sm text-gray-500 flex items-center gap-2">
-        <span className="hover:underline cursor-pointer">Dashboard</span>
-        <span>/</span>
-        <span className="hover:underline cursor-pointer">Pengajuan Lembur</span>
-        <span>/</span>
-        <span className="text-blue-700 font-bold">Baru</span>
+      <Link href="/dashboard/manager-dept/lembur" className="flex items-center gap-2 text-gray-500 hover:text-blue-600 transition-colors mb-6 w-fit">
+        <ArrowLeft className="h-4 w-4" />
+        <span className="text-sm font-medium">Kembali ke Daftar</span>
+      </Link>
+
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Edit Pengajuan Lembur</h2>
+        <p className="text-gray-500">
+          Perbarui data pengajuan lembur yang telah dibuat sebelumnya.
+        </p>
       </div>
 
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Buat Pengajuan Lembur Baru</h2>
-      <p className="mb-7 text-gray-500">
-        Lengkapi formulir di bawah ini untuk mengajukan instruksi lembur karyawan.
-      </p>
-
-      {/* Flex row, 2/3 form, 1/3 ringkasan, responsif */}
       <div className="flex flex-col md:flex-row md:items-start gap-8">
-        {/* ====== Form Kiri ====== */}
         <div className="w-full md:w-2/3 bg-white rounded-xl shadow-sm border p-10 space-y-6 min-w-[350px]">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div>
@@ -206,9 +244,6 @@ export default function BuatPengajuanLemburBaru() {
                 <UserIcon className="h-4 w-4" />
                 Pilih Karyawan
               </label>
-              <a href="#all-karyawan" className="text-blue-600 text-sm hover:underline font-medium">
-                Lihat Semua Karyawan
-              </a>
             </div>
             <div className="relative mb-2">
               <Input
@@ -238,9 +273,12 @@ export default function BuatPengajuanLemburBaru() {
             </div>
             <div className="flex flex-wrap gap-2">
               {pickedEmployees.map(emp => (
-                <div key={emp.id} className="bg-blue-50 text-blue-800 rounded-full px-3 py-1 flex items-center gap-1 text-sm font-medium">
-                  {emp.name} <span className="text-xs text-blue-500 ml-2">({emp.nik})</span>
-                  <button aria-label="Delete" className="ml-1 focus:outline-none text-blue-600 hover:text-red-500" onClick={() => removeEmployee(emp.id)}>
+                <div key={emp.id} className="bg-blue-50 text-blue-800 rounded-full px-3 py-1.5 flex items-center gap-2 text-sm font-medium shadow-sm border border-blue-100">
+                  <div className="flex flex-col leading-tight">
+                    <span>{emp.name}</span>
+                    <span className="text-[10px] text-blue-500 font-normal uppercase tracking-wider">{(emp as any).position || "-"} • {emp.nik}</span>
+                  </div>
+                  <button aria-label="Delete" className="ml-1 focus:outline-none text-blue-400 hover:text-red-500 transition-colors" onClick={() => removeEmployee(emp.id)}>
                     &times;
                   </button>
                 </div>
@@ -260,18 +298,17 @@ export default function BuatPengajuanLemburBaru() {
           </div>
 
           <div className="flex items-center justify-end gap-3 mt-8">
-            <Button variant="outline" onClick={handleSimpanDraft} disabled={isSubmitting}>
+            <Button variant="outline" onClick={() => handleUpdate("draft")} disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              Simpan Draft
+              Simpan Perubahan (Draft)
             </Button>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow" onClick={handleSubmitHR} disabled={isSubmitting}>
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white shadow" onClick={() => handleUpdate("submitted")} disabled={isSubmitting}>
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Submit ke HR
             </Button>
           </div>
         </div>
 
-        {/* ====== Ringkasan (Kanan, full tinggi form, jaga lebar min) ====== */}
         <div className="w-full md:w-1/3 max-w-xs md:max-w-sm bg-white rounded-xl shadow-sm border p-6 h-fit self-start min-w-[260px]">
           <div className="font-semibold text-blue-800 flex items-center gap-2 text-lg mb-4">
             <CalendarDays className="h-5 w-5" /> Ringkasan Pengajuan
@@ -292,9 +329,9 @@ export default function BuatPengajuanLemburBaru() {
               </dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-gray-500 text-sm">Status Pengajuan</dt>
+              <dt className="text-gray-500 text-sm">Status Saat Ini</dt>
               <dd>
-                <span className="bg-zinc-100 text-zinc-800 rounded-full px-3 py-0.5 text-xs font-medium">DRAFT</span>
+                <span className="bg-zinc-100 text-zinc-800 rounded-full px-3 py-0.5 text-xs font-medium uppercase">{status}</span>
               </dd>
             </div>
           </dl>

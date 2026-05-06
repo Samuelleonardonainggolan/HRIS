@@ -17,6 +17,8 @@ type PositionRepository interface {
 	FindAll(ctx context.Context) ([]models.Position, error)
 	FindByDepartment(ctx context.Context, departmentID string) ([]models.Position, error)
 	Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error
+	FindByName(ctx context.Context, name string) (*models.Position, error)
+	FindByNameAndDepartment(ctx context.Context, name string, departmentID string) (*models.Position, error)
 	Create(ctx context.Context, position *models.Position) error
 	Delete(ctx context.Context, id string) error
 }
@@ -107,6 +109,35 @@ func (r *positionRepository) Delete(ctx context.Context, id string) error {
 		return errors.New("position not found")
 	}
 	return nil
+}
+
+func (r *positionRepository) FindByName(ctx context.Context, name string) (*models.Position, error) {
+	var position models.Position
+	err := r.collection.FindOne(ctx, bson.M{"name": name}).Decode(&position)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &position, nil
+}
+
+func (r *positionRepository) FindByNameAndDepartment(ctx context.Context, name string, departmentID string) (*models.Position, error) {
+	deptOID, err := primitive.ObjectIDFromHex(departmentID)
+	if err != nil {
+		return nil, errors.New("invalid department ID")
+	}
+
+	var position models.Position
+	err = r.collection.FindOne(ctx, bson.M{"name": name, "department_id": deptOID}).Decode(&position)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &position, nil
 }
 
 func (r *positionRepository) Update(ctx context.Context, id string, req *models.UpdatePositionRequest) error {
