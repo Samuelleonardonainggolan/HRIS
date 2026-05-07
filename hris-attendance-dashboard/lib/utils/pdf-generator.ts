@@ -27,48 +27,57 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
   try {
     // Note: In a real environment, you might want to use a base64 string for the logo 
     // to ensure it's always available and loads instantly.
-    doc.addImage("/logo.png", "PNG", 20, 10, 25, 25);
+    doc.addImage("/logo.jpg", "JPG", 20, 10, 25, 25);
   } catch (e) {
     console.warn("Logo not found or could not be loaded");
   }
 
-  // Header
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(0, 0, 0);
-  doc.text("PT. LABERSA HUTAHAEAN", 50, 18);
+  // Header - Centered
+  doc.setFont("times", "bold");
+  doc.setFontSize(18);
+  // Golden/Brownish color for company name
+  doc.setTextColor(152, 131, 0); 
+  doc.text("PT. Labersa Hutahaean", 105, 18, { align: "center" });
   
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.text("HEAD OFFICE - WILAYAH TOBA", 50, 24);
+  doc.setFontSize(14);
+  doc.setFont("times", "bold");
+  // Dark Green color for branch
+  doc.setTextColor(0, 100, 0);
+  doc.text("HEAD OFFICE - WILAYAH TOBA", 105, 26, { align: "center" });
 
+  doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.5);
   doc.line(20, 38, 190, 38);
 
   // Title
-  doc.setFont("helvetica", "bold");
+  doc.setFont("times", "bold");
   doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
   doc.text("SURAT PERINTAH KERJA LEMBUR", 105, 50, { align: "center" });
-  doc.line(65, 51, 145, 51); // Underline title
+  // Underline removed as requested
 
   // Instruction
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFont("times", "normal");
+  doc.setFontSize(11);
   doc.text("Kepada saudara yang namanya tersebut di bawah ini diperintahkan kerja lembur:", 20, 65);
 
   // Overtime Details
   const detailsX = 20;
   const labelWidth = 40;
+  const lineSpacing = 10; // Consistent vertical spacing
   let currentY = 75;
 
+  // Row 1: Reason
   doc.text("Untuk keperluan / tugas", detailsX, currentY);
   doc.text(":", detailsX + labelWidth, currentY);
-  doc.text(overtime.reason, detailsX + labelWidth + 5, currentY, { maxWidth: 120 });
+  const reasonText = overtime.reason || "-";
+  const reasonLinesArr = doc.splitTextToSize(reasonText, 120);
+  doc.text(reasonLinesArr, detailsX + labelWidth + 5, currentY);
   
-  // Calculate height of reason text to adjust next Y
-  const reasonLines = doc.splitTextToSize(overtime.reason, 120).length;
-  currentY += Math.max(6, reasonLines * 5);
+  // Increment Y based on reason height
+  currentY += Math.max(lineSpacing, reasonLinesArr.length * 5 + 3);
 
+  // Row 2: Date
   doc.text("Pada hari / tanggal", detailsX, currentY);
   doc.text(":", detailsX + labelWidth, currentY);
   const formattedDate = new Date(overtime.date).toLocaleDateString("id-ID", { 
@@ -78,11 +87,14 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
     year: 'numeric' 
   });
   doc.text(formattedDate, detailsX + labelWidth + 5, currentY);
-  currentY += 8;
+  
+  currentY += lineSpacing;
 
+  // Row 3: Time
   doc.text("Dimulai jam", detailsX, currentY);
   doc.text(":", detailsX + labelWidth, currentY);
   doc.text(overtime.start_time.slice(0, 5) + " WIB", detailsX + labelWidth + 5, currentY);
+  
   currentY += 15;
 
   // Employee Table
@@ -98,15 +110,17 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
       fontStyle: "bold", 
       halign: "center",
       lineWidth: 0.2,
-      lineColor: [0, 0, 0]
+      lineColor: [0, 0, 0],
+      font: "times"
     },
     styles: { 
-      fontSize: 10, 
+      fontSize: 11, 
       textColor: [0, 0, 0],
       lineWidth: 0.2,
       lineColor: [0, 0, 0],
       minCellHeight: 12,
-      valign: "middle"
+      valign: "middle",
+      font: "times"
     },
     columnStyles: {
       0: { cellWidth: 70 },
@@ -117,28 +131,36 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
 
   // Signatures
   const footerY = (doc as any).lastAutoTable.finalY + 25;
-  doc.setFontSize(9);
+  doc.setFont("times", "normal");
+  doc.setFontSize(11);
   
-  // Signature Labels
-  doc.text("Yang memberi perintah lembur,", 20, footerY);
-  doc.text("Yang menerima perintah lembur,", 85, footerY);
-  doc.text("Disetujui Oleh,", 150, footerY);
+  // Calculate center of each column (Content area is 170mm, 210mm wide)
+  const col1X = 48; // Left center
+  const col2X = 105; // Middle center
+  const col3X = 162; // Right center
 
-  const signLineY = footerY + 25;
+  // Signature Labels
+  doc.text("Yang memberi perintah lembur,", col1X, footerY, { align: "center" });
+  doc.text("Yang menerima perintah lembur,", col2X, footerY, { align: "center" });
+  doc.text("Disetujui Oleh,", col3X, footerY, { align: "center" });
+
+  const signLineY = footerY + 30;
   
-  // Parentheses for names
-  doc.text("( ____________________ )", 20, signLineY);
-  doc.text("( ____________________ )", 85, signLineY);
-  doc.text("( ____________________ )", 150, signLineY);
+  // Signature Lines
+  doc.text("( ____________________ )", col1X, signLineY, { align: "center" });
+  doc.text("( ____________________ )", col2X, signLineY, { align: "center" });
+  doc.text("( ____________________ )", col3X, signLineY, { align: "center" });
 
   // Signature Sub-labels
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text("Departement Head", 35, signLineY + 5, { align: "center" });
-  doc.text("Karyawan", 100, signLineY + 5, { align: "center" });
-  doc.text("Office Manager / HRM /", 165, signLineY + 5, { align: "center" });
-  doc.text("General Manager", 165, signLineY + 9, { align: "center" });
+  doc.setFontSize(9);
+  doc.setFont("times", "bold");
+  doc.text("Departement Head", col1X, signLineY + 6, { align: "center" });
+  doc.text("Karyawan", col2X, signLineY + 6, { align: "center" });
+  doc.text("Office Manager / HRM /", col3X, signLineY + 6, { align: "center" });
+  doc.text("General Manager", col3X, signLineY + 11, { align: "center" });
 
   return doc.output("blob");
 };
+
+
 

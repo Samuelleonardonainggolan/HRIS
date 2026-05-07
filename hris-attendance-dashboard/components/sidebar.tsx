@@ -103,6 +103,7 @@ export function Sidebar() {
           { name: "Persetujuan Lembur", href: `${basePath}/persetujuan-lembur`, icon: "FileCheckCorner" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Pengajuan Lembur", href: `${basePath}/lembur`, icon: "FilePlus" },
+          { name: "Pengajuan Penugasan", href: `${basePath}/penugasan`, icon: "FilePlus" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
