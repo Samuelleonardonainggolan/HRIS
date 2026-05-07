@@ -12,7 +12,7 @@ import '../models/overtime_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.169.139.23:8080/api/v1';
+  static const String baseUrl = 'http://10.169.139.49:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -959,6 +959,36 @@ class ApiService {
     } catch (e) {
       print('[API] getLeaveBalance error: $e');
       rethrow;
+    }
+  }
+
+  // ─── Salary ─────────────────────────────────────────────────────────────────
+
+  /// GET /employee-basic-salaries/users/:userId/active
+  static Future<Map<String, dynamic>> getActiveSalary(String userId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/employee-basic-salaries/users/$userId/active'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getActiveSalary status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return (data['data'] as Map<String, dynamic>?) ?? {};
+      } else {
+        // Kembalikan gaji 0 jika belum diset
+        return {'basic_salary': 0};
+      }
+    } catch (e) {
+      print('[API] getActiveSalary error: $e');
+      return {'basic_salary': 0};
     }
   }
 
