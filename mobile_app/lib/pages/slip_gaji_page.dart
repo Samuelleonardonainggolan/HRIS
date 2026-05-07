@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:mobile_app/services/sse_service.dart';
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 
@@ -18,7 +20,7 @@ class SlipGajiData {
   final int potongan;
   final int bonus;
   final String status;
-  final int overtimeHours;
+  final double overtimeHours;
   final int cutiHari;
 
   SlipGajiData({
@@ -52,6 +54,7 @@ class _SlipGajiPageState extends State<SlipGajiPage>
   String? _error;
   SlipGajiData? _slip;
   User? _user;
+  StreamSubscription? _sseSubscription;
 
   late AnimationController _animCtrl;
   late Animation<double> _fadeAnim;
@@ -71,13 +74,22 @@ class _SlipGajiPageState extends State<SlipGajiPage>
       duration: const Duration(milliseconds: 600),
     );
     _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
+    _setupSSE();
     _loadData();
   }
 
   @override
   void dispose() {
+    _sseSubscription?.cancel();
     _animCtrl.dispose();
     super.dispose();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted || event.type == 'ping') return;
+      _loadData();
+    });
   }
 
   Future<void> _loadData() async {
@@ -99,11 +111,12 @@ class _SlipGajiPageState extends State<SlipGajiPage>
         month: now.month,
         year: now.year,
       );
-      final overtimeHours = overtimeList.fold<int>(
+      final overtimeHours = overtimeList.fold<double>(
         0,
-        (sum, o) => sum + _parseOvertimeHours(o.total),
+        (sum, o) => sum + o.getDurationHours(),
       );
-      final overtimePay = overtimeHours * (gajiPokok ~/ 173); // standar 173 jam/bulan
+      final overtimePay =
+          (overtimeHours * (gajiPokok / 173)).round(); // standar 173 jam/bulan
 
       // Ambil cuti berbayar bulan ini
       final cutiList = await ApiService.getApprovedPengajuanByMonth(
@@ -147,10 +160,8 @@ class _SlipGajiPageState extends State<SlipGajiPage>
     }
   }
 
-  int _parseOvertimeHours(String total) {
-    // total bisa "8" atau "8.5" atau "8 jam"
-    final cleaned = total.replaceAll(RegExp(r'[^0-9.]'), '');
-    return double.tryParse(cleaned)?.round() ?? 0;
+  String _formatOvertimeHours(double hours) {
+    return hours % 1 == 0 ? hours.toStringAsFixed(0) : hours.toStringAsFixed(1);
   }
 
   // ─── PDF generation ────────────────────────────────────────────────────────
@@ -426,7 +437,7 @@ class _SlipGajiPageState extends State<SlipGajiPage>
               iconBg: const Color(0xFFFFF7ED),
               iconColor: Colors.orange,
               title: 'Lembur',
-              subtitle: '${slip.overtimeHours} jam',
+              subtitle: '${_formatOvertimeHours(slip.overtimeHours)} jam',
               amount: fmt.format(slip.lembur),
               amountColor: const Color(0xFF1A1C1E),
             ),

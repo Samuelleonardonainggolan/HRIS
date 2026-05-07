@@ -1,4 +1,5 @@
 // lib/pages/profile_page.dart
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mobile_app/theme/app_theme.dart';
@@ -7,6 +8,7 @@ import 'package:mobile_app/models/user_model.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_app/services/sse_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -20,6 +22,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isSaving = false;
   File? _profileImage;
   User? _user;
+  StreamSubscription? _sseSubscription;
 
   final _phoneCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
@@ -29,7 +32,15 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     initializeDateFormatting('id', null);
+    _setupSSE();
     _loadProfile();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted || event.type == 'ping') return;
+      _loadProfile();
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -220,6 +231,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   void dispose() {
+    _sseSubscription?.cancel();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
     super.dispose();

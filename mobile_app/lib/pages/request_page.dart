@@ -1,9 +1,11 @@
 // lib/pages/request_page.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/models/leave_request.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/services/sse_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'new_request_page.dart';
@@ -21,11 +23,13 @@ class _RequestPageState extends State<RequestPage> {
   bool _isLoading = true;
   User? _user;
   List<LeaveRequest> _requests = [];
+  StreamSubscription? _sseSubscription;
 
   @override
   void initState() {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
+    _setupSSE();
     _loadUser();
     _loadRequests();
   }
@@ -33,7 +37,16 @@ class _RequestPageState extends State<RequestPage> {
   @override
   void dispose() {
     ApiService.currentUser.removeListener(_syncProfile);
+    _sseSubscription?.cancel();
     super.dispose();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted || event.type == 'ping') return;
+      _loadUser();
+      _loadRequests();
+    });
   }
 
   void _syncProfile() {

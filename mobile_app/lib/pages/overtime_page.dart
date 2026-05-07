@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/services/sse_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class OvertimePage extends StatefulWidget {
@@ -16,18 +18,28 @@ class _OvertimePageState extends State<OvertimePage> {
   bool _isLoading = true;
   User? _user;
   List<OvertimeRequest> _items = [];
+  StreamSubscription? _sseSubscription;
 
   @override
   void initState() {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
+    _setupSSE();
     _loadData();
   }
 
   @override
   void dispose() {
     ApiService.currentUser.removeListener(_syncProfile);
+    _sseSubscription?.cancel();
     super.dispose();
+  }
+
+  void _setupSSE() {
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted || event.type == 'ping') return;
+      _loadData();
+    });
   }
 
   void _syncProfile() {
