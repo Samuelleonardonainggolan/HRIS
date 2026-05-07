@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:mobile_app/pages/face_attendance_page.dart';
+import 'package:mobile_app/pages/slip_gaji_page.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
@@ -431,6 +432,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                                   _buildMainClockSection(),
                                   const SizedBox(height: 20),
                                   _buildQuickStats(),
+                                  const SizedBox(height: 16),
+                                  _buildSlipGajiShortcut(),
                                   const SizedBox(height: 24),
                                   _buildTodaysActivity(),
                                   const SizedBox(height: 16),
@@ -895,6 +898,99 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  // ── Slip Gaji Shortcut Card ─────────────────────────────────────────────────
+  Widget _buildSlipGajiShortcut() {
+    final now = DateTime.now();
+    final months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    final periode = '${months[now.month - 1]} ${now.year}';
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const SlipGajiPage()),
+      ),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF2E6FF2), Color(0xFF5B8FF9)],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF2E6FF2).withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Icon container
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.receipt_long_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Text
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Slip Gaji Bulan Ini',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Periode $periode',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Arrow
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+          ],
         ),
       ),
     );

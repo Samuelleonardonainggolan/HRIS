@@ -102,6 +102,8 @@ type CreateEmployeeRequest struct {
 	Address          string `json:"address,omitempty"`
 	Role             string `json:"role,omitempty"`
 	IsActive         *bool  `json:"is_active,omitempty"`
+	DepartmentName   string `json:"department_name,omitempty"`
+	PositionName     string `json:"position_name,omitempty"`
 }
 
 // UpdateUserRequest represents request to update user

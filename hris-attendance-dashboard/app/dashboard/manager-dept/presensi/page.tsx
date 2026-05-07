@@ -249,10 +249,31 @@ export default function PresensiKaryawanManagerDepartemenPage() {
     }
   };
 
-  const totalKehadiranPct = summary.total_kehadiran_pct;
-  const tepatWaktu = summary.tepat_waktu;
-  const terlambat = summary.terlambat;
-  const izinSakit = summary.izin_sakit;
+  const stats = useMemo(() => {
+    let tw = 0;
+    let tr = 0;
+    let iz = 0;
+
+    filteredRows.forEach((r) => {
+      const s = (r.status || "").toUpperCase();
+      if (s === "HADIR") tw++;
+      else if (s === "TELAT") tr++;
+      else if (s.includes("IZIN") || s.includes("SAKIT") || s.includes("CUTI")) iz++;
+    });
+
+    const totalK = tw + tr;
+    const totalP = filteredRows.length > 0 ? Math.round((totalK / filteredRows.length) * 100) : 0;
+
+    return {
+      totalKehadiran: totalK,
+      totalKehadiranPct: totalP,
+      tepatWaktu: tw,
+      terlambat: tr,
+      izinSakit: iz,
+    };
+  }, [filteredRows]);
+
+  const { totalKehadiran, totalKehadiranPct, tepatWaktu, terlambat, izinSakit } = stats;
 
   return (
     <div className="p-6 space-y-6">
@@ -540,8 +561,8 @@ export default function PresensiKaryawanManagerDepartemenPage() {
         <Card className="rounded-2xl bg-blue-600 text-white">
           <CardContent className="p-5">
             <div className="text-xs font-semibold uppercase opacity-90">Total Kehadiran</div>
-            <div className="mt-2 text-3xl font-bold">{totalKehadiranPct}%</div>
-            <div className="mt-2 text-xs opacity-90">+2.4% dari bulan lalu</div>
+            <div className="mt-2 text-3xl font-bold">{totalKehadiran}</div>
+            <div className="mt-2 text-xs opacity-90">{totalKehadiranPct}% dari total records</div>
           </CardContent>
         </Card>
 
@@ -557,7 +578,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
           <CardContent className="p-5">
             <div className="text-xs font-semibold uppercase text-gray-500">Terlambat</div>
             <div className="mt-2 text-3xl font-bold text-orange-600">
-              {String(terlambat).padStart(2, "0")}
+              {terlambat}
             </div>
             <div className="mt-2 text-xs text-gray-500">Memerlukan review</div>
           </CardContent>
@@ -567,7 +588,7 @@ export default function PresensiKaryawanManagerDepartemenPage() {
           <CardContent className="p-5">
             <div className="text-xs font-semibold uppercase text-gray-500">Izin/Sakit</div>
             <div className="mt-2 text-3xl font-bold text-blue-600">
-              {String(izinSakit).padStart(2, "0")}
+              {izinSakit}
             </div>
             <div className="mt-2 text-xs text-gray-500">Telah disetujui HR</div>
           </CardContent>

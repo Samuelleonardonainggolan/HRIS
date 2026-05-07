@@ -201,6 +201,26 @@ func (h *OvertimeRequestHandler) Publish(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Lembur berhasil dipublish", item))
 }
 
+func (h *OvertimeRequestHandler) PublishEmployee(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.Param("user_id")
+
+	var body struct {
+		LetterURL string `json:"letter_url" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse("Data tidak valid", err.Error()))
+		return
+	}
+
+	if err := h.service.PublishEmployeeSPKL(c.Request.Context(), id, userID, body.LetterURL); err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal publish SPKL karyawan", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, models.SuccessResponse("SPKL karyawan berhasil dipublish", nil))
+}
+
 // ─── Legacy compatibility methods ──────────────────────────────────────────
 
 func (h *OvertimeRequestHandler) ListForManagerHR(c *gin.Context) {

@@ -12,7 +12,7 @@ import '../models/overtime_request.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.169.139.60:8080/api/v1';
+  static const String baseUrl = 'http://10.169.139.49:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -962,6 +962,36 @@ class ApiService {
     }
   }
 
+  // ─── Salary ─────────────────────────────────────────────────────────────────
+
+  /// GET /employee-basic-salaries/users/:userId/active
+  static Future<Map<String, dynamic>> getActiveSalary(String userId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/employee-basic-salaries/users/$userId/active'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getActiveSalary status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return (data['data'] as Map<String, dynamic>?) ?? {};
+      } else {
+        // Kembalikan gaji 0 jika belum diset
+        return {'basic_salary': 0};
+      }
+    } catch (e) {
+      print('[API] getActiveSalary error: $e');
+      return {'basic_salary': 0};
+    }
+  }
+
   // ─── Face Registration ──────────────────────────────────────────────────────
 
   static Future<void> registerFace({
@@ -1413,21 +1443,42 @@ class ApiService {
       if (await isTokenExpired()) await refreshToken();
 
       final headers = await getHeaders();
-      final response = await http
-          .get(Uri.parse('$baseUrl/dept-overtime-requests'), headers: headers)
-          .timeout(const Duration(seconds: 30));
+      final endpoints = [
+        '$baseUrl/my-overtime-requests',
+        '$baseUrl/dept-overtime-requests-legacy',
+        '$baseUrl/dept-overtime-requests',
+      ];
 
-      List<OvertimeRequest> list = [];
-      if (response.statusCode == 200) {
+      List<OvertimeRequest> fallback = [];
+
+      for (final endpoint in endpoints) {
+        final response = await http
+            .get(Uri.parse(endpoint), headers: headers)
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode != 200) continue;
+
         final data = jsonDecode(response.body);
-        if (data['data'] is List) {
-          list = (data['data'] as List)
-              .map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>))
-              .toList();
-          list.sort((a, b) => b.date.compareTo(a.date));
-        }
+        final raw = data['data'];
+        if (raw is! List) continue;
+
+        final list = raw
+            .whereType<Map<String, dynamic>>()
+            .map((e) {
+              final mapped = (e['overtime'] is Map<String, dynamic>)
+                  ? (e['overtime'] as Map<String, dynamic>)
+                  : e;
+              return OvertimeRequest.fromJson(mapped);
+            })
+            .where((e) => e.id.isNotEmpty)
+            .toList();
+
+        list.sort((a, b) => b.date.compareTo(a.date));
+        if (list.isNotEmpty) return list;
+        fallback = list;
       }
-      return list;
+
+      return fallback;
     } catch (e) {
       print('[API] getMyOvertimeRequests error: $e');
       return [];
@@ -1440,21 +1491,41 @@ class ApiService {
       if (await isTokenExpired()) await refreshToken();
 
       final headers = await getHeaders();
-      final response = await http
-          .get(Uri.parse('$baseUrl/my-overtime'), headers: headers)
-          .timeout(const Duration(seconds: 30));
+      final endpoints = [
+        '$baseUrl/my-assigned-overtime',
+        '$baseUrl/my-overtime',
+      ];
 
-      List<OvertimeRequest> list = [];
-      if (response.statusCode == 200) {
+      List<OvertimeRequest> fallback = [];
+
+      for (final endpoint in endpoints) {
+        final response = await http
+            .get(Uri.parse(endpoint), headers: headers)
+            .timeout(const Duration(seconds: 30));
+
+        if (response.statusCode != 200) continue;
+
         final data = jsonDecode(response.body);
-        if (data['data'] is List) {
-          list = (data['data'] as List)
-              .map((e) => OvertimeRequest.fromJson(e as Map<String, dynamic>))
-              .toList();
-          list.sort((a, b) => b.date.compareTo(a.date));
-        }
+        final raw = data['data'];
+        if (raw is! List) continue;
+
+        final list = raw
+            .whereType<Map<String, dynamic>>()
+            .map((e) {
+              final mapped = (e['overtime'] is Map<String, dynamic>)
+                  ? (e['overtime'] as Map<String, dynamic>)
+                  : e;
+              return OvertimeRequest.fromJson(mapped);
+            })
+            .where((e) => e.id.isNotEmpty)
+            .toList();
+
+        list.sort((a, b) => b.date.compareTo(a.date));
+        if (list.isNotEmpty) return list;
+        fallback = list;
       }
-      return list;
+
+      return fallback;
     } catch (e) {
       print('[API] getAssignedOvertimeRequests error: $e');
       return [];
@@ -1506,7 +1577,7 @@ class ApiService {
       final headers = await getHeaders();
       final response = await http
           .delete(
-            Uri.parse('$baseUrl/dept-overtime-requests/$requestId'),
+            Uri.parse('$baseUrl/my-overtime-requests/$requestId'),
             headers: headers,
           )
           .timeout(const Duration(seconds: 30));
@@ -1564,7 +1635,7 @@ class ApiService {
 
       final response = await http
           .post(
-            Uri.parse('$baseUrl/dept-overtime-requests'),
+            Uri.parse('$baseUrl/my-overtime-requests'),
             headers: headers,
             body: jsonEncode({
               'employee_ids': employeeIds,
@@ -1598,7 +1669,7 @@ class ApiService {
 
       final response = await http
           .post(
-            Uri.parse('$baseUrl/dept-overtime-requests/$requestId/submit'),
+            Uri.parse('$baseUrl/my-overtime-requests/$requestId/submit'),
             headers: headers,
           )
           .timeout(const Duration(seconds: 30));

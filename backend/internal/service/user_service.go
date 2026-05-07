@@ -73,6 +73,38 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 	employmentStatus := strings.TrimSpace(req.EmploymentStatus)
 	departmentID := strings.TrimSpace(req.DepartmentID)
 	positionID := strings.TrimSpace(req.PositionID)
+	departmentName := strings.TrimSpace(req.DepartmentName)
+	positionName := strings.TrimSpace(req.PositionName)
+
+	// Resolve IDs from names if IDs are missing
+	if departmentID == "" && departmentName != "" {
+		dept, _ := s.departmentRepo.FindByName(ctx, departmentName)
+		if dept != nil {
+			departmentID = dept.ID.Hex()
+		}
+	}
+
+	if positionID == "" && positionName != "" {
+		if departmentID != "" {
+			// Try finding position within department
+			pos, _ := s.positionRepo.FindByNameAndDepartment(ctx, positionName, departmentID)
+			if pos != nil {
+				positionID = pos.ID.Hex()
+			}
+		}
+
+		if positionID == "" {
+			// Try finding position globally
+			pos, _ := s.positionRepo.FindByName(ctx, positionName)
+			if pos != nil {
+				positionID = pos.ID.Hex()
+				if departmentID == "" {
+					departmentID = pos.DepartmentID.Hex()
+				}
+			}
+		}
+	}
+
 	address := strings.TrimSpace(req.Address)
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
@@ -107,9 +139,15 @@ func (s *userService) CreateEmployee(ctx context.Context, req models.CreateEmplo
 		return nil, nil, errors.New("employment_status is required")
 	}
 	if departmentID == "" {
+		if departmentName != "" {
+			return nil, nil, fmt.Errorf("departemen '%s' tidak ditemukan", departmentName)
+		}
 		return nil, nil, errors.New("department_id is required")
 	}
 	if positionID == "" {
+		if positionName != "" {
+			return nil, nil, fmt.Errorf("jabatan '%s' tidak ditemukan", positionName)
+		}
 		return nil, nil, errors.New("position_id is required")
 	}
 	if phone == "" {
@@ -401,7 +439,7 @@ func (s *userService) ImportEmployees(ctx context.Context, employees []models.Cr
 	}
 
 	created := 0
-	var failures []string
+	failures := []string{}
 	for i, emp := range employees {
 		_, _, err := s.CreateEmployee(ctx, emp)
 		if err != nil {

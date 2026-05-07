@@ -96,11 +96,27 @@ class User {
     };
   }
 
-  // Role check helpers
-  bool get isManagerHR => role == 'manager_hr';
-  bool get isManagerDept => role == 'manager_departemen';
-  bool get isAdminDept => role == 'admin_departemen';
-  bool get isStaf => role == 'staf';
+    // Role check helpers
+    String get _normalizedRole => role.trim().toLowerCase().replaceAll(' ', '_');
+
+    bool get isManagerHR =>
+      _normalizedRole == 'manager_hr' ||
+      _normalizedRole == 'hr_manager' ||
+      _normalizedRole == 'managerhr';
+
+    bool get isManagerDept =>
+      _normalizedRole == 'manager_departemen' ||
+      _normalizedRole == 'manager_department' ||
+      _normalizedRole == 'kadep' ||
+      (_normalizedRole.contains('manager') &&
+        (_normalizedRole.contains('departemen') ||
+          _normalizedRole.contains('department')));
+
+    bool get isAdminDept =>
+      _normalizedRole == 'admin_departemen' ||
+      _normalizedRole == 'admin_department';
+
+    bool get isStaf => _normalizedRole == 'staf' || _normalizedRole == 'staff';
   
   bool hasPermission(String permission) {
     final permissions = {

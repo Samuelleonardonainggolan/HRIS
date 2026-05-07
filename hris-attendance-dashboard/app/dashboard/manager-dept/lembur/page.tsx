@@ -1,124 +1,93 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Eye, Edit2 } from "lucide-react";
+import { CalendarDays, Eye, Edit2, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { deptOvertimeRequestsApi } from "@/lib/api/overtime-requests";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-type OvertimeStatus = "Approved" | "Submitted" | "Rejected" | "Draft" | "Published";
-type OvertimeRow = {
-  id: string;
-  date: string; // "2023-10-12"
-  department: string;
-  requestedBy: string;
-  requestedByInitial: string;
-  requestedByColor: string; // bg color for avatar
-  jumlahKaryawan: number;
-  jamLembur: string; // "42.5 Jam"
-  status: OvertimeStatus;
-};
-
-const MOCK_DATA: OvertimeRow[] = [
-  {
-    id: "1",
-    date: "2023-10-12",
-    department: "IT Engineering",
-    requestedBy: "Ananda Dwi",
-    requestedByInitial: "AD",
-    requestedByColor: "bg-blue-100 text-blue-700",
-    jumlahKaryawan: 12,
-    jamLembur: "42.5 Jam",
-    status: "Approved",
-  },
-  {
-    id: "2",
-    date: "2023-10-14",
-    department: "Operations",
-    requestedBy: "Rendi Ramadhan",
-    requestedByInitial: "RR",
-    requestedByColor: "bg-teal-100 text-teal-700",
-    jumlahKaryawan: 8,
-    jamLembur: "16.0 Jam",
-    status: "Submitted",
-  },
-  {
-    id: "3",
-    date: "2023-10-15",
-    department: "Marketing",
-    requestedBy: "Sarah Hutapea",
-    requestedByInitial: "SH",
-    requestedByColor: "bg-orange-100 text-orange-700",
-    jumlahKaryawan: 5,
-    jamLembur: "10.5 Jam",
-    status: "Rejected",
-  },
-  {
-    id: "4",
-    date: "2023-10-16",
-    department: "Human Resources",
-    requestedBy: "Budi Kurniawan",
-    requestedByInitial: "BK",
-    requestedByColor: "bg-purple-100 text-purple-700",
-    jumlahKaryawan: 2,
-    jamLembur: "4.0 Jam",
-    status: "Draft",
-  },
-  {
-    id: "5",
-    date: "2023-10-08",
-    department: "Logistics",
-    requestedBy: "M. Fadli",
-    requestedByInitial: "MF",
-    requestedByColor: "bg-green-100 text-green-700",
-    jumlahKaryawan: 22,
-    jamLembur: "88.0 Jam",
-    status: "Published",
-  },
-];
-
-function statusBadge(status: OvertimeStatus) {
-  switch (status) {
-    case "Approved":
+function statusBadge(status: string) {
+  const s = status?.toLowerCase();
+  switch (s) {
+    case "approved":
       return <Badge className="bg-green-50 text-green-800 border-green-200">Approved</Badge>;
-    case "Submitted":
+    case "submitted":
       return <Badge className="bg-blue-50 text-blue-800 border-blue-200">Submitted</Badge>;
-    case "Rejected":
+    case "rejected":
       return <Badge className="bg-red-50 text-red-800 border-red-200">Rejected</Badge>;
-    case "Draft":
+    case "draft":
       return <Badge className="bg-zinc-100 text-zinc-800 border-zinc-300">Draft</Badge>;
-    case "Published":
+    case "published":
       return <Badge className="bg-purple-50 text-purple-800 border-purple-200">Published</Badge>;
     default:
-      return <Badge>{status}</Badge>;
+      return <Badge>{status || "Unknown"}</Badge>;
   }
 }
 
 function formatDate(dateStr: string) {
-  // 2023-10-12 → 12 Okt 2023
+  if (!dateStr) return "-";
   const date = new Date(dateStr);
-  return date
-    .toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    })
-    .replace(/\./g, "");
+  return date.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function getDuration(start: string, end: string) {
+  if (!start || !end) return "0 Jam";
+  const [sH, sM] = start.split(":").map(Number);
+  const [eH, eM] = end.split(":").map(Number);
+  let jam = (eH + eM / 60) - (sH + sM / 60);
+  if (jam < 0) jam += 24;
+  return `${Math.max(parseFloat(jam.toFixed(1)), 0)} Jam`;
 }
 
 export default function DaftarPengajuanLembur() {
   const [department, setDepartment] = useState("all");
   const [status, setStatus] = useState("all");
   const [date, setDate] = useState("");
+  
+  const [data, setData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Filter dummy
-  const filtered = MOCK_DATA.filter((row) =>
-    (department === "all" || row.department === department) &&
-    (status === "all" || row.status === status) &&
-    (!date || row.date === date)
-  );
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const res = await deptOvertimeRequestsApi.list();
+        setData(res);
+      } catch (error) {
+        console.error("Failed to fetch overtime data", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
+  const filtered = data.filter((row) => {
+    const rowDept = row.department_name || "";
+    const rowStatus = row.status || "";
+    const rowDate = row.date ? row.date.substring(0, 10) : "";
+
+    const matchDept = department === "all" || rowDept === department;
+    const matchStatus = status === "all" || rowStatus.toLowerCase() === status.toLowerCase();
+    const matchDate = !date || rowDate === date;
+
+    return matchDept && matchStatus && matchDate;
+  });
 
   return (
     <div className="p-8">
@@ -147,11 +116,9 @@ export default function DaftarPengajuanLembur() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Department: All</SelectItem>
-              <SelectItem value="IT Engineering">IT Engineering</SelectItem>
-              <SelectItem value="Operations">Operations</SelectItem>
-              <SelectItem value="Marketing">Marketing</SelectItem>
-              <SelectItem value="Human Resources">Human Resources</SelectItem>
-              <SelectItem value="Logistics">Logistics</SelectItem>
+              {Array.from(new Set(data.map(d => d.department_name).filter(Boolean))).map(dept => (
+                <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -162,11 +129,9 @@ export default function DaftarPengajuanLembur() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Status: All Status</SelectItem>
-              <SelectItem value="Approved">Approved</SelectItem>
-              <SelectItem value="Submitted">Submitted</SelectItem>
-              <SelectItem value="Rejected">Rejected</SelectItem>
-              <SelectItem value="Draft">Draft</SelectItem>
-              <SelectItem value="Published">Published</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="submitted">Submitted</SelectItem>
+              <SelectItem value="published">Published</SelectItem>
             </SelectContent>
           </Select>
 
@@ -190,46 +155,103 @@ export default function DaftarPengajuanLembur() {
           <thead>
             <tr className="bg-gray-50 text-gray-500 font-semibold text-xs uppercase">
               <th className="px-4 py-3 text-left">Tanggal</th>
-              <th className="px-4 py-3 text-left">Departemen</th>
-              <th className="px-4 py-3 text-left">Diajukan Oleh</th>
-              <th className="px-4 py-3 text-center">Jumlah Karyawan</th>
-              <th className="px-4 py-3 text-center">Jam Lembur</th>
+              <th className="px-4 py-3 text-left">Waktu Lembur</th>
+              <th className="px-4 py-3 text-left">Karyawan</th>
+              <th className="px-4 py-3 text-left">Alasan</th>
               <th className="px-4 py-3 text-center">Status</th>
               <th className="px-4 py-3 text-center">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y text-gray-700">
-            {filtered.length === 0 ? (
+            {isLoading ? (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-gray-400">Belum ada pengajuan lembur.</td>
+                <td colSpan={6} className="py-12 text-center">
+                  <div className="flex justify-center items-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                  </div>
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-6 text-center text-gray-400">Belum ada pengajuan lembur.</td>
               </tr>
             ) : (
               filtered.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-4">{formatDate(row.date)}</td>
-                  <td className="px-4 py-4">{row.department}</td>
                   <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-9 w-9 flex items-center justify-center rounded-full font-bold text-xs ${row.requestedByColor}`}>
-                        {row.requestedByInitial}
-                      </span>
-                      <span>{row.requestedBy}</span>
-                    </div>
+                    <div className="font-medium text-gray-900">{row.start_time?.slice(0, 5) || "-"} - {row.end_time?.slice(0, 5) || "-"}</div>
+                    <div className="text-xs text-gray-500">{getDuration(row.start_time, row.end_time)}</div>
                   </td>
-                  <td className="px-4 py-4 text-center">{row.jumlahKaryawan}</td>
-                  <td className="px-4 py-4 text-center font-semibold">{row.jamLembur}</td>
+                  <td className="px-4 py-4">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded-lg transition-colors w-fit">
+                          <div className="flex -space-x-2">
+                            {row.employees?.slice(0, 3).map((emp: any, i: number) => {
+                              const name = emp.user?.full_name || emp.name || emp.full_name || emp.employee_name || "?";
+                              return (
+                                <span key={i} className="h-8 w-8 rounded-full border-2 border-white bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700" title={name}>
+                                  {name !== "?" ? name.substring(0, 2).toUpperCase() : "?"}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <span className="text-sm font-medium text-gray-700">
+                            {row.employees?.length || 0} Orang
+                          </span>
+                        </div>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Daftar Karyawan Lembur</DialogTitle>
+                          <DialogDescription>
+                            Berikut adalah daftar karyawan yang diajukan untuk lembur pada tanggal {formatDate(row.date)}.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="mt-4 space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                          {row.employees?.map((emp: any, i: number) => {
+                            const name = emp.full_name || emp.user?.full_name || emp.name || emp.employee_name || "-";
+                            const payroll = emp.payroll_number || emp.user?.payroll_number || emp.nik || "N/A";
+                            const position = emp.position_name || emp.user?.position_name || "-";
+                            return (
+                              <div key={i} className="flex items-center justify-between p-3 rounded-xl border bg-white shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-sm font-bold text-white shadow-sm">
+                                    {name.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-gray-900">{name}</p>
+                                    <p className="text-xs text-gray-500 font-medium">
+                                      {payroll} • {position}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </td>
+                  <td className="px-4 py-4 max-w-[200px] truncate" title={row.reason}>
+                    {row.reason || "-"}
+                  </td>
                   <td className="px-4 py-4 text-center">
                     {statusBadge(row.status)}
                   </td>
                   <td className="px-4 py-4 text-center">
                     <div className="flex justify-center items-center gap-2">
-                      <Button variant="ghost" size="icon" className="hover:bg-zinc-100">
-                        <Eye className="h-5 w-5" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="hover:bg-zinc-100">
-                        <Edit2 className="h-5 w-5" />
-                      </Button>
-                      {/* More actions, e.g. dropdown, can be added here */}
+                      <Link href={`/dashboard/manager-dept/lembur/detail/${row.id}`}>
+                        <Button variant="ghost" size="icon" className="hover:bg-zinc-100">
+                          <Eye className="h-5 w-5" />
+                        </Button>
+                      </Link>
+                      <Link href={`/dashboard/manager-dept/lembur/edit-lembur/${row.id}`}>
+                        <Button variant="ghost" size="icon" className="hover:bg-zinc-100">
+                          <Edit2 className="h-5 w-5" />
+                        </Button>
+                      </Link>
                     </div>
                   </td>
                 </tr>
@@ -240,7 +262,7 @@ export default function DaftarPengajuanLembur() {
         {/* Pagination */}
         <div className="flex items-center justify-between border-t px-4 py-3 text-sm bg-white">
           <div>
-            Showing 1 to {filtered.length} of {MOCK_DATA.length} requests
+            Showing {filtered.length === 0 ? 0 : 1} to {filtered.length} of {data.length} requests
           </div>
           <div className="flex items-center gap-1">
             <Button size="icon" variant="outline" disabled>
@@ -249,13 +271,7 @@ export default function DaftarPengajuanLembur() {
             <Button size="icon" className="bg-blue-600 text-white" variant="default">
               1
             </Button>
-            <Button size="icon" variant="outline">
-              2
-            </Button>
-            <Button size="icon" variant="outline">
-              3
-            </Button>
-            <Button size="icon" variant="outline">
+            <Button size="icon" variant="outline" disabled>
               Next
             </Button>
           </div>

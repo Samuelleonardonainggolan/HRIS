@@ -192,6 +192,55 @@ class DeptOvertimeRequestsApi {
     if (!res.ok) throw new Error(data.error || data.message || "Gagal membuat pengajuan lembur");
     return data.data;
   }
+
+  async update(id: string, payload: {
+    date: string;
+    start_time: string;
+    end_time: string;
+    reason: string;
+    status: string;
+    employees: { user_id: string }[];
+  }): Promise<any> {
+    const res = await fetch(buildUrl(`/dept-overtime-requests/${id}`), {
+      method: "PUT",
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || data.message || "Gagal memperbarui pengajuan lembur");
+    return data.data;
+  }
+
+  async publish(id: string, payload: { letter_url: string; notes?: string }): Promise<any> {
+    const res = await fetch(buildUrl(`/dept-overtime-requests/${id}/publish`), {
+      method: "POST",
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || data.message || "Gagal mempublikasikan SPKL");
+    return data.data;
+  }
+
+  async publishEmployee(id: string, userId: string, payload: { letter_url: string }): Promise<any> {
+    const res = await fetch(buildUrl(`/dept-overtime-requests/${id}/employees/${userId}/publish`), {
+      method: "POST",
+      headers: {
+        ...authService.getAuthHeaders(),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.error || data.message || "Gagal mempublikasikan SPKL karyawan");
+    return data.data;
+  }
 }
 
 export const overtimeRequestsApi = new OvertimeRequestsApi();

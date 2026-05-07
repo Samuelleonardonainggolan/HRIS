@@ -1414,33 +1414,6 @@ class _HistoryPageState extends State<HistoryPage> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(18),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.assignment_turned_in_outlined,
-                  size: 13,
-                  color: Colors.grey.shade500,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Tidak hadir · Pengajuan telah disetujui',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );

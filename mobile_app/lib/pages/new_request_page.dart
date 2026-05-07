@@ -1,11 +1,14 @@
-﻿// lib/pages/new_request_page.dart
+// lib/pages/new_request_page.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:mobile_app/models/leave_request.dart';
 import 'package:mobile_app/services/api_service.dart';
 
 class NewRequestPage extends StatefulWidget {
-  const NewRequestPage({super.key});
+  final LeaveRequest? requestToEdit;
+  const NewRequestPage({super.key, this.requestToEdit});
+
   @override
   State<NewRequestPage> createState() => _NewRequestPageState();
 }
@@ -42,6 +45,14 @@ class _NewRequestPageState extends State<NewRequestPage> {
   @override
   void initState() {
     super.initState();
+    if (widget.requestToEdit != null) {
+      final r = widget.requestToEdit!;
+      _category = r.namaKategori;
+      _startDate = r.startDate;
+      _endDate = r.endDate;
+      _reasonCtrl.text = r.reason;
+      // Note: _selectedTipe will be set after _loadTipes
+    }
     _loadTipes();
     _loadLeaveQuota();
   }
@@ -74,11 +85,24 @@ class _NewRequestPageState extends State<NewRequestPage> {
       if (mounted) {
         setState(() {
           _allTipes = tipes;
-          // Default pilih tipe pertama yang kategorinya sesuai
-          final firstMatch = tipes
-              .where((t) => t.namaKategori == _category)
-              .toList();
-          _selectedTipe = firstMatch.isNotEmpty ? firstMatch.first : null;
+          
+          if (widget.requestToEdit != null) {
+            // Jika dalam mode edit, pilih tipe yang sesuai dengan pengajuan lama
+            try {
+              _selectedTipe = tipes.firstWhere(
+                (t) => t.namaTipe == widget.requestToEdit!.type,
+              );
+              // Pastikan kategori juga sinkron dengan tipe yang dipilih
+              _category = _selectedTipe!.namaKategori;
+            } catch (_) {
+              final firstMatch = tipes.where((t) => t.namaKategori == _category).toList();
+              _selectedTipe = firstMatch.isNotEmpty ? firstMatch.first : null;
+            }
+          } else {
+            // Default pilih tipe pertama yang kategorinya sesuai
+            final firstMatch = tipes.where((t) => t.namaKategori == _category).toList();
+            _selectedTipe = firstMatch.isNotEmpty ? firstMatch.first : null;
+          }
           _isLoadingTipes = false;
         });
       }
@@ -195,18 +219,31 @@ class _NewRequestPageState extends State<NewRequestPage> {
         }
       }
 
-      await ApiService.submitPengajuan(
-        tipePengajuanId: _selectedTipe!.id,
-        tanggalMulai: dateFormat.format(_startDate),
-        tanggalSelesai: dateFormat.format(_endDate),
-        totalHari: _days,
-        alasan: _reasonCtrl.text.trim(),
-        dokumenUrl: _file?.path,
-      );
+      if (widget.requestToEdit != null) {
+        await ApiService.updatePengajuan(
+          pengajuanId: widget.requestToEdit!.id,
+          tipePengajuanId: _selectedTipe!.id,
+          tanggalMulai: dateFormat.format(_startDate),
+          tanggalSelesai: dateFormat.format(_endDate),
+          totalHari: _days,
+          alasan: _reasonCtrl.text.trim(),
+          dokumenUrl: _file?.path,
+        );
+      } else {
+        await ApiService.submitPengajuan(
+          tipePengajuanId: _selectedTipe!.id,
+          tanggalMulai: dateFormat.format(_startDate),
+          tanggalSelesai: dateFormat.format(_endDate),
+          totalHari: _days,
+          alasan: _reasonCtrl.text.trim(),
+          dokumenUrl: _file?.path,
+        );
+      }
 
       if (mounted) {
         Navigator.pop(context, true);
-        _showSnack('Pengajuan ${_selectedTipe!.namaTipe} berhasil dikirim');
+        final actionText = widget.requestToEdit != null ? 'diperbarui' : 'dikirim';
+        _showSnack('Pengajuan ${_selectedTipe!.namaTipe} berhasil $actionText');
       }
     } catch (e) {
       if (mounted) {
