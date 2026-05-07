@@ -57,6 +57,7 @@ func main() {
 	migrationManager.Register(createMigration(migrations.CreatePengajuanIzinCuti()))
 	migrationManager.Register(createMigration(migrations.CreateAttendances()))
 	migrationManager.Register(createMigration(migrations.CreateJamKerja()))
+	migrationManager.Register(createMigration(migrations.CreateAssignments()))
 
 	// Run pending migrations
 	if err := migrationManager.Up(); err != nil {
@@ -77,6 +78,7 @@ func main() {
 	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
 	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
 	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // ✅ Dari kode kedua
+	assignmentRepo := repository.NewAssignmentRepository(mongodb.Database)
 
 	log.Println("📦 Repositories initialized")
 
@@ -139,6 +141,7 @@ func main() {
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // ✅ Dari kode kedua
+	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
 
 	log.Println("⚙️  Services initialized")
 
@@ -161,6 +164,7 @@ func main() {
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
 	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // ✅ Dari kode kedua
+	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
@@ -197,6 +201,7 @@ func main() {
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
 		overtimeRequestHandler, // ✅ Dari kode kedua
+		assignmentHandler,
 		sseHandler,             // ✅ Real-time SSE handler
 	)
 

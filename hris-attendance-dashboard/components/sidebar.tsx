@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -21,7 +22,8 @@ import {
   Receipt,
   FileImage,
   FileCheckCorner,
-  FilePlus
+  FilePlus,
+  FileBox
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -44,7 +46,8 @@ const iconMap: { [key: string]: React.ElementType } = {
   Receipt,
   FileImage,
   FileCheckCorner,
-  FilePlus
+  FilePlus,
+  FileBox
 };
 
 interface NavItem {
@@ -103,7 +106,7 @@ export function Sidebar() {
           { name: "Persetujuan Lembur", href: `${basePath}/persetujuan-lembur`, icon: "FileCheckCorner" },
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Pengajuan Lembur", href: `${basePath}/lembur`, icon: "FilePlus" },
-          { name: "Pengajuan Penugasan", href: `${basePath}/penugasan`, icon: "FilePlus" },
+          { name: "Penugasan", href: `${basePath}/penugasan`, icon: "FileBox" },
           { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
@@ -161,8 +164,14 @@ export function Sidebar() {
     <div className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
       {/* Header */}
       <div className="flex items-center gap-3 border-b border-gray-200 px-6 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600 text-white font-bold">
-          HR
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden border border-gray-100 shadow-sm bg-white">
+          <Image 
+            src="/logo.jpg" 
+            alt="Logo" 
+            width={40} 
+            height={40} 
+            className="object-contain"
+          />
         </div>
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Dashboard HRIS</h2>

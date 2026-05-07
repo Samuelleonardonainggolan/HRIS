@@ -25,6 +25,7 @@ func SetupRoutes(
 	employeeBasicSalaryHandler *handler.EmployeeBasicSalaryHandler,
 	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
 	overtimeRequestHandler *handler.OvertimeRequestHandler,
+	assignmentHandler *handler.AssignmentHandler,
 	sseHandler *handler.SSEHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
@@ -240,6 +241,18 @@ func SetupRoutes(
 				deptOvertimeRequests.POST("/:id/publish", overtimeRequestHandler.Publish)
 				deptOvertimeRequests.POST("/:id/employees/:user_id/publish", overtimeRequestHandler.PublishEmployee)
 				deptOvertimeRequests.DELETE("/:id", overtimeRequestHandler.Delete)
+			}
+
+			// ASSIGNMENTS (Kepala Departemen Only)
+			deptAssignments := protected.Group("/dept-assignments")
+			deptAssignments.Use(middleware.ManagerDepartemenOnly())
+			{
+				deptAssignments.GET("", assignmentHandler.ListForManagerDepartemen)
+				deptAssignments.GET("/:id", assignmentHandler.GetByID)
+				deptAssignments.GET("/preview-schedule", assignmentHandler.PreviewOriginalSchedule)
+				deptAssignments.POST("", assignmentHandler.Create)
+				deptAssignments.PUT("/:id", assignmentHandler.Update)
+				deptAssignments.DELETE("/:id", assignmentHandler.Delete)
 			}
 
 			// LEAVE REQUEST APPROVAL (Manager HR Only)
