@@ -23,11 +23,17 @@ logger = logging.getLogger("face-service")
 # =============================================================================
 # KONFIGURASI
 # =============================================================================
-MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
+MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\Training code\output_cpu\facenet_labersa_cpu.pt")
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
 SPOOF_SCORE_THRESHOLD = float(os.getenv("SPOOF_SCORE_THRESHOLD", "0.65"))
+FACE_DET_MIN_PROB = float(os.getenv("FACE_DET_MIN_PROB", "0.90"))
+LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "1") == "1"
+LIVENESS_MIN_FRAMES = int(os.getenv("LIVENESS_MIN_FRAMES", "3"))
+LIVENESS_STD_MEAN_THR = float(os.getenv("LIVENESS_STD_MEAN_THR", "0.008"))
+LIVENESS_YAW_RANGE_THR = float(os.getenv("LIVENESS_YAW_RANGE_THR", "0.08"))
+LIVENESS_MAX_FRAMES = int(os.getenv("LIVENESS_MAX_FRAMES", "6"))
 API_KEY = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
 
 # =============================================================================
@@ -135,6 +141,66 @@ class FaceService:
         except Exception as e:
             logger.error(f"Error detecting faces: {e}")
             return False, 0, []
+
+    def detect_faces_with_landmarks(self, image_bytes: bytes) -> List[Tuple[np.ndarray, np.ndarray, float]]:
+        if self.mtcnn is None:
+            self.mtcnn = MTCNN(keep_all=True, device="cpu")
+        img = Image.fromarray(self._decode_image(image_bytes))
+        boxes, probs, landmarks = self.mtcnn.detect(img, landmarks=True)
+        if boxes is None or probs is None or landmarks is None:
+            return []
+
+        out: List[Tuple[np.ndarray, np.ndarray, float]] = []
+        for box, prob, lm in zip(boxes, probs, landmarks):
+            if prob is None:
+                continue
+            p = float(prob)
+            if p < FACE_DET_MIN_PROB:
+                continue
+            x1, y1, x2, y2 = [float(v) for v in box]
+            if (x2 - x1) < 50 or (y2 - y1) < 50:
+                continue
+            out.append((np.array([x1, y1, x2, y2], dtype=np.float32), lm.astype(np.float32), p))
+        return out
+
+    def motion_liveness(self, landmarks_seq: List[np.ndarray]) -> Tuple[bool, Dict[str, Any]]:
+        if not LIVENESS_ENABLED:
+            return True, {"enabled": False}
+        if len(landmarks_seq) < LIVENESS_MIN_FRAMES:
+            return False, {
+                "enabled": True,
+                "reason": "not_enough_frames",
+                "min_frames": LIVENESS_MIN_FRAMES,
+                "frames": len(landmarks_seq),
+            }
+        feats = []
+        yaws = []
+        for lm in landmarks_seq:
+            le, re, nose, ml, mr = lm
+            eye_d = float(np.linalg.norm(le - re) + 1e-9)
+            f = np.array([
+                np.linalg.norm(nose - le) / eye_d,
+                np.linalg.norm(nose - re) / eye_d,
+                np.linalg.norm(ml - mr) / eye_d,
+                np.linalg.norm(nose - (ml + mr) / 2.0) / eye_d,
+            ], dtype=np.float32)
+            feats.append(f)
+            mid_eye_x = float((le[0] + re[0]) * 0.5)
+            yaws.append(float((nose[0] - mid_eye_x) / eye_d))
+        feats = np.stack(feats, axis=0)
+        std = feats.std(axis=0)
+        yaw_range = float(np.max(yaws) - np.min(yaws))
+        std_mean = float(std.mean())
+        live = bool((std_mean >= LIVENESS_STD_MEAN_THR) and (yaw_range >= LIVENESS_YAW_RANGE_THR))
+        return live, {
+            "enabled": True,
+            "reason": "ok" if live else "liveness_fail",
+            "feat_std_mean": std_mean,
+            "yaw_range": yaw_range,
+            "thr_feat_std_mean": LIVENESS_STD_MEAN_THR,
+            "thr_yaw_range": LIVENESS_YAW_RANGE_THR,
+            "frames": len(landmarks_seq),
+        }
 
     def _lbp_hist(self, gray_u8: np.ndarray) -> np.ndarray:
         g = gray_u8.astype(np.uint8)
@@ -1030,6 +1096,161 @@ async def verify_face(
             "employee_id": req.employee_id,
             "elapsed_ms": elapsed,
             "message": f"Gagal verifikasi: {str(e)}"
+        }
+
+@app.post("/face/verify_burst", summary="🔍 Cocokkan multi-foto (burst) + liveness gerak")
+async def verify_face_burst(
+    photos: List[UploadFile] = File(..., description="3-6 foto selfie berurutan (burst)"),
+    data: str = Form(..., description='JSON: {"employee_id":"...","stored_embedding":[...],"threshold":0.75}'),
+    _=Depends(verify_api_key),
+):
+    try:
+        req = VerifyRequest(**json.loads(data))
+    except Exception as e:
+        raise HTTPException(400, f"Format 'data' tidak valid: {e}")
+
+    if len(req.stored_embedding) != 512:
+        raise HTTPException(400, f"stored_embedding harus 512 dimensi, dapat {len(req.stored_embedding)}")
+
+    if not photos:
+        raise HTTPException(400, "photos wajib diisi")
+    if len(photos) < LIVENESS_MIN_FRAMES:
+        raise HTTPException(400, f"Minimal {LIVENESS_MIN_FRAMES} foto untuk burst")
+    if len(photos) > LIVENESS_MAX_FRAMES:
+        raise HTTPException(400, f"Maksimal {LIVENESS_MAX_FRAMES} foto untuk burst")
+
+    for p in photos:
+        _validate_image_file(p)
+
+    t0 = time.time()
+
+    try:
+        if not face_svc.loaded:
+            face_svc.load()
+
+        frames = [await p.read() for p in photos]
+        landmarks_seq: List[np.ndarray] = []
+        frame_details = []
+
+        best_idx = 0
+        best_quality = -1.0
+
+        for i, frame_bytes in enumerate(frames):
+            dets = face_svc.detect_faces_with_landmarks(frame_bytes)
+            if len(dets) == 0:
+                elapsed = round((time.time() - t0) * 1000, 1)
+                return {
+                    "matched": False,
+                    "similarity": 0.0,
+                    "confidence": 0.0,
+                    "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                    "employee_id": req.employee_id,
+                    "elapsed_ms": elapsed,
+                    "message": f"Frame #{i+1}: tidak ada wajah terdeteksi",
+                }
+            if len(dets) > 1:
+                elapsed = round((time.time() - t0) * 1000, 1)
+                return {
+                    "matched": False,
+                    "similarity": 0.0,
+                    "confidence": 0.0,
+                    "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                    "employee_id": req.employee_id,
+                    "elapsed_ms": elapsed,
+                    "message": f"Frame #{i+1}: terdeteksi lebih dari satu wajah",
+                }
+
+            box, lm, prob = dets[0]
+            box_list = [[float(box[0]), float(box[1]), float(box[2]), float(box[3])]]
+
+            is_valid, accessory_msg = face_svc.check_accessories(frame_bytes, box_list)
+            if not is_valid:
+                elapsed = round((time.time() - t0) * 1000, 1)
+                return {
+                    "matched": False,
+                    "similarity": 0.0,
+                    "confidence": 0.0,
+                    "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                    "employee_id": req.employee_id,
+                    "elapsed_ms": elapsed,
+                    "message": f"Frame #{i+1}: {accessory_msg}",
+                }
+
+            ok, msg, detail = face_svc.anti_spoof_check(frame_bytes, box_list)
+            if not ok:
+                elapsed = round((time.time() - t0) * 1000, 1)
+                return {
+                    "matched": False,
+                    "similarity": 0.0,
+                    "confidence": 0.0,
+                    "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                    "employee_id": req.employee_id,
+                    "elapsed_ms": elapsed,
+                    "message": f"Frame #{i+1}: {msg}",
+                    "anti_spoof": detail,
+                }
+
+            img = face_svc._decode_image(frame_bytes)
+            h, w = img.shape[:2]
+            x1, y1, x2, y2 = [int(round(v)) for v in box.tolist()]
+            x1 = max(0, min(w - 1, x1))
+            x2 = max(0, min(w, x2))
+            y1 = max(0, min(h - 1, y1))
+            y2 = max(0, min(h, y2))
+            face = img[y1:y2, x1:x2]
+            if face.size == 0:
+                quality = 0.0
+            else:
+                gray = (0.299 * face[..., 0] + 0.587 * face[..., 1] + 0.114 * face[..., 2]).astype(np.uint8)
+                quality = face_svc._laplacian_var(gray)
+            if quality > best_quality:
+                best_quality = float(quality)
+                best_idx = i
+
+            landmarks_seq.append(lm)
+            frame_details.append({
+                "frame": i + 1,
+                "face_prob": round(float(prob), 4),
+                "quality_lap_var": round(float(quality), 4),
+                "anti_spoof": detail,
+            })
+
+        live, live_detail = face_svc.motion_liveness(landmarks_seq)
+        if not live:
+            elapsed = round((time.time() - t0) * 1000, 1)
+            return {
+                "matched": False,
+                "similarity": 0.0,
+                "confidence": 0.0,
+                "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                "employee_id": req.employee_id,
+                "elapsed_ms": elapsed,
+                "message": "Liveness gagal. Ambil burst sambil gerakkan kepala sesuai instruksi (kiri-kanan).",
+                "liveness": live_detail,
+                "frames": frame_details,
+            }
+
+        result = face_svc.verify(frames[best_idx], req.stored_embedding, req.threshold)
+        elapsed = round((time.time() - t0) * 1000, 1)
+        return {
+            **result,
+            "employee_id": req.employee_id,
+            "elapsed_ms": elapsed,
+            "burst_best_frame": best_idx + 1,
+            "liveness": live_detail,
+            "frames": frame_details,
+        }
+    except Exception as e:
+        logger.error(f"Error verifying face burst: {e}")
+        elapsed = round((time.time() - t0) * 1000, 1)
+        return {
+            "matched": False,
+            "similarity": 0.0,
+            "confidence": 0.0,
+            "threshold": req.threshold or SIMILARITY_THRESHOLD,
+            "employee_id": req.employee_id,
+            "elapsed_ms": elapsed,
+            "message": f"Gagal verifikasi burst: {str(e)}",
         }
 
 
