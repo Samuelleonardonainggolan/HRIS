@@ -12,8 +12,8 @@ export interface CreateAssignmentRequest {
   reason: string;
   status: string;
   notes: string;
-  shift_start: string;
-  shift_end: string;
+  start_time: string;
+  end_time: string;
   employees: AssignmentEmployee[];
 }
 
@@ -22,8 +22,8 @@ export interface UpdateAssignmentRequest {
   reason?: string;
   status?: string;
   notes?: string;
-  shift_start?: string;
-  shift_end?: string;
+  start_time?: string;
+  end_time?: string;
   employees?: AssignmentEmployee[];
 }
 

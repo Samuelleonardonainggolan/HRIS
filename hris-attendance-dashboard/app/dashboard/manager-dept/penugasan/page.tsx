@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Clock, Eye, Plus, Users, Loader2 } from "lucide-react";
+import { CalendarDays, Clock, Eye, Plus, Users, Loader2, Edit2 } from "lucide-react";
 import { assignmentsApi } from "@/lib/api/assignments";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -170,9 +170,8 @@ export default function DaftarPenugasanKadep() {
                       {formatDate(row.date)}
                     </div>
                   </td>
-                  <td className="px-4 py-4">
-                    <div className="font-medium text-gray-900">{row.reason}</div>
-                    <div className="text-xs text-gray-400">{row.department_name}</div>
+                  <td className="px-4 py-4 max-w-[250px]">
+                    <div className="text-[13px] text-gray-600 leading-snug">{row.reason}</div>
                   </td>
                   <td className="px-4 py-4">
                     <Dialog>
@@ -220,16 +219,25 @@ export default function DaftarPenugasanKadep() {
                   <td className="px-4 py-4 text-center">
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold">
                       <Clock className="h-3 w-3" />
-                      {row.shift_start} - {row.shift_end}
+                      {row.start_time} - {row.end_time}
                     </div>
                   </td>
                   <td className="px-4 py-4 text-center">
                     {statusBadge(row.status)}
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full">
-                      <Eye className="h-4 w-4 text-gray-500" />
-                    </Button>
+                    <div className="flex justify-end gap-2">
+                      <Link href={`/dashboard/manager-dept/penugasan/edit-penugasan/${row.id}`}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-blue-50 group">
+                          <Edit2 className="h-4 w-4 text-gray-500 group-hover:text-blue-600" />
+                        </Button>
+                      </Link>
+                      <Link href={`/dashboard/manager-dept/penugasan/detail/${row.id}`}>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-full hover:bg-gray-100">
+                          <Eye className="h-4 w-4 text-gray-500" />
+                        </Button>
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}
