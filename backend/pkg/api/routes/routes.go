@@ -255,6 +255,16 @@ func SetupRoutes(
 				deptAssignments.DELETE("/:id", assignmentHandler.Delete)
 			}
 
+			// MY ASSIGNMENTS (Employee)
+			myAssignments := protected.Group("/my-assigned-assignments")
+			{
+				myAssignments.GET("", assignmentHandler.GetForMe)
+				myAssignments.GET("/:id", assignmentHandler.GetForMeByID)
+				myAssignments.POST("/:id/agree", assignmentHandler.AgreeAssignment)
+				myAssignments.POST("/:id/reject", assignmentHandler.RejectAssignment)
+				myAssignments.POST("/:id/use-day-off", assignmentHandler.UseReplacementDayOff)
+			}
+
 			// LEAVE REQUEST APPROVAL (Manager HR Only)
 			leaveRequests := protected.Group("/leave-requests")
 			leaveRequests.Use(middleware.ManagerHROnly())

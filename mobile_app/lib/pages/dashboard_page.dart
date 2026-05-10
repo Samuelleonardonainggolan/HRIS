@@ -100,7 +100,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       // Refresh data jika ada update terkait absensi, pengajuan, atau statistik
       if (event.type == 'attendance_updated' ||
           event.type == 'leave_updated' ||
-          event.type == 'stats_updated') {
+          event.type == 'stats_updated' ||
+          event.type == 'overtime_updated' ||
+          event.type == 'assignment_updated') {
         _loadTodayAttendance();
         _loadWorkScheduleInfo();
         _loadMonthlyStats();
@@ -136,6 +138,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       if (mounted) {
         setState(() {
           _workScheduleInfo = info;
+          _buildActivities();
           _isLoadingSchedule = false;
         });
       }
@@ -266,6 +269,18 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   void _buildActivities() {
     _activities = [];
+    final schedule = _workScheduleInfo;
+    final todaySchedule = schedule?.todaySchedule;
+    final plannedClockIn = todaySchedule?.clockInWindow.isNotEmpty == true
+        ? todaySchedule!.clockInWindow
+        : schedule?.waktuMulai.isNotEmpty == true
+        ? schedule!.waktuMulai
+        : '--:--';
+    final plannedClockOut = todaySchedule?.clockOutWindow.isNotEmpty == true
+        ? todaySchedule!.clockOutWindow
+        : schedule?.waktuSelesai.isNotEmpty == true
+        ? schedule!.waktuSelesai
+        : '--:--';
 
     if (_todayAttendance != null && _todayAttendance!.hasClockedIn) {
       _activities.add({
@@ -281,7 +296,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       _activities.add({
         'icon': Icons.login,
         'title': 'Clock In',
-        'time': '--:--',
+        'time': plannedClockIn,
         'status': 'Pending',
         'color': const Color(0xFF94A3B8),
       });
@@ -320,7 +335,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       _activities.add({
         'icon': Icons.logout,
         'title': 'Clock Out',
-        'time': '--:--',
+        'time': plannedClockOut,
         'status': 'Pending',
         'color': const Color(0xFF94A3B8),
       });
@@ -459,18 +474,22 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   Widget _buildMainClockSection() {
-    // ✅ Determine button state berdasarkan work schedule
-    // Clock IN tetap bisa selama jam kerja (bukan hanya 15 menit)
+    final todaySchedule = _workScheduleInfo?.todaySchedule;
+    final backendCanClockIn = todaySchedule?.canClockIn ?? false;
+    final backendCanClockOut = todaySchedule?.canClockOut ?? false;
+
+    // Fallback dari backend window string agar tombol tetap sinkron jika flag boolean terlambat update.
+    final inferredCanClockIn = _isWithinClockInWindow(todaySchedule);
+    final inferredCanClockOut = _isWithinClockOutWindow(todaySchedule);
+
     bool canClockIn =
-        (_workScheduleInfo?.todaySchedule?.canClockIn ?? false) &&
+        (backendCanClockIn || inferredCanClockIn) &&
         !isClockedIn &&
         !hasClockedOut &&
         !_isLoadingAttendance;
 
-    // Clock out: bisa sejak clock in, hingga 6 jam setelah jam pulang
-    // Backend mengirimkan canClockOut=true jika user sudah clock in dan belum melewati window
     bool canClockOut =
-        (_workScheduleInfo?.todaySchedule?.canClockOut ?? false) &&
+        (backendCanClockOut || inferredCanClockOut) &&
         isClockedIn &&
         !hasClockedOut &&
         !_isLoadingAttendance;
@@ -907,8 +926,18 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   Widget _buildSlipGajiShortcut() {
     final now = DateTime.now();
     final months = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
     final periode = '${months[now.month - 1]} ${now.year}';
 
@@ -1046,11 +1075,53 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   color: const Color(0xFFF59E0B),
                 ),
                 Container(height: 30, width: 1, color: Colors.grey.shade200),
-                _buildStatItem(
-                  icon: Icons.timelapse,
-                  value: "${_overtimeHours.toStringAsFixed(0)}j",
-                  label: "Lembur",
-                  color: const Color(0xFF8B5CF6),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _buildStatItem(
+                      icon: Icons.timelapse,
+                      value: "${_overtimeHours.toStringAsFixed(0)}j",
+                      label: "Lembur",
+                      color: const Color(0xFF8B5CF6),
+                    ),
+                    ValueListenableBuilder<bool>(
+                      valueListenable: SSEService().hasNewOvertime,
+                      builder: (context, hasNew, _) {
+                        if (!hasNew) {
+                          return ValueListenableBuilder<bool>(
+                            valueListenable: SSEService().hasNewAssignment,
+                            builder: (context, hasAssign, _) {
+                              if (!hasAssign) return const SizedBox.shrink();
+                              return Positioned(
+                                top: -2,
+                                right: -2,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFEF4444),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        }
+                        return Positioned(
+                          top: -2,
+                          right: -2,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1621,38 +1692,60 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ],
             ),
           ),
-          Stack(
-            children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Color(0xFF475569),
-                    size: 22,
-                  ),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: Container(
-                  height: 8,
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFEF4444),
-                  ),
-                ),
-              ),
-            ],
+          ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewOvertime,
+            builder: (context, hasOvertime, _) {
+              return ValueListenableBuilder<bool>(
+                valueListenable: SSEService().hasNewAssignment,
+                builder: (context, hasAssignment, _) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: SSEService().hasNewLeaveRequest,
+                    builder: (context, hasLeave, _) {
+                      final hasNew = hasOvertime || hasAssignment || hasLeave;
+                      return Stack(
+                        children: [
+                          Container(
+                            height: 44,
+                            width: 44,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.notifications_none,
+                                color: Color(0xFF475569),
+                                size: 22,
+                              ),
+                              onPressed: () {
+                                // Reset all flags when clicking the bell
+                                SSEService().hasNewOvertime.value = false;
+                                SSEService().hasNewAssignment.value = false;
+                                SSEService().hasNewLeaveRequest.value = false;
+                              },
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                          if (hasNew)
+                            Positioned(
+                              top: 9,
+                              right: 9,
+                              child: Container(
+                                height: 8,
+                                width: 8,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
@@ -1715,6 +1808,46 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     return "Selamat Malam";
   }
 
+  bool _isWithinClockInWindow(TodayScheduleInfo? schedule) {
+    if (schedule == null || !schedule.isWorkDay) return false;
+
+    final text = schedule.clockInWindow.trim();
+    final match = RegExp(r'(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})').firstMatch(text);
+    if (match == null) return false;
+
+    final open = _timeForToday(match.group(1)!);
+    final close = _timeForToday(match.group(2)!);
+    if (open == null || close == null) return false;
+
+    final now = DateTime.now();
+    return !now.isBefore(open) && !now.isAfter(close);
+  }
+
+  bool _isWithinClockOutWindow(TodayScheduleInfo? schedule) {
+    if (schedule == null || !schedule.isWorkDay) return false;
+
+    final text = schedule.clockOutWindow.trim();
+    final match = RegExp(r'(\d{2}:\d{2})\s*$').firstMatch(text);
+    if (match == null) return false;
+
+    final close = _timeForToday(match.group(1)!);
+    if (close == null) return false;
+
+    final now = DateTime.now();
+    return !now.isAfter(close);
+  }
+
+  DateTime? _timeForToday(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day, hour, minute);
+  }
+
   String _getCurrentDate() {
     final now = DateTime.now();
     final months = [
@@ -1740,6 +1873,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       'Sabtu',
       'Minggu',
     ];
-    return '${days[now.weekday % 7]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 }

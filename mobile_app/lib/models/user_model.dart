@@ -4,6 +4,7 @@ class User {
   final String email;
   final String fullName;
   final String role;
+  final String departmentId;
   final String department;
   final String position;
   final String? avatar;
@@ -23,6 +24,7 @@ class User {
     required this.email,
     required this.fullName,
     required this.role,
+    required this.departmentId,
     required this.department,
     required this.position,
     this.avatar,
@@ -64,6 +66,7 @@ class User {
       email:            (json['email'] ?? '').toString(),
       fullName:         (json['full_name'] ?? '').toString(),
       role:             (json['role'] ?? 'staf').toString(),
+      departmentId:     (json['department_id'] ?? '').toString(),
       department:       (json['department_name'] ?? json['department'] ?? '').toString(),
       position:         (json['position_name']  ?? json['position']  ?? '').toString(),
       avatar:           json['avatar']?.toString(),
@@ -86,6 +89,7 @@ class User {
       'email': email,
       'full_name': fullName,
       'role': role,
+      'department_id': departmentId,
       'department': department,
       'position': position,
       'avatar': avatar,
@@ -96,7 +100,7 @@ class User {
     };
   }
 
-    // Role check helpers
+    // Role check helper  s
     String get _normalizedRole => role.trim().toLowerCase().replaceAll(' ', '_');
 
     bool get isManagerHR =>

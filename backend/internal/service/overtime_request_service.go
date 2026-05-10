@@ -100,6 +100,17 @@ func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, requ
 		return nil, err
 	}
 
+	// Broadcast to all participants
+	if s.wsHub != nil {
+		for _, emp := range employees {
+			s.wsHub.BroadcastToUser(emp.UserID.Hex(), WSEventOvertimeUpdated, map[string]any{
+				"id":      created.ID.Hex(),
+				"type":    "new_request",
+				"message": "Ada pengajuan lembur baru untuk Anda",
+			})
+		}
+	}
+
 	return s.toResponse(ctx, created), nil
 }
 
@@ -168,6 +179,22 @@ func (s *overtimeRequestService) UpdateOvertimeRequest(ctx context.Context, id s
 		return nil, err
 	}
 
+	// Broadcast to all participants
+	if s.wsHub != nil {
+		for _, emp := range updated.Employees {
+			s.wsHub.BroadcastToUser(emp.UserID.Hex(), WSEventOvertimeUpdated, map[string]any{
+				"id":      updated.ID.Hex(),
+				"type":    "update",
+				"message": "Ada perubahan pada data lembur Anda",
+			})
+		}
+		// Also broadcast to requester
+		s.wsHub.BroadcastToUser(updated.RequestedByID.Hex(), WSEventOvertimeUpdated, map[string]any{
+			"id":   updated.ID.Hex(),
+			"type": "update",
+		})
+	}
+
 	return s.toResponse(ctx, updated), nil
 }
 
@@ -176,7 +203,20 @@ func (s *overtimeRequestService) DeleteOvertimeRequest(ctx context.Context, id s
 }
 
 func (s *overtimeRequestService) UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error {
-	return s.overtimeRepo.UpdateEmployeeStatus(ctx, overtimeID, userID, req.Status, req.RejectionNote)
+	err := s.overtimeRepo.UpdateEmployeeStatus(ctx, overtimeID, userID, req.Status, req.RejectionNote)
+	if err == nil && s.wsHub != nil {
+		// Broadcast to requester (manager) that employee responded
+		reqData, _ := s.overtimeRepo.FindByID(ctx, overtimeID)
+		if reqData != nil {
+			s.wsHub.BroadcastToUser(reqData.RequestedByID.Hex(), WSEventOvertimeUpdated, map[string]any{
+				"id":      overtimeID,
+				"user_id": userID,
+				"status":  req.Status,
+				"type":    "response",
+			})
+		}
+	}
+	return err
 }
 
 func (s *overtimeRequestService) PublishEmployeeSPKL(ctx context.Context, overtimeID string, userID string, letterURL string) error {

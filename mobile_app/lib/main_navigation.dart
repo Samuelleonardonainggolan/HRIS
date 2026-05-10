@@ -96,7 +96,16 @@ class _MainNavigationPageState extends State<MainNavigationPage>
 
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _selectedIndex = index),
+        onTap: () {
+          setState(() => _selectedIndex = index);
+          // Clear flags if relevant tab is selected
+          if (index == 2) {
+            SSEService().hasNewLeaveRequest.value = false;
+          } else if (index == 3) {
+            SSEService().hasNewOvertime.value = false;
+            SSEService().hasNewAssignment.value = false;
+          }
+        },
         behavior: HitTestBehavior.opaque,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
@@ -111,16 +120,64 @@ class _MainNavigationPageState extends State<MainNavigationPage>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: Icon(
-                  isSelected ? item.activeIcon : item.icon,
-                  key: ValueKey(isSelected),
-                  color: isSelected
-                      ? const Color(0xFF135BEC)
-                      : const Color(0xFF94A3B8),
-                  size: isSelected ? 24 : 22,
-                ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      isSelected ? item.activeIcon : item.icon,
+                      key: ValueKey(isSelected),
+                      color: isSelected
+                          ? const Color(0xFF135BEC)
+                          : const Color(0xFF94A3B8),
+                      size: isSelected ? 24 : 22,
+                    ),
+                  ),
+                  if (index == 2) // Tab Pengajuan
+                    ValueListenableBuilder<bool>(
+                      valueListenable: SSEService().hasNewLeaveRequest,
+                      builder: (context, hasNew, _) {
+                        if (!hasNew) return const SizedBox.shrink();
+                        return Positioned(
+                          top: -2,
+                          right: -2,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEF4444),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  if (index == 3) // Tab Lembur & Penugasan
+                    ValueListenableBuilder<bool>(
+                      valueListenable: SSEService().hasNewOvertime,
+                      builder: (context, hasOvertime, _) {
+                        return ValueListenableBuilder<bool>(
+                          valueListenable: SSEService().hasNewAssignment,
+                          builder: (context, hasAssignment, _) {
+                            if (!hasOvertime && !hasAssignment) return const SizedBox.shrink();
+                            return Positioned(
+                              top: -2,
+                              right: -2,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFEF4444),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                ],
               ),
               const SizedBox(height: 3),
               AnimatedDefaultTextStyle(
