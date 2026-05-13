@@ -387,30 +387,9 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
         helpText: 'Pilih Tanggal Reward',
       );
       if (picked != null) {
-        if (mounted) {
-          final option = await showDialog<String>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('Opsi Jam Kerja'),
-              content: const Text('Pilih bagaimana Anda ingin menggunakan jam lembur Anda:'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'late_in'),
-                  child: const Text('Masuk Terlambat'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx, 'early_out'),
-                  child: const Text('Pulang Cepat'),
-                ),
-              ],
-            ),
-          );
-
-          if (option != null) {
-            final dateStr = DateFormat('yyyy-MM-dd').format(picked);
-            _showFinalConfirmation(request, type, dateStr, option);
-          }
-        }
+        // Per user request: only early_out is allowed for overtime reward
+        final dateStr = DateFormat('yyyy-MM-dd').format(picked);
+        _showFinalConfirmation(request, type, dateStr, 'early_out');
       }
       return;
     }

@@ -1050,105 +1050,99 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   Widget _buildQuickStats() {
     final todaySchedule = _workScheduleInfo?.todaySchedule;
+    final borderColor = todaySchedule?.isWorkDay ?? false
+        ? const Color(0xFF135BEC).withOpacity(0.18)
+        : const Color(0xFF94A3B8).withOpacity(0.18);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: todaySchedule?.isWorkDay ?? false
-              ? const Color(0xFF135BEC).withOpacity(0.3)
-              : const Color(0xFF94A3B8).withOpacity(0.3),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: _isLoadingStats
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatItem(
-                  icon: Icons.today,
-                  value: "$_workDays",
-                  label: "Hari Kerja",
-                  color: const Color(0xFF135BEC),
-                ),
-                Container(height: 30, width: 1, color: Colors.grey.shade200),
-                _buildStatItem(
-                  icon: Icons.beach_access,
-                  value: "$_leaveRemaining",
-                  label: "Sisa Cuti",
-                  color: const Color(0xFFF59E0B),
-                ),
-                Container(height: 30, width: 1, color: Colors.grey.shade200),
-                Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                _buildStatItem(
-                  icon: Icons.timelapse,
-                  value: "${_overtimeHours.toStringAsFixed(0)}j",
-                  label: "Total Lembur",
-                  color: const Color(0xFF8B5CF6),
-                  onTap: _showOvertimeRewardPicker,
-                ),
-                    ValueListenableBuilder<bool>(
-                      valueListenable: SSEService().hasNewOvertime,
-                      builder: (context, hasNew, _) {
-                        if (!hasNew) {
-                          return ValueListenableBuilder<bool>(
-                            valueListenable: SSEService().hasNewAssignment,
-                            builder: (context, hasAssign, _) {
-                              if (!hasAssign) return const SizedBox.shrink();
-                              return Positioned(
-                                top: -2,
-                                right: -2,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFEF4444),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        }
-                        return Positioned(
-                          top: -2,
-                          right: -2,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFEF4444),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+    if (_isLoadingStats) {
+      return Container(
+        height: 80,
+        alignment: Alignment.center,
+        child: const CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return Row(
+      children: [
+        // ── Card 1: Hari Kerja & Sisa Cuti ──
+        Expanded(
+          flex: 2,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: borderColor, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
                 ),
               ],
             ),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _buildStatItem(
+                      icon: Icons.today_rounded,
+                      value: '$_workDays',
+                      label: 'Hari Kerja',
+                      color: const Color(0xFF135BEC),
+                      bgColor: const Color(0xFFEFF6FF),
+                    ),
+                  ),
+                  Container(
+                    width: 1,
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    color: Colors.grey.shade100,
+                  ),
+                  Expanded(
+                    child: _buildStatItem(
+                      icon: Icons.beach_access_rounded,
+                      value: '$_leaveRemaining',
+                      label: 'Sisa Cuti',
+                      color: const Color(0xFFF59E0B),
+                      bgColor: const Color(0xFFFFFBEB),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // ── Card 2: Total Lembur (Interactive, same shape) ──
+        Expanded(
+          flex: 1,
+          child: ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewOvertime,
+            builder: (context, hasNewOT, _) {
+              return ValueListenableBuilder<bool>(
+                valueListenable: SSEService().hasNewAssignment,
+                builder: (context, hasNewAssign, _) {
+                  final hasNotif = hasNewOT || hasNewAssign;
+                  return _buildStatItem(
+                    icon: Icons.timelapse_rounded,
+                    value: '${_overtimeHours.toStringAsFixed(1)}j',
+                    label: 'Lembur',
+                    color: const Color(0xFF7C3AED),
+                    bgColor: const Color(0xFFF5F3FF),
+                    onTap: _showOvertimeRewardPicker,
+                    showNotif: hasNotif,
+                    // Pass specific border color for interactive card
+                    customBorder: Border.all(
+                      color: const Color(0xFF7C3AED).withOpacity(0.3),
+                      width: 1.5,
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -1179,45 +1173,131 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     required String value,
     required String label,
     required Color color,
+    required Color bgColor,
     VoidCallback? onTap,
+    bool showNotif = false,
+    BoxBorder? customBorder,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+    final isInteractive = onTap != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: customBorder,
+        boxShadow: isInteractive
+            ? [
+                BoxShadow(
+                  color: color.withOpacity(0.06),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : null,
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // ── Icon dengan background warna ──
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(icon, color: color, size: 18),
                   ),
+                  // Notif dot merah untuk lembur
+                  if (showNotif)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.2),
+                        ),
+                      ),
+                    ),
+                  // Indikator tap kecil untuk lembur
+                  if (isInteractive && !showNotif)
+                    Positioned(
+                      bottom: -1,
+                      right: -1,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
+                        ),
+                        child: const Icon(
+                          Icons.stars_rounded,
+                          color: Colors.white,
+                          size: 7,
+                        ),
+                      ),
+                    ),
                 ],
               ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
+              const SizedBox(height: 6),
+              // ── Nilai ──
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isInteractive ? color : const Color(0xFF0F172A),
+                  letterSpacing: -0.3,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              label,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-            ),
-          ],
+              const SizedBox(height: 1),
+              // ── Label ──
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: isInteractive
+                      ? color.withOpacity(0.75)
+                      : Colors.grey.shade500,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (isInteractive) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    "KLAIM",
+                    style: TextStyle(
+                      fontSize: 7,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

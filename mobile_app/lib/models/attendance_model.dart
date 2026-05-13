@@ -144,12 +144,42 @@ class AttendanceRecord {
     );
   }
 
+  /// Buat record sintetis dari Penugasan (Assignment) APPROVED.
+  factory AttendanceRecord.fromAssignment({
+    required String id,
+    required DateTime date,
+    required String startTime,
+    required String endTime,
+    required String reason,
+    String? rewardInfo,
+  }) {
+    final d = DateTime(date.year, date.month, date.day);
+    final startDisplay = startTime.trim().isEmpty ? '--:--' : startTime.trim();
+    final endDisplay = endTime.trim().isEmpty ? '--:--' : endTime.trim();
+    return AttendanceRecord(
+      id: '${id}_assignment',
+      date: d,
+      clockIn: startDisplay,
+      clockOut: endDisplay,
+      status: 'Penugasan',
+      workHours: 0,
+      overtimeHours: 0,
+      isLeaveRecord: true,
+      leaveType: 'Penugasan',
+      leaveKategori: 'Penugasan',
+      leaveReason: reason,
+      rewardInfo: rewardInfo,
+    );
+  }
+
   static String _kategoriToStatus(String k) {
     switch (k.trim().toLowerCase()) {
       case 'cuti':
         return 'Cuti';
       case 'lembur':
         return 'Lembur';
+      case 'penugasan':
+        return 'Penugasan';
       default:
         return 'Izin';
     }
