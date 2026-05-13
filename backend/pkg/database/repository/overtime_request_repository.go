@@ -20,6 +20,7 @@ type OvertimeRequestRepository interface {
 	Delete(ctx context.Context, id string) error
 	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, status string, rejectionNote string) error
 	UpdateEmployeeLetterURL(ctx context.Context, overtimeID string, userID string, letterURL string) error
+	UpdateEmployeeReward(ctx context.Context, overtimeID string, userID string, reward models.OvertimeReward) error
 }
 
 type overtimeRequestRepository struct {
@@ -180,6 +181,40 @@ func (r *overtimeRequestRepository) UpdateEmployeeLetterURL(ctx context.Context,
 		"$set": bson.M{
 			"employees.$.letter_url": letterURL,
 			"updated_at":           time.Now(),
+		},
+	}
+
+	result, err := r.collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	if result.ModifiedCount == 0 {
+		return errors.New("karyawan tidak ditemukan dalam pengajuan lembur ini")
+	}
+
+	return nil
+}
+
+func (r *overtimeRequestRepository) UpdateEmployeeReward(ctx context.Context, overtimeID string, userID string, reward models.OvertimeReward) error {
+	oid, err := primitive.ObjectIDFromHex(overtimeID)
+	if err != nil {
+		return errors.New("invalid overtime ID")
+	}
+	uoid, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return errors.New("invalid user ID")
+	}
+
+	filter := bson.M{
+		"_id":               oid,
+		"employees.user_id": uoid,
+	}
+
+	update := bson.M{
+		"$set": bson.M{
+			"employees.$.reward": reward,
+			"updated_at":        time.Now(),
 		},
 	}
 

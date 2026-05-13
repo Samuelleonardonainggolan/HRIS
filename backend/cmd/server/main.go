@@ -125,7 +125,7 @@ func main() {
 	// -… AttendanceService dengan jamKerjaRepo DAN mongodb.Database (gabungan kedua kode)
 	// Kode pertama menggunakan mongodb.Database, kode kedua tidak
 	// Kita gunakan versi dengan mongodb.Database (lebih lengkap)
-	attendanceService := service.NewAttendanceService(mongodb.Database, attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, faceClient)
+	attendanceService := service.NewAttendanceService(mongodb.Database, attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, overtimeRequestRepo, faceClient)
 
 	// PengajuanService dengan konfigurasi lengkap (dari kode kedua)
 	var pengajuanService service.PengajuanService
@@ -168,7 +168,7 @@ func main() {
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
-
+	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // Real-time SSE                           // -… Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil

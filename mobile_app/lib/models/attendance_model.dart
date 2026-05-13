@@ -23,6 +23,7 @@ class AttendanceRecord {
   final String? leaveType; // "Izin Sakit", "Cuti Tahunan", dll.
   final String? leaveKategori; // "Izin" | "Cuti" | "Lembur"
   final String? leaveReason;
+  final String? rewardInfo; // Info reward lembur
 
   const AttendanceRecord({
     required this.id,
@@ -41,6 +42,7 @@ class AttendanceRecord {
     this.leaveType,
     this.leaveKategori,
     this.leaveReason,
+    this.rewardInfo,
   });
 
   /// Parse dari JSON backend (/attendance/monthly)
@@ -117,7 +119,9 @@ class AttendanceRecord {
     required String startTime,
     required String endTime,
     required String reason,
+    required double overtimeHours,
     String? summary,
+    String? rewardInfo,
   }) {
     final d = DateTime(date.year, date.month, date.day);
     final startDisplay = startTime.trim().isEmpty ? '--:--' : startTime.trim();
@@ -129,13 +133,14 @@ class AttendanceRecord {
       clockOut: endDisplay,
       status: 'Lembur',
       workHours: 0,
-      overtimeHours: 0,
+      overtimeHours: overtimeHours,
       isLeaveRecord: true,
       leaveType: 'Lembur',
       leaveKategori: 'Lembur',
       leaveReason: summary == null || summary.trim().isEmpty
           ? reason
           : '$summary • $reason',
+      rewardInfo: rewardInfo,
     );
   }
 

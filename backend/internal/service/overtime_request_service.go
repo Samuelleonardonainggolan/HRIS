@@ -22,6 +22,7 @@ type OvertimeRequestService interface {
 	// Employee Actions
 	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error
 	PublishEmployeeSPKL(ctx context.Context, overtimeID string, userID string, letterURL string) error
+	ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardDate string) error
 	GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error)
 
 	// Legacy/Compat methods (to minimize handler changes)
@@ -223,6 +224,34 @@ func (s *overtimeRequestService) PublishEmployeeSPKL(ctx context.Context, overti
 	return s.overtimeRepo.UpdateEmployeeLetterURL(ctx, overtimeID, userID, letterURL)
 }
 
+func (s *overtimeRequestService) ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardDate string) error {
+	reward := models.OvertimeReward{
+		RewardType: rewardType,
+		Status:     models.OvertimeRewardStatusGranted,
+	}
+	now := time.Now()
+	reward.GrantedAt = &now
+
+	if rewardDate != "" {
+		if d, err := time.Parse("2006-01-02", rewardDate); err == nil {
+			reward.RewardDate = &d
+		}
+	}
+
+	err := s.overtimeRepo.UpdateEmployeeReward(ctx, overtimeID, userID, reward)
+	if err != nil {
+		return err
+	}
+
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(userID, WSEventStatsUpdated, map[string]any{
+			"reason": "overtime_reward_claimed",
+		})
+	}
+
+	return nil
+}
+
 func (s *overtimeRequestService) GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error) {
 	uoid, err := primitive.ObjectIDFromHex(userID)
 	if err != nil {
@@ -290,6 +319,7 @@ func (s *overtimeRequestService) toResponse(ctx context.Context, r *models.Overt
 			RejectionNote:  e.RejectionNote,
 			LetterURL:      e.LetterURL,
 			ConfirmedAt:    e.ConfirmedAt,
+			Reward:         e.Reward,
 		})
 	}
 

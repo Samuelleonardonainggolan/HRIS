@@ -25,7 +25,7 @@ class _HistoryPageState extends State<HistoryPage> {
 
   /// Gabungan record absensi real + sintetis dari pengajuan APPROVED
   List<AttendanceRecord> _all = [];
-  List<AttendanceRecord> _filtered = [];
+  List<dynamic> _filtered = [];
 
   StreamSubscription? _sseSubscription;
 
@@ -174,14 +174,25 @@ class _HistoryPageState extends State<HistoryPage> {
       // Merge Overtime Requests
       for (final o in overtime) {
         if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
-          final approvalSummary = _overtimeApprovalSummary(o);
+          final myEntry = o.employees.cast<OvertimeEmployee?>().firstWhere(
+            (e) => e?.userId == ApiService.currentUser.value?.id,
+            orElse: () => null,
+          );
+          String? rewardText = myEntry?.reward?.rewardTypeDisplay;
+          if (myEntry?.reward?.rewardDate != null) {
+            final dStr = DateFormat('dd/MM', 'id').format(myEntry!.reward!.rewardDate!);
+            rewardText = '$rewardText ($dStr)';
+          }
+
           final rec = AttendanceRecord.fromOvertime(
             id: o.id,
             date: o.date,
             startTime: o.startTime,
             endTime: o.endTime,
             reason: o.reason,
-            summary: approvalSummary,
+            overtimeHours: o.getDurationHours(),
+            summary: null, // Removed approval summary as requested
+            rewardInfo: rewardText,
           );
           merged.add(rec);
         }
@@ -231,23 +242,37 @@ class _HistoryPageState extends State<HistoryPage> {
   // ── Filter ────────────────────────────────────────────────────────────────
   void _applyFilter() {
     final statusFilter = _filterMap[_selectedFilter];
+    final raw = _all.where((r) {
+      final mOk =
+          r.date.month == _selectedMonth.month &&
+          r.date.year == _selectedMonth.year;
+      final dOk = _selectedDate == null || _isSameDay(r.date, _selectedDate!);
+      bool sOk;
+      if (statusFilter == null) {
+        sOk = true;
+      } else if (statusFilter == 'Lembur') {
+        sOk = r.status == 'Lembur' || r.status == 'Overtime';
+      } else {
+        sOk = r.status == statusFilter;
+      }
+      return mOk && dOk && sOk;
+    }).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    final List<dynamic> grouped = [];
+    DateTime? lastDate;
+
+    for (final r in raw) {
+      final curDate = DateTime(r.date.year, r.date.month, r.date.day);
+      if (lastDate == null || !_isSameDay(lastDate, curDate)) {
+        grouped.add(curDate);
+        lastDate = curDate;
+      }
+      grouped.add(r);
+    }
+
     setState(() {
-      _filtered = (_all.where((r) {
-        final mOk =
-            r.date.month == _selectedMonth.month &&
-            r.date.year == _selectedMonth.year;
-        final dOk = _selectedDate == null || _isSameDay(r.date, _selectedDate!);
-        // Filter 'Lembur' cocok dengan status 'Lembur' ATAU 'Overtime'
-        bool sOk;
-        if (statusFilter == null) {
-          sOk = true;
-        } else if (statusFilter == 'Lembur') {
-          sOk = r.status == 'Lembur' || r.status == 'Overtime';
-        } else {
-          sOk = r.status == statusFilter;
-        }
-        return mOk && dOk && sOk;
-      }).toList())..sort((a, b) => b.date.compareTo(a.date));
+      _filtered = grouped;
     });
   }
 
@@ -1054,9 +1079,39 @@ class _HistoryPageState extends State<HistoryPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
         itemCount: _filtered.length,
         itemBuilder: (_, i) {
-          final r = _filtered[i];
+          final item = _filtered[i];
+          if (item is DateTime) {
+            return _buildDateHeader(item);
+          }
+          final r = item as AttendanceRecord;
           return r.isLeaveRecord ? _buildLeaveCard(r) : _buildAttendanceCard(r);
         },
+      ),
+    );
+  }
+
+  // ── Header Tanggal (Daily Log Group) ──────────────────────────────────────
+  Widget _buildDateHeader(DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10, left: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.calendar_today_rounded,
+            size: 16,
+            color: Colors.grey.shade600,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _fmt(date, 'EEE, dd MMM yyyy'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey.shade700,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1093,25 +1148,6 @@ class _HistoryPageState extends State<HistoryPage> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_rounded,
-                          size: 12,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _fmt(r.date, 'EEE, dd MMM yyyy'),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
                     Text(
                       r.shiftName.isNotEmpty ? r.shiftName : 'Shift Kerja',
                       style: const TextStyle(
@@ -1314,25 +1350,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today_rounded,
-                            size: 11,
-                            color: Colors.grey.shade400,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _fmt(r.date, 'EEE, dd MMM yyyy'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade400,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         r.leaveType ?? r.status,
                         style: const TextStyle(
@@ -1341,7 +1359,7 @@ class _HistoryPageState extends State<HistoryPage> {
                           color: Color(0xFF0F172A),
                         ),
                       ),
-                      if (r.leaveReason != null &&
+                      if (r.leaveType != 'Lembur' && r.leaveReason != null &&
                           r.leaveReason!.isNotEmpty) ...[
                         const SizedBox(height: 3),
                         Text(
@@ -1355,60 +1373,42 @@ class _HistoryPageState extends State<HistoryPage> {
                         ),
                       ],
                       if (r.leaveType == 'Lembur') ...[
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 8),
+                        // Row 1: Time and Total
                         Row(
                           children: [
-                            const Icon(
-                              Icons.access_time_rounded,
-                              size: 13,
-                              color: Color(0xFF135BEC),
+                            _buildMiniInfo(
+                              Icons.access_time_filled_rounded,
+                              '${r.clockIn} - ${r.clockOut}',
+                              const Color(0xFF135BEC),
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${r.clockIn} - ${r.clockOut} WIB',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: Color(0xFF135BEC),
-                                fontWeight: FontWeight.w600,
-                              ),
+                            const SizedBox(width: 12),
+                            _buildMiniInfo(
+                              Icons.hourglass_bottom_rounded,
+                              '${r.overtimeHours.toStringAsFixed(1)} Jam',
+                              const Color(0xFF6366F1),
                             ),
                           ],
                         ),
-                      ],
-                      const SizedBox(height: 8),
-                      // Badge disetujui
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2ECC71).withOpacity(0.08),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: const Color(0xFF2ECC71).withOpacity(0.16),
+                        const SizedBox(height: 8),
+                        // Row 2: Alasan
+                        if (r.leaveReason != null && r.leaveReason!.isNotEmpty)
+                          _buildMiniInfo(
+                            Icons.chat_bubble_rounded,
+                            r.leaveReason!,
+                            Colors.grey.shade600,
                           ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 10,
-                              color: Color(0xFF2ECC71),
-                            ),
-                            const SizedBox(width: 4),
-                            const Text(
-                              'PENGAJUAN DISETUJUI',
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF2ECC71),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                        // Row 3: Reward
+                        if (r.rewardInfo != null) ...[
+                          const SizedBox(height: 6),
+                          _buildMiniInfo(
+                            Icons.stars_rounded,
+                            r.rewardInfo!,
+                            const Color(0xFFD97706),
+                          ),
+                        ],
+                      ],
+                      
                     ],
                   ),
                 ),
@@ -1532,5 +1532,26 @@ class _HistoryPageState extends State<HistoryPage> {
       default:
         return Icons.assignment_late_rounded;
     }
+  }
+
+  Widget _buildMiniInfo(IconData icon, String text, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
+    );
   }
 }

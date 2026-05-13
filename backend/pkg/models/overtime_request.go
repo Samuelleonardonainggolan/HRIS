@@ -6,6 +6,17 @@ import (
 )
 
 // ==========================================
+// Subdocument for reward info
+type OvertimeReward struct {
+	RewardType   string     `json:"reward_type" bson:"reward_type"`                     // money|time_off
+	RewardOption string     `json:"reward_option,omitempty" bson:"reward_option,omitempty"` // early_out|late_in
+	RewardDate   *time.Time `json:"reward_date,omitempty" bson:"reward_date,omitempty"`   // Tanggal klaim reward (terutama untuk time_off)
+	Status       string     `json:"status" bson:"status"`                               // none|pending|granted|used
+	GrantedAt    *time.Time `json:"granted_at,omitempty" bson:"granted_at,omitempty"`
+	UsedAt       *time.Time `json:"used_at,omitempty" bson:"used_at,omitempty"`
+}
+
+// ==========================================
 // Subdocument for each employee
 type OvertimeEmployee struct {
 	UserID         primitive.ObjectID `json:"user_id" bson:"user_id"`
@@ -13,6 +24,7 @@ type OvertimeEmployee struct {
 	RejectionNote  string             `json:"rejection_note,omitempty" bson:"rejection_note,omitempty"` // opsional, wajib jika rejected
 	LetterURL      string             `json:"letter_url,omitempty" bson:"letter_url,omitempty"`         // link SPKL per karyawan
 	ConfirmedAt    *time.Time         `json:"confirmed_at,omitempty" bson:"confirmed_at,omitempty"`
+	Reward         OvertimeReward     `json:"reward" bson:"reward"`
 }
 
 // ==========================================
@@ -33,6 +45,19 @@ type OvertimeRequest struct {
 	Employees []OvertimeEmployee `json:"employees" bson:"employees"` // array karyawan lembur
 }
 
+func (r *OvertimeRequest) GetDurationHours() float64 {
+	start, err1 := time.Parse("15:04", r.StartTime)
+	end, err2 := time.Parse("15:04", r.EndTime)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	duration := end.Sub(start)
+	if duration < 0 {
+		duration += 24 * time.Hour
+	}
+	return duration.Hours()
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────
 
 const (
@@ -43,6 +68,14 @@ const (
 	EmployeeStatusPending  = "pending"
 	EmployeeStatusAgreed   = "agreed"
 	EmployeeStatusRejected = "rejected"
+
+	OvertimeRewardTypeMoney   = "money"
+	OvertimeRewardTypeTimeOff = "time_off"
+
+	OvertimeRewardStatusNone    = "none"
+	OvertimeRewardStatusPending = "pending"
+	OvertimeRewardStatusGranted = "granted"
+	OvertimeRewardStatusUsed    = "used"
 )
 
 // ─── Request Models ───────────────────────────────────────────────────────
@@ -77,17 +110,24 @@ type UpdateEmployeeStatusRequest struct {
 	RejectionNote string `json:"rejection_note,omitempty"`
 }
 
+type ClaimOvertimeRewardRequest struct {
+	RewardType   string `json:"reward_type" binding:"required"` // money|time_off
+	RewardOption string `json:"reward_option,omitempty"`        // early_out|late_in
+	RewardDate   string `json:"reward_date,omitempty"`          // YYYY-MM-DD
+}
+
 // ─── Response Models ──────────────────────────────────────────────────────
 
 type OvertimeEmployeeResponse struct {
-	UserID         string     `json:"user_id"`
-	FullName       string     `json:"full_name"`
-	PayrollNumber  string     `json:"payroll_number"`
-	PositionName   string     `json:"position_name"`
-	EmployeeStatus string     `json:"employee_status"`
-	RejectionNote  string     `json:"rejection_note,omitempty"`
-	LetterURL      string     `json:"letter_url,omitempty"`
-	ConfirmedAt    *time.Time `json:"confirmed_at,omitempty"`
+	UserID         string         `json:"user_id"`
+	FullName       string         `json:"full_name"`
+	PayrollNumber  string         `json:"payroll_number"`
+	PositionName   string         `json:"position_name"`
+	EmployeeStatus string         `json:"employee_status"`
+	RejectionNote  string         `json:"rejection_note,omitempty"`
+	LetterURL      string         `json:"letter_url,omitempty"`
+	ConfirmedAt    *time.Time     `json:"confirmed_at,omitempty"`
+	Reward         OvertimeReward `json:"reward"`
 }
 
 type OvertimeRequestResponse struct {
