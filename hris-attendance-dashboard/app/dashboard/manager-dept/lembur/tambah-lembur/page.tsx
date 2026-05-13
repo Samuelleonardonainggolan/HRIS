@@ -10,6 +10,8 @@ import { deptOvertimeRequestsApi } from "@/lib/api/overtime-requests";
 import { authService } from "@/lib/api/auth";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
+import { jamKerjaApi, JamKerjaDetail } from "@/lib/api/jam-kerja";
+
 import { Calendar } from "@/components/ui/calender";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -42,6 +44,10 @@ export default function BuatPengajuanLemburBaru() {
   const [pickedEmployees, setPickedEmployees] = useState<Employee[]>([]);
   const [reason, setReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [employeeSchedules, setEmployeeSchedules] = useState<Record<string, JamKerjaDetail>>({});
+
+  const DAY_NAMES = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
 
   // Estimasi jam lembur
   const estHours = (() => {
@@ -82,11 +88,20 @@ export default function BuatPengajuanLemburBaru() {
 
   const isPicked = (id: string) => pickedEmployees.some((e) => e.id === id);
   
-  const addEmployee = (emp: Employee) => {
-    if (!isPicked(emp.id)) setPickedEmployees((prev) => [...prev, emp]);
+  const addEmployee = async (emp: Employee) => {
+    if (!isPicked(emp.id)) {
+      setPickedEmployees((prev) => [...prev, emp]);
+      try {
+        const schedule = await jamKerjaApi.getByUserId(emp.id);
+        setEmployeeSchedules(prev => ({ ...prev, [emp.id]: schedule }));
+      } catch (error) {
+        console.error(`Failed to fetch schedule for ${emp.name}`, error);
+      }
+    }
     setSearchEmp("");
     setSearchResults([]);
   };
+
 
   const removeEmployee = (id: string) => setPickedEmployees((prev) => prev.filter((e) => e.id !== id));
 
@@ -95,8 +110,57 @@ export default function BuatPengajuanLemburBaru() {
       toast.error("Mohon lengkapi semua data dan pilih minimal satu karyawan.");
       return false;
     }
+
+    const selectedDate = new Date(date);
+    const dayName = DAY_NAMES[selectedDate.getDay()];
+
+    for (const emp of pickedEmployees) {
+      const schedule = employeeSchedules[emp.id];
+      if (!schedule) continue; // Skip if schedule not loaded yet
+
+      // 1. Validasi Hari Kerja
+      if (!schedule.day_of_week.includes(dayName)) {
+        toast.error(`${emp.name} tidak memiliki jadwal kerja pada hari ${dayName}.`);
+        return false;
+      }
+
+      // 2. Validasi Jam Mulai (harus di luar jam kerja)
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [schStartH, schStartM] = (schedule.start_time || "00:00").split(':').map(Number);
+      const [schEndH, schEndM] = (schedule.end_time || "00:00").split(':').map(Number);
+
+      const startVal = startH * 60 + startM;
+      const schStartVal = schStartH * 60 + schStartM;
+      const schEndVal = schEndH * 60 + schEndM;
+
+      // Cek apakah jam mulai berada di dalam rentang jam kerja
+      let isInsideWorkingHours = false;
+      if (schStartVal < schEndVal) {
+        // Shift normal (e.g., 08:00 - 17:00)
+        isInsideWorkingHours = startVal >= schStartVal && startVal < schEndVal;
+      } else {
+        // Shift malam (e.g., 22:00 - 06:00)
+        isInsideWorkingHours = startVal >= schStartVal || startVal < schEndVal;
+      }
+
+      if (isInsideWorkingHours) {
+        toast.error(`Jam mulai lembur ${emp.name} harus di luar jam kerja (${schedule.start_time} - ${schedule.end_time}).`);
+        return false;
+      }
+    }
+
+    // 3. Validasi Jam Selesai vs Jam Mulai
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+    if ((endH * 60 + endM) <= (startH * 60 + startM)) {
+      toast.error("Jam selesai harus lebih akhir dari jam mulai.");
+      return false;
+    }
+
     return true;
   };
+
+
 
   const handleSave = async (status: string) => {
     if (!validate()) return;

@@ -168,7 +168,7 @@ func main() {
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // -… Real-time SSE
+
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil
