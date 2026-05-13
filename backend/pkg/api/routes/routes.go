@@ -215,6 +215,7 @@ func SetupRoutes(
 				myOvertime.DELETE("/:id", overtimeRequestHandler.DeleteMine)
 				myOvertime.POST("/:id/agree", overtimeRequestHandler.AgreeOvertimeRequest)
 				myOvertime.POST("/:id/reject", overtimeRequestHandler.RejectOvertimeRequest)
+				myOvertime.POST("/:id/reward", overtimeRequestHandler.ClaimReward)
 			}
 
 			// OVERTIME REQUEST APPROVAL (Manager HR Only)

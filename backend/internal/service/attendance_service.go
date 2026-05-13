@@ -146,6 +146,7 @@ type attendanceService struct {
 	faceEmbeddingRepo repository.FaceEmbeddingRepository
 	jamKerjaRepo      repository.JamKerjaRepository
 	geofenceRepo      repository.GeofenceRepository // dari V2: dynamic geofence
+	overtimeRepo      repository.OvertimeRequestRepository
 	faceClient        *faceclient.Client
 	wsHub             *WSHub // untuk broadcast real-time events
 	// dari V1: fallback statis jika DB geofence kosong
@@ -164,6 +165,7 @@ func NewAttendanceService(
 	faceEmbeddingRepo repository.FaceEmbeddingRepository,
 	jamKerjaRepo repository.JamKerjaRepository,
 	geofenceRepo repository.GeofenceRepository,
+	overtimeRepo repository.OvertimeRequestRepository,
 	faceClient *faceclient.Client,
 ) AttendanceService {
 	return &attendanceService{
@@ -174,6 +176,7 @@ func NewAttendanceService(
 		faceEmbeddingRepo: faceEmbeddingRepo,
 		jamKerjaRepo:      jamKerjaRepo,
 		geofenceRepo:      geofenceRepo,
+		overtimeRepo:      overtimeRepo,
 		faceClient:        faceClient,
 		wsHub:             nil, // set via SetWSHub jika diperlukan
 		// Fallback statis (Labersa Hotel) digunakan jika tidak ada geofence aktif di DB
@@ -242,6 +245,29 @@ func (s *attendanceService) resolveEffectiveJamKerjaForToday(ctx context.Context
 	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
 	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
 
+	// 1. Cek apakah hari ini adalah hari libur pengganti (Reward dari Penugasan)
+	rewardFilter := bson.M{
+		"employees": bson.M{"$elemMatch": bson.M{
+			"user_id":               userID,
+			"day_off_reward.status": models.DayOffRewardStatusUsed,
+			"day_off_reward.replacement_off_date": bson.M{
+				"$gte": startOfDayWIB.UTC(),
+				"$lt":  endOfDayWIB.UTC(),
+			},
+		}},
+	}
+
+	var rewardAssignment models.Assignment
+	err := s.db.Collection("assignments").FindOne(ctx, rewardFilter).Decode(&rewardAssignment)
+	if err == nil {
+		// Ditemukan reward untuk hari ini -> user LIBUR
+		effective := *jamKerja
+		effective.DayOfWeek = []string{} // Kosongkan agar isWorkDay menjadi false
+		effective.IsActive = false
+		return &effective, true, nil
+	}
+
+	// 2. Cek apakah ada penugasan (kerja) untuk hari ini
 	filter := bson.M{
 		"date": bson.M{
 			"$gte": startOfDayWIB.UTC(),
@@ -255,7 +281,7 @@ func (s *attendanceService) resolveEffectiveJamKerjaForToday(ctx context.Context
 	}
 
 	var assignment models.Assignment
-	err := s.db.Collection("assignments").FindOne(ctx, filter, options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})).Decode(&assignment)
+	err = s.db.Collection("assignments").FindOne(ctx, filter, options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})).Decode(&assignment)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return jamKerja, false, nil
@@ -414,6 +440,19 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
+
+	// Cek reward Early Leave (Pulang Cepat)
+	reductionOut, _ := s.getTimeOffReductionForToday(ctx, userObjID, "early_out")
+	if reductionOut > 0 {
+		endTimeToday = endTimeToday.Add(-time.Duration(reductionOut * float64(time.Hour)))
+	}
+
+	// Cek reward Late In (Masuk Terlambat)
+	reductionIn, _ := s.getTimeOffReductionForToday(ctx, userObjID, "late_in")
+	if reductionIn > 0 {
+		startTimeToday = startTimeToday.Add(time.Duration(reductionIn * float64(time.Hour)))
+	}
+
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 	// Clock out window: tutup 6 jam setelah jam pulang
 	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
@@ -485,6 +524,12 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 	}
 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
+	// Cek reward Late In (Masuk Terlambat)
+	reductionIn, _ := s.getTimeOffReductionForToday(ctx, userObjID, "late_in")
+	if reductionIn > 0 {
+		startTimeToday = startTimeToday.Add(time.Duration(reductionIn * float64(time.Hour)))
+	}
+
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 
@@ -531,6 +576,13 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 
 	// ValidateClockOutWindow: window buka sejak clock in, tutup 6 jam setelah jam pulang
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
+
+	// Cek reward Early Leave (Pulang Cepat)
+	reduction, _ := s.getTimeOffReductionForToday(ctx, userObjID, "early_out")
+	if reduction > 0 {
+		endTimeToday = endTimeToday.Add(-time.Duration(reduction * float64(time.Hour)))
+	}
+
 	// Clock out window tutup 6 jam setelah jam pulang kerja
 	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
 
@@ -667,6 +719,17 @@ func (s *attendanceService) ClockOut(ctx context.Context, userID string, latitud
 
 	workDuration := now.Sub(*existing.ClockInTime)
 	workHours := workDuration.Hours()
+
+	// Cek reward Early Leave (Pulang Cepat) & Late In (Masuk Terlambat)
+	redOut, _ := s.getTimeOffReductionForToday(ctx, userObjID, "early_out")
+	redIn, _ := s.getTimeOffReductionForToday(ctx, userObjID, "late_in")
+
+	if redOut > 0 || redIn > 0 {
+		workHours += (redOut + redIn)
+		// Mark rewards as used in background
+		go s.markTimeOffRewardsAsUsed(context.Background(), userObjID)
+	}
+
 	overtimeHours := 0.0
 	if workHours > 9.0 {
 		overtimeHours = workHours - 9.0
@@ -1488,4 +1551,91 @@ func escapeCSV(s string) string {
 		return "\"" + s + "\""
 	}
 	return s
+}
+
+func (s *attendanceService) getTimeOffReductionForToday(ctx context.Context, userID primitive.ObjectID, option string) (float64, error) {
+	if s.overtimeRepo == nil {
+		return 0, nil
+	}
+
+	nowWIB := time.Now().In(wib)
+	// Kita bandingkan hanya tanggal (YYYY-MM-DD)
+	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
+	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
+
+	// Cari overtime yang reward_date nya hari ini dan statusnya GRANTED/USED
+	filter := bson.M{
+		"employees": bson.M{
+			"$elemMatch": bson.M{
+				"user_id":              userID,
+				"reward.reward_type":   models.OvertimeRewardTypeTimeOff,
+				"reward.reward_option": option,
+				"reward.reward_date": bson.M{
+					"$gte": startOfDayWIB,
+					"$lt":  endOfDayWIB,
+				},
+				"reward.status": bson.M{"$in": []string{models.OvertimeRewardStatusGranted, models.OvertimeRewardStatusUsed}},
+			},
+		},
+	}
+
+	requests, err := s.overtimeRepo.Find(ctx, filter)
+	if err != nil {
+		return 0, err
+	}
+
+	totalReduction := 0.0
+	for _, req := range requests {
+		for _, emp := range req.Employees {
+			if emp.UserID == userID && emp.Reward.RewardType == models.OvertimeRewardTypeTimeOff && emp.Reward.RewardOption == option {
+				// Cek apakah reward_date nya memang hari ini (double check)
+				if emp.Reward.RewardDate != nil {
+					rd := emp.Reward.RewardDate.In(wib)
+					if rd.Year() == nowWIB.Year() && rd.Month() == nowWIB.Month() && rd.Day() == nowWIB.Day() {
+						totalReduction += req.GetDurationHours()
+					}
+				}
+			}
+		}
+	}
+
+	return totalReduction, nil
+}
+
+func (s *attendanceService) markTimeOffRewardsAsUsed(ctx context.Context, userID primitive.ObjectID) {
+	if s.overtimeRepo == nil {
+		return
+	}
+
+	nowWIB := time.Now().In(wib)
+	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
+	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
+
+	filter := bson.M{
+		"employees": bson.M{
+			"$elemMatch": bson.M{
+				"user_id":            userID,
+				"reward.reward_type": models.OvertimeRewardTypeTimeOff,
+				"reward.reward_date": bson.M{
+					"$gte": startOfDayWIB,
+					"$lt":  endOfDayWIB,
+				},
+				"reward.status": models.OvertimeRewardStatusGranted,
+			},
+		},
+	}
+
+	requests, _ := s.overtimeRepo.Find(ctx, filter)
+	for _, req := range requests {
+		for _, emp := range req.Employees {
+			if emp.UserID == userID && emp.Reward.RewardType == models.OvertimeRewardTypeTimeOff && emp.Reward.Status == models.OvertimeRewardStatusGranted {
+				// Update status to USED
+				reward := emp.Reward
+				reward.Status = models.OvertimeRewardStatusUsed
+				now := time.Now()
+				reward.UsedAt = &now
+				s.overtimeRepo.UpdateEmployeeReward(ctx, req.ID.Hex(), userID.Hex(), reward)
+			}
+		}
+	}
 }

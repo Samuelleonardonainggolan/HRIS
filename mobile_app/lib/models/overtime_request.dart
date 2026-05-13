@@ -137,6 +137,7 @@ class OvertimeEmployee {
   final String? rejectionNote;
   final String? letterUrl; // URL dokumen SPKL untuk karyawan ini
   final DateTime? confirmedAt;
+  final OvertimeReward? reward;
 
   OvertimeEmployee({
     required this.userId,
@@ -145,6 +146,7 @@ class OvertimeEmployee {
     this.rejectionNote,
     this.letterUrl,
     this.confirmedAt,
+    this.reward,
   });
 
   factory OvertimeEmployee.fromJson(Map<String, dynamic> json) {
@@ -159,6 +161,9 @@ class OvertimeEmployee {
       letterUrl: json['letter_url']?.toString(),
       confirmedAt: json['confirmed_at'] != null
           ? DateTime.tryParse(json['confirmed_at'].toString())
+          : null,
+      reward: json['reward'] != null
+          ? OvertimeReward.fromJson(json['reward'] as Map<String, dynamic>)
           : null,
     );
   }
@@ -181,4 +186,62 @@ class OvertimeEmployee {
   bool get isPending => employeeStatus == 'pending';
   bool get isAgreed => employeeStatus == 'agreed';
   bool get isRejected => employeeStatus == 'rejected';
+}
+
+class OvertimeReward {
+  final String rewardType; // money|time_off
+  final String status; // none|pending|granted|used
+  final DateTime? rewardDate; // Tanggal klaim reward (terutama untuk time_off)
+  final DateTime? grantedAt;
+  final DateTime? usedAt;
+
+  OvertimeReward({
+    required this.rewardType,
+    required this.status,
+    this.rewardDate,
+    this.grantedAt,
+    this.usedAt,
+  });
+
+  factory OvertimeReward.fromJson(Map<String, dynamic> json) {
+    return OvertimeReward(
+      rewardType: json['reward_type']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'none',
+      rewardDate: json['reward_date'] != null
+          ? DateTime.tryParse(json['reward_date'].toString())
+          : null,
+      grantedAt: json['granted_at'] != null
+          ? DateTime.tryParse(json['granted_at'].toString())
+          : null,
+      usedAt: json['used_at'] != null
+          ? DateTime.tryParse(json['used_at'].toString())
+          : null,
+    );
+  }
+
+  String get rewardTypeDisplay {
+    switch (rewardType) {
+      case 'money':
+        return 'Uang Lembur';
+      case 'time_off':
+        return 'Jam Kerja Dipercepat';
+      default:
+        return 'Belum Dipilih';
+    }
+  }
+
+  String get statusDisplay {
+    switch (status) {
+      case 'none':
+        return 'Belum Dipilih';
+      case 'pending':
+        return 'Menunggu Persetujuan';
+      case 'granted':
+        return 'Diterima';
+      case 'used':
+        return 'Sudah Digunakan';
+      default:
+        return 'Unknown';
+    }
+  }
 }

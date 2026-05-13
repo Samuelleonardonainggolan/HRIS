@@ -116,6 +116,25 @@ func (h *OvertimeRequestHandler) UpdateStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, models.SuccessResponse("Status berhasil diperbarui", nil))
 }
 
+func (h *OvertimeRequestHandler) ClaimReward(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("userID")
+
+	var req models.ClaimOvertimeRewardRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request body", "error": err.Error()})
+		return
+	}
+
+	err := h.service.ClaimReward(c.Request.Context(), id, userID, req.RewardType, req.RewardDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Gagal mengklaim reward", "error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reward berhasil diklaim"})
+}
+
 func (h *OvertimeRequestHandler) GetMine(c *gin.Context) {
 	userID := c.GetString("userID")
 	items, err := h.service.GetEmployeeOvertimeHistory(c.Request.Context(), userID)

@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:mobile_app/pages/face_attendance_page.dart';
 import 'package:mobile_app/pages/slip_gaji_page.dart';
 import 'package:mobile_app/services/api_service.dart';
+import 'package:mobile_app/widgets/overtime_reward_picker.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
+import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/services/sse_service.dart';
 
 class EmployeeDashboardPage extends StatefulWidget {
@@ -192,25 +194,46 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     setState(() => _isLoadingStats = true);
     try {
       final now = DateTime.now();
-      final summary = await ApiService.getMonthlyAttendance(
-        month: now.month,
-        year: now.year,
-      );
-      var leaveRemaining = _leaveRemaining;
-      try {
-        leaveRemaining = await ApiService.getLeaveBalance();
-      } catch (e) {
-        print('[Dashboard] Load leave balance error: $e');
+      
+      // Load 3 sources: Monthly Attendance, Leave Balance, and Overtime Requests
+      final results = await Future.wait([
+        ApiService.getMonthlyAttendance(month: now.month, year: now.year),
+        ApiService.getLeaveBalance(),
+        ApiService.getMyOvertime(),
+      ]);
+
+      final summary = results[0] as MonthlyAttendanceSummary;
+      final leaveRemaining = results[1] as int;
+      final overtimeRequests = results[2] as List<OvertimeRequest>;
+
+      // Calculate "Jam Tabungan" from approved/agreed overtime requests
+      final userId = ApiService.currentUser.value?.id;
+      double totalOvertimeSavings = 0;
+      for (final o in overtimeRequests) {
+        // Count if submitted (sent by Kadep) or published (approved by HR)
+        if (o.status == 'submitted' || o.status == 'published') {
+          final myEntry = o.employees.cast<OvertimeEmployee?>().firstWhere(
+            (e) => e?.userId == userId,
+            orElse: () => null,
+          );
+          // Only count if I agreed
+          if (myEntry != null && myEntry.isAgreed) {
+            totalOvertimeSavings += o.getDurationHours();
+          }
+        }
       }
+
       if (mounted) {
         setState(() {
           _workDays = summary.totalDays;
-          _overtimeHours = summary.overtimeHours;
+          // Use the calculated savings for "Total Lembur" as requested
+          _overtimeHours = totalOvertimeSavings;
           _leaveRemaining = leaveRemaining;
           _isLoadingStats = false;
         });
       }
     } catch (e) {
+      print('[Dashboard] Load monthly stats error: $e');
       if (mounted) setState(() => _isLoadingStats = false);
     }
   }
@@ -1041,9 +1064,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -1078,12 +1101,13 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    _buildStatItem(
-                      icon: Icons.timelapse,
-                      value: "${_overtimeHours.toStringAsFixed(0)}j",
-                      label: "Lembur",
-                      color: const Color(0xFF8B5CF6),
-                    ),
+                _buildStatItem(
+                  icon: Icons.timelapse,
+                  value: "${_overtimeHours.toStringAsFixed(0)}j",
+                  label: "Total Lembur",
+                  color: const Color(0xFF8B5CF6),
+                  onTap: _showOvertimeRewardPicker,
+                ),
                     ValueListenableBuilder<bool>(
                       valueListenable: SSEService().hasNewOvertime,
                       builder: (context, hasNew, _) {
@@ -1128,37 +1152,74 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
   }
 
+  void _showOvertimeRewardPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) {
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: OvertimeRewardPicker(scrollController: scrollController),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildStatItem({
     required IconData icon,
     required String value,
     required String label,
     required Color color,
+    VoidCallback? onTap,
   }) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 18),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF0F172A),
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-        ),
-      ],
+      ),
     );
   }
 

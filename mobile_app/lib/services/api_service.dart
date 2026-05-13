@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.86.55.175:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.38:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -611,6 +611,35 @@ class ApiService {
     } catch (e) {
       print('[API] getMyOvertime error: $e');
       return [];
+    }
+  }
+
+  static Future<void> claimOvertimeReward(String id, String rewardType, {String? rewardDate, String? rewardOption}) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final body = {
+        'reward_type': rewardType,
+        if (rewardDate != null) 'reward_date': rewardDate,
+        if (rewardOption != null) 'reward_option': rewardOption,
+      };
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-overtime/$id/reward'),
+            headers: headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal mengklaim reward lembur');
+      }
+    } catch (e) {
+      print('[API] claimOvertimeReward error: $e');
+      rethrow;
     }
   }
 
@@ -1445,42 +1474,27 @@ class ApiService {
       if (await isTokenExpired()) await refreshToken();
 
       final headers = await getHeaders();
-      final endpoints = [
-        '$baseUrl/my-overtime-requests',
-        '$baseUrl/dept-overtime-requests-legacy',
-        '$baseUrl/dept-overtime-requests',
-      ];
+      // Correct endpoint for manager department to see their dept requests
+      final response = await http
+          .get(Uri.parse('$baseUrl/dept-overtime-requests'), headers: headers)
+          .timeout(const Duration(seconds: 30));
 
-      List<OvertimeRequest> fallback = [];
-
-      for (final endpoint in endpoints) {
-        final response = await http
-            .get(Uri.parse(endpoint), headers: headers)
-            .timeout(const Duration(seconds: 30));
-
-        if (response.statusCode != 200) continue;
-
-        final data = jsonDecode(response.body);
-        final raw = data['data'];
-        if (raw is! List) continue;
-
-        final list = raw
-            .whereType<Map<String, dynamic>>()
-            .map((e) {
-              final mapped = (e['overtime'] is Map<String, dynamic>)
-                  ? (e['overtime'] as Map<String, dynamic>)
-                  : e;
-              return OvertimeRequest.fromJson(mapped);
-            })
-            .where((e) => e.id.isNotEmpty)
-            .toList();
-
-        list.sort((a, b) => b.date.compareTo(a.date));
-        if (list.isNotEmpty) return list;
-        fallback = list;
+      if (response.statusCode != 200) {
+        // Fallback to my-overtime if dept-overtime fails (e.g. 403)
+        return getMyOvertime();
       }
 
-      return fallback;
+      final data = jsonDecode(response.body);
+      final raw = data['data'];
+      if (raw is! List) return [];
+
+      final list = raw
+          .whereType<Map<String, dynamic>>()
+          .map((e) => OvertimeRequest.fromJson(e))
+          .toList();
+
+      list.sort((a, b) => b.date.compareTo(a.date));
+      return list;
     } catch (e) {
       print('[API] getMyOvertimeRequests error: $e');
       return [];
@@ -1489,49 +1503,7 @@ class ApiService {
 
   /// Get assigned overtime requests (for employees)
   static Future<List<OvertimeRequest>> getAssignedOvertimeRequests() async {
-    try {
-      if (await isTokenExpired()) await refreshToken();
-
-      final headers = await getHeaders();
-      final endpoints = [
-        '$baseUrl/my-assigned-overtime',
-        '$baseUrl/my-overtime',
-      ];
-
-      List<OvertimeRequest> fallback = [];
-
-      for (final endpoint in endpoints) {
-        final response = await http
-            .get(Uri.parse(endpoint), headers: headers)
-            .timeout(const Duration(seconds: 30));
-
-        if (response.statusCode != 200) continue;
-
-        final data = jsonDecode(response.body);
-        final raw = data['data'];
-        if (raw is! List) continue;
-
-        final list = raw
-            .whereType<Map<String, dynamic>>()
-            .map((e) {
-              final mapped = (e['overtime'] is Map<String, dynamic>)
-                  ? (e['overtime'] as Map<String, dynamic>)
-                  : e;
-              return OvertimeRequest.fromJson(mapped);
-            })
-            .where((e) => e.id.isNotEmpty)
-            .toList();
-
-        list.sort((a, b) => b.date.compareTo(a.date));
-        if (list.isNotEmpty) return list;
-        fallback = list;
-      }
-
-      return fallback;
-    } catch (e) {
-      print('[API] getAssignedOvertimeRequests error: $e');
-      return [];
-    }
+    return getMyOvertime();
   }
 
   /// Get overtime requests for HR review
