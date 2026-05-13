@@ -26,6 +26,7 @@ func SetupRoutes(
 	faceEmbeddingApprovalHandler *handler.FaceEmbeddingApprovalHandler,
 	overtimeRequestHandler *handler.OvertimeRequestHandler,
 	assignmentHandler *handler.AssignmentHandler,
+	reportHandler *handler.ReportHandler,
 	sseHandler *handler.SSEHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
@@ -273,6 +274,13 @@ func SetupRoutes(
 				deptLeaveRequests.GET("/:id", pengajuanIzinCutiHandler.GetForKepalaDepartemen)
 				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
 				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
+			}
+
+			// REPORTS
+			reports := protected.Group("/reports")
+			reports.Use(middleware.ManagerHROnly())
+			{
+				reports.GET("/attendance-activity", reportHandler.GetAttendanceActivityReport)
 			}
 		}
 

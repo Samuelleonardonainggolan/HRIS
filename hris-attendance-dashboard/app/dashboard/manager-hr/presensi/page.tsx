@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreVertical,
+  ChevronDown,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
@@ -36,6 +43,7 @@ import {
 import { geofenceApi } from "@/lib/api/geofence";
 import { resolveAttendanceLocationLabel } from "@/lib/utils/attendance-location";
 import type { Geofence } from "@/types/geofence";
+import { generateAttendanceReportPDF } from "@/lib/utils/pdf-generator";
 
 type AttendanceStatus = AttendanceStatusUI;
 
@@ -221,7 +229,7 @@ export default function PresensiKaryawanManagerHRPage() {
     fetchData();
   }, [fetchData, filtersKey, page]);
 
-  const handleExport = async () => {
+  const handleExportCsv = async () => {
     try {
       const blob = await attendanceManagerApi.exportCsv({
         from: appliedFilters.from,
@@ -239,7 +247,46 @@ export default function PresensiKaryawanManagerHRPage() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Gagal export laporan";
+      const message = e instanceof Error ? e.message : "Gagal export laporan CSV";
+      setLoadError(message);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (rows.length === 0) return;
+    try {
+      const headers = ["Nama", "NIK", "Departemen", "Tanggal", "Clock In", "Clock Out", "Status", "Lokasi"];
+      const body = rows.map((r) => {
+        const locationLabel = resolveAttendanceLocationLabel(r.location, geofences);
+        return [
+          r.name,
+          r.empId,
+          r.dept,
+          r.dateLabel,
+          r.clockIn,
+          r.clockOut,
+          r.status,
+          locationLabel,
+        ];
+      });
+
+      const blob = await generateAttendanceReportPDF({
+        title: "Laporan Presensi Karyawan (Manager HR)",
+        period: dateRangeLabel,
+        headers,
+        body,
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `presensi_${appliedFilters.from}_${appliedFilters.to}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Gagal export laporan PDF";
       setLoadError(message);
     }
   };
@@ -285,14 +332,26 @@ export default function PresensiKaryawanManagerHRPage() {
           </p>
         </div>
 
-        <Button
-          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-          onClick={handleExport}
-          disabled={!appliedFilters.from || !appliedFilters.to || isLoading}
-        >
-          <Download className="h-4 w-4" />
-          Export Laporan
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              disabled={!appliedFilters.from || !appliedFilters.to || isLoading}
+            >
+              <Download className="h-4 w-4" />
+              Export Laporan
+              <ChevronDown className="h-4 w-4 opacity-70" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleExportCsv}>
+              Export CSV
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportPdf}>
+              Export PDF
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Filter Card */}

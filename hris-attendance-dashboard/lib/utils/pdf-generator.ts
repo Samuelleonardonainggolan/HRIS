@@ -162,5 +162,81 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
   return doc.output("blob");
 };
 
+interface AttendanceReportData {
+  title: string;
+  period: string;
+  headers: string[];
+  body: any[][];
+}
 
+export const generateAttendanceReportPDF = async (report: AttendanceReportData): Promise<Blob> => {
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+  });
 
+  // Logo
+  try {
+    doc.addImage("/logo.jpg", "JPG", 20, 10, 20, 20);
+  } catch (e) {
+    // skip logo if not found
+  }
+
+  // Header - Centered
+  doc.setFont("times", "bold");
+  doc.setFontSize(16);
+  doc.setTextColor(152, 131, 0); // Golden
+  doc.text("PT. Labersa Hutahaean", 148, 15, { align: "center" });
+  
+  doc.setFontSize(12);
+  doc.setTextColor(0, 100, 0); // Dark Green
+  doc.text("HEAD OFFICE - WILAYAH TOBA", 148, 22, { align: "center" });
+
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.5);
+  doc.line(20, 32, 277, 32);
+
+  // Report Title
+  doc.setFont("times", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.text(report.title.toUpperCase(), 148, 42, { align: "center" });
+  
+  doc.setFontSize(11);
+  doc.setFont("times", "normal");
+  doc.text(`Periode: ${report.period}`, 148, 48, { align: "center" });
+
+  // Table
+  autoTable(doc, {
+    startY: 55,
+    margin: { left: 20, right: 20 },
+    head: [report.headers],
+    body: report.body,
+    theme: "grid",
+    headStyles: { 
+      fillColor: [240, 240, 240], 
+      textColor: [0, 0, 0], 
+      fontStyle: "bold", 
+      halign: "center",
+      lineWidth: 0.1,
+      lineColor: [0, 0, 0],
+      font: "times"
+    },
+    styles: { 
+      fontSize: 9, 
+      textColor: [0, 0, 0],
+      lineWidth: 0.1,
+      lineColor: [0, 0, 0],
+      valign: "middle",
+      font: "times"
+    }
+  });
+
+  // Footer / Print Date
+  const finalY = (doc as any).lastAutoTable.finalY || 55;
+  doc.setFontSize(8);
+  doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, finalY + 10);
+
+  return doc.output("blob");
+};

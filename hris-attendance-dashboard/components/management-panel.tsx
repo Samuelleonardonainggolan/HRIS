@@ -8,7 +8,14 @@ import {
   Download,
   Settings,
   HelpCircle,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Card,
   CardContent,
@@ -21,11 +28,15 @@ import { Button } from "@/components/ui/button";
 interface ManagementPanelProps {
   pendingLeaveCount?: number;
   loadingLeave?: boolean;
+  onExportCsv?: () => void;
+  onExportPdf?: () => void;
 }
 
 export function ManagementPanel({
   pendingLeaveCount = 0,
   loadingLeave = false,
+  onExportCsv,
+  onExportPdf,
 }: ManagementPanelProps) {
   const router = useRouter();
 
@@ -110,13 +121,28 @@ export function ManagementPanel({
               <UserPlus className="h-5 w-5" />
               <span className="text-xs">Tambah User</span>
             </Button>
-            <Button
-              variant="dark"
-              className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700"
-            >
-              <Download className="h-5 w-5" />
-              <span className="text-xs">Ekspor Data</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="dark"
+                  className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700 w-full"
+                >
+                  <Download className="h-5 w-5" />
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs">Ekspor Data</span>
+                    <ChevronDown className="h-3 w-3 opacity-50" />
+                  </div>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="center" className="w-40">
+                <DropdownMenuItem onClick={onExportCsv} disabled={!onExportCsv}>
+                  Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onExportPdf} disabled={!onExportPdf}>
+                  Export PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="dark"
               className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700"

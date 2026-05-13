@@ -94,6 +94,7 @@ export function Sidebar() {
           { name: "Persetujuan Lembur", href: `${basePath}/persetujuan-lembur`, icon: "FileCheckCorner" },
           { name: "Lembur", href: `${basePath}/lembur`, icon: "FileCheckCorner" },
           { name: "Gaji Karyawan", href: `${basePath}/gaji-karyawan`, icon: "Receipt" },
+          { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
         ];
 
       case "manager_departemen":

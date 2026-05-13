@@ -142,6 +142,7 @@ func main() {
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // ✅ Dari kode kedua
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
+	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
 
 	log.Println("⚙️  Services initialized")
 
@@ -165,6 +166,7 @@ func main() {
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
 	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // ✅ Dari kode kedua
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
+	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
@@ -202,6 +204,7 @@ func main() {
 		faceEmbeddingApprovalHandler,
 		overtimeRequestHandler, // ✅ Dari kode kedua
 		assignmentHandler,
+		reportHandler,
 		sseHandler,             // ✅ Real-time SSE handler
 	)
 

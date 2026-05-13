@@ -9,6 +9,7 @@ import { format } from "date-fns";
 import { attendanceManagerApi, type ManagerAttendanceItem } from "@/lib/api/attendance-manager";
 import { leaveRequestsApi } from "@/lib/api/leave-requests";
 import { employeeService } from "@/lib/api/employee";
+import { generateAttendanceReportPDF } from "@/lib/utils/pdf-generator";
 import type { Employee } from "@/types";
 
 function todayStr() {
@@ -26,7 +27,7 @@ function mapAttendanceToEmployee(item: ManagerAttendanceItem): Employee {
 
   const statusMap: Record<string, Employee["status"]> = {
     HADIR: "HADIR",
-    TELAT: "TELAMBAT",
+    TELAT: "TELAT",
     IZIN: "IZIN",
     ALFA: "ALPHA",
   };
@@ -129,6 +130,63 @@ export default function ManagerHRDashboard() {
     }
   }, []);
 
+  const handleExportCsv = () => {
+    if (employees.length === 0) return;
+    
+    const headers = ["Nama", "NIK", "Departemen", "Jabatan", "Pukul Absen", "Status"];
+    const rows = employees.map((e) => [
+      e.name,
+      e.nik,
+      e.department,
+      e.position,
+      e.checkInTime || "--:--",
+      e.status,
+    ]);
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(",")),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `presensi_hr_hari_ini_${today}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportPdf = async () => {
+    if (employees.length === 0) return;
+
+    const headers = ["Nama", "NIK", "Departemen", "Jabatan", "Pukul Absen", "Status"];
+    const body = employees.map((e) => [
+      e.name,
+      e.nik,
+      e.department,
+      e.position,
+      e.checkInTime || "--:--",
+      e.status,
+    ]);
+
+    const blob = await generateAttendanceReportPDF({
+      title: "Monitoring Presensi Hari Ini",
+      period: format(new Date(), "dd MMMM yyyy"),
+      headers,
+      body,
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `presensi_hr_hari_ini_${today}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   /* ─── Initial load ─── */
   useEffect(() => {
     loadTotalEmployees();
@@ -212,6 +270,8 @@ export default function ManagerHRDashboard() {
         <ManagementPanel
           pendingLeaveCount={pendingLeave}
           loadingLeave={loadingLeave}
+          onExportCsv={handleExportCsv}
+          onExportPdf={handleExportPdf}
         />
       </div>
     </div>
