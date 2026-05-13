@@ -702,38 +702,59 @@ class _RequestPageState extends State<RequestPage> {
               ],
             ),
           ),
-          Stack(
-            children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Color(0xFF475569),
-                    size: 22,
-                  ),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: Container(
-                  height: 8,
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFEF4444),
-                  ),
-                ),
-              ),
-            ],
+          ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewOvertime,
+            builder: (context, hasOvertime, _) {
+              return ValueListenableBuilder<bool>(
+                valueListenable: SSEService().hasNewAssignment,
+                builder: (context, hasAssignment, _) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: SSEService().hasNewLeaveRequest,
+                    builder: (context, hasLeave, _) {
+                      final hasNew = hasOvertime || hasAssignment || hasLeave;
+                      return Stack(
+                        children: [
+                          Container(
+                            height: 44,
+                            width: 44,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.notifications_none,
+                                color: Color(0xFF475569),
+                                size: 22,
+                              ),
+                              onPressed: () {
+                                SSEService().hasNewOvertime.value = false;
+                                SSEService().hasNewAssignment.value = false;
+                                SSEService().hasNewLeaveRequest.value = false;
+                              },
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                          if (hasNew)
+                            Positioned(
+                              top: 9,
+                              right: 9,
+                              child: Container(
+                                height: 8,
+                                width: 8,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            },
           ),
         ],
       ),

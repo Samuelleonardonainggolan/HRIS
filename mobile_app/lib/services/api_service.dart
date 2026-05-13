@@ -3,16 +3,18 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../models/auth_model.dart';
 import '../models/attendance_model.dart';
 import '../models/leave_request.dart';
 import '../models/overtime_request.dart';
+import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.169.139.49:8080/api/v1';
+  static const String baseUrl = 'http://10.86.55.175:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -1767,6 +1769,222 @@ class ApiService {
       }
     } catch (e) {
       print('[API] publishOvertimeLetter error: $e');
+      rethrow;
+    }
+  }
+
+  // ─── Assignment Request (Kadep to Employee) ─────────────────────────────
+
+  static Future<List<Assignment>> getMyAssignments() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/dept-assignments'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body);
+      final raw = data['data'];
+      if (raw is! List) return [];
+
+      final list = raw
+          .whereType<Map<String, dynamic>>()
+          .map(Assignment.fromJson)
+          .where((e) => e.id.isNotEmpty)
+          .toList();
+      list.sort((a, b) => b.date.compareTo(a.date));
+      return list;
+    } catch (e) {
+      print('[API] getMyAssignments error: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Assignment>> getAssignedAssignments() async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/my-assigned-assignments'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) return [];
+
+      final data = jsonDecode(response.body);
+      final raw = data['data'];
+      if (raw is! List) return [];
+
+      final list = raw
+          .whereType<Map<String, dynamic>>()
+          .map(Assignment.fromJson)
+          .where((e) => e.id.isNotEmpty)
+          .toList();
+      list.sort((a, b) => b.date.compareTo(a.date));
+      return list;
+    } catch (e) {
+      print('[API] getAssignedAssignments error: $e');
+      return [];
+    }
+  }
+
+  static Future<String> createAssignment({
+    required DateTime date,
+    required String startTime,
+    required String endTime,
+    required String reason,
+    required List<String> employeeIds,
+    String? notes,
+    String status = 'draft',
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final me = currentUser.value ?? await getProfile();
+      final departmentId = me.departmentId;
+
+      if (departmentId.isEmpty) {
+        throw Exception('Department ID user tidak ditemukan');
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/dept-assignments'),
+            headers: headers,
+            body: jsonEncode({
+              'department_id': departmentId,
+              'date': DateFormat('yyyy-MM-dd').format(date),
+              'start_time': startTime,
+              'end_time': endTime,
+              'reason': reason,
+              'status': status,
+              'notes': notes ?? '',
+              'employees': employeeIds
+                  .map((id) => {
+                        'user_id': id,
+                      })
+                  .toList(),
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal membuat penugasan');
+      }
+
+      final data = jsonDecode(response.body);
+      final item = data['data'];
+      if (item is Map<String, dynamic>) {
+        return (item['id'] ?? '').toString();
+      }
+      return '';
+    } catch (e) {
+      print('[API] createAssignment error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> submitAssignment(String assignmentId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/dept-assignments/$assignmentId/submit'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal submit penugasan');
+      }
+    } catch (e) {
+      print('[API] submitAssignment error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> agreeAssignment(String assignmentId) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-assigned-assignments/$assignmentId/agree'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menyetujui penugasan');
+      }
+    } catch (e) {
+      print('[API] agreeAssignment error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> rejectAssignment(
+    String assignmentId, {
+    String? rejectionNote,
+  }) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-assigned-assignments/$assignmentId/reject'),
+            headers: headers,
+            body: jsonEncode({
+              'rejection_note': rejectionNote ?? '',
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menolak penugasan');
+      }
+    } catch (e) {
+      print('[API] rejectAssignment error: $e');
+      rethrow;
+    }
+  }
+
+  static Future<void> useReplacementDayOff(
+    String assignmentId,
+    String replacementDate,
+  ) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/my-assigned-assignments/$assignmentId/use-day-off'),
+            headers: headers,
+            body: jsonEncode({
+              'replacement_off_date': replacementDate,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode != 200) {
+        final err = jsonDecode(response.body);
+        throw Exception(err['message'] ?? 'Gagal menetapkan hari off pengganti');
+      }
+    } catch (e) {
+      print('[API] useReplacementDayOff error: $e');
       rethrow;
     }
   }

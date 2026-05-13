@@ -15,11 +15,21 @@ type AssignmentService interface {
 	Create(ctx context.Context, requestedByID string, req models.CreateAssignmentRequest) (*models.AssignmentResponse, error)
 	GetByID(ctx context.Context, id string) (*models.AssignmentResponse, error)
 	ListForManagerDepartemen(ctx context.Context, departmentID string) ([]models.AssignmentResponse, error)
+	ListForManagerByUser(ctx context.Context, managerUserID string) ([]models.AssignmentResponse, error)
+	ListForEmployee(ctx context.Context, userID string) ([]models.AssignmentResponse, error)
+	GetForEmployeeByID(ctx context.Context, id string, userID string) (*models.AssignmentResponse, error)
+	Submit(ctx context.Context, id string, requestedByID string) (*models.AssignmentResponse, error)
+	UpdateEmployeeStatus(ctx context.Context, id string, userID string, req models.UpdateAssignmentEmployeeStatusRequest) (*models.AssignmentResponse, error)
 	Update(ctx context.Context, id string, req models.UpdateAssignmentRequest) (*models.AssignmentResponse, error)
 	Delete(ctx context.Context, id string) error
-	
+
 	// Helper untuk mendapatkan jadwal asli karyawan pada tanggal tertentu
 	GetOriginalSchedule(ctx context.Context, userID string, date time.Time) (models.AssignmentOriginalShift, error)
+
+	// Day off reward
+	UseReplacementDayOff(ctx context.Context, assignmentID string, userID string, replacementDate time.Time) (*models.AssignmentResponse, error)
+	GrantDayOffReward(ctx context.Context, assignmentID string, userID string) (*models.AssignmentResponse, error)
+	SetWSHub(hub *WSHub)
 }
 
 type assignmentService struct {
@@ -27,6 +37,7 @@ type assignmentService struct {
 	userRepo       repository.UserRepository
 	jamKerjaRepo   repository.JamKerjaRepository
 	departmentRepo repository.DepartmentRepository
+	wsHub          *WSHub
 }
 
 func NewAssignmentService(
@@ -41,6 +52,10 @@ func NewAssignmentService(
 		jamKerjaRepo:   jamKerjaRepo,
 		departmentRepo: departmentRepo,
 	}
+}
+
+func (s *assignmentService) SetWSHub(hub *WSHub) {
+	s.wsHub = hub
 }
 
 func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID string, date time.Time) (models.AssignmentOriginalShift, error) {
@@ -115,7 +130,7 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 	var employees []models.AssignmentEmployee
 	for _, empInput := range req.Employees {
 		empOID, _ := primitive.ObjectIDFromHex(empInput.UserID)
-		
+
 		// Cari jadwal asli
 		origShift, err := s.GetOriginalSchedule(ctx, empInput.UserID, parsedDate)
 		if err != nil {
@@ -158,6 +173,16 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 		return nil, err
 	}
 
+	// Broadcast if published
+	if assignment.Status == models.AssignmentStatusPublished && s.wsHub != nil {
+		for _, emp := range assignment.Employees {
+			s.wsHub.BroadcastToUser(emp.UserID.Hex(), WSEventAssignmentUpdated, map[string]any{
+				"id":   assignment.ID.Hex(),
+				"type": "new_assignment",
+			})
+		}
+	}
+
 	return s.GetByID(ctx, assignment.ID.Hex())
 }
 
@@ -198,22 +223,22 @@ func (s *assignmentService) GetByID(ctx context.Context, id string) (*models.Ass
 	for _, emp := range assignment.Employees {
 		u, _ := s.userRepo.FindByID(ctx, emp.UserID.Hex())
 		empResp := models.AssignmentEmployeeResponse{
-			UserID:            emp.UserID.Hex(),
-			FullName:          "",
-			PayrollNumber:     "",
-			PositionName:      "",
-			OriginalShiftType: emp.OriginalShift.Type,
-			OriginalStartTime: emp.OriginalShift.StartTime,
-			OriginalEndTime:   emp.OriginalShift.EndTime,
-			AssignedStartTime: emp.AssignedShift.StartTime,
-			AssignedEndTime:   emp.AssignedShift.EndTime,
-			EmployeeStatus:    emp.EmployeeStatus,
-			RejectionNote:     emp.RejectionNote,
-			ConfirmedAt:       emp.ConfirmedAt,
-			DayOffEligible:    emp.DayOffReward.Eligible,
-			DayOffStatus:      emp.DayOffReward.Status,
-			DayOffGrantedAt:   emp.DayOffReward.GrantedAt,
-			DayOffUsedAt:      emp.DayOffReward.UsedAt,
+			UserID:             emp.UserID.Hex(),
+			FullName:           "",
+			PayrollNumber:      "",
+			PositionName:       "",
+			OriginalShiftType:  emp.OriginalShift.Type,
+			OriginalStartTime:  emp.OriginalShift.StartTime,
+			OriginalEndTime:    emp.OriginalShift.EndTime,
+			AssignedStartTime:  emp.AssignedShift.StartTime,
+			AssignedEndTime:    emp.AssignedShift.EndTime,
+			EmployeeStatus:     emp.EmployeeStatus,
+			RejectionNote:      emp.RejectionNote,
+			ConfirmedAt:        emp.ConfirmedAt,
+			DayOffEligible:     emp.DayOffReward.Eligible,
+			DayOffStatus:       emp.DayOffReward.Status,
+			DayOffGrantedAt:    emp.DayOffReward.GrantedAt,
+			DayOffUsedAt:       emp.DayOffReward.UsedAt,
 			ReplacementOffDate: emp.DayOffReward.ReplacementOffDate,
 		}
 
@@ -243,6 +268,153 @@ func (s *assignmentService) ListForManagerDepartemen(ctx context.Context, depart
 		}
 	}
 	return resps, nil
+}
+
+func (s *assignmentService) ListForManagerByUser(ctx context.Context, managerUserID string) ([]models.AssignmentResponse, error) {
+	manager, err := s.userRepo.FindByID(ctx, managerUserID)
+	if err != nil {
+		return nil, err
+	}
+	if manager == nil || manager.DepartmentID.IsZero() {
+		return nil, errors.New("department manager tidak valid")
+	}
+	return s.ListForManagerDepartemen(ctx, manager.DepartmentID.Hex())
+}
+
+func (s *assignmentService) ListForEmployee(ctx context.Context, userID string) ([]models.AssignmentResponse, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return nil, errors.New("user_id tidak valid")
+	}
+
+	assignments, err := s.assignmentRepo.ListByEmployee(ctx, userOID)
+	if err != nil {
+		return nil, err
+	}
+
+	resps := make([]models.AssignmentResponse, 0, len(assignments))
+	for _, a := range assignments {
+		resp, _ := s.GetByID(ctx, a.ID.Hex())
+		if resp != nil {
+			resps = append(resps, *resp)
+		}
+	}
+	return resps, nil
+}
+
+func (s *assignmentService) GetForEmployeeByID(ctx context.Context, id string, userID string) (*models.AssignmentResponse, error) {
+	resp, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, emp := range resp.Employees {
+		if emp.UserID == userID {
+			return resp, nil
+		}
+	}
+
+	return nil, errors.New("penugasan tidak ditemukan untuk user ini")
+}
+
+func (s *assignmentService) Submit(ctx context.Context, id string, requestedByID string) (*models.AssignmentResponse, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("id penugasan tidak valid")
+	}
+
+	assignment, err := s.assignmentRepo.GetByID(ctx, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	if assignment.RequestedByID.Hex() != requestedByID {
+		return nil, errors.New("anda tidak memiliki akses submit penugasan ini")
+	}
+
+	if assignment.Status == models.AssignmentStatusSubmitted {
+		return s.GetByID(ctx, id)
+	}
+
+	if assignment.Status != models.AssignmentStatusDraft {
+		return nil, errors.New("hanya penugasan draft yang bisa disubmit")
+	}
+
+	assignment.Status = models.AssignmentStatusSubmitted
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, err
+	}
+
+	// Broadcast to manager if needed? Or just general update
+	if s.wsHub != nil {
+		s.wsHub.BroadcastToUser(assignment.RequestedByID.Hex(), WSEventAssignmentUpdated, map[string]any{
+			"id":   id,
+			"type": "submitted",
+		})
+	}
+
+	return s.GetByID(ctx, id)
+}
+
+func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string, userID string, req models.UpdateAssignmentEmployeeStatusRequest) (*models.AssignmentResponse, error) {
+	oid, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("id penugasan tidak valid")
+	}
+
+	if req.Status != models.AssignmentEmployeeStatusAgreed && req.Status != models.AssignmentEmployeeStatusRejected {
+		return nil, errors.New("status karyawan tidak valid")
+	}
+
+	assignment, err := s.assignmentRepo.GetByID(ctx, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	if assignment.Status != models.AssignmentStatusSubmitted {
+		return nil, errors.New("penugasan belum bisa diproses")
+	}
+
+	now := time.Now()
+	found := false
+	for i := range assignment.Employees {
+		emp := &assignment.Employees[i]
+		if emp.UserID.Hex() != userID {
+			continue
+		}
+		found = true
+		if emp.EmployeeStatus != models.AssignmentEmployeeStatusPending {
+			return nil, errors.New("penugasan sudah Anda proses")
+		}
+
+		emp.EmployeeStatus = req.Status
+		emp.ConfirmedAt = &now
+		if req.Status == models.AssignmentEmployeeStatusRejected {
+			emp.RejectionNote = req.RejectionNote
+			emp.DayOffReward.Status = models.DayOffRewardStatusCancelled
+		}
+		break
+	}
+
+	if !found {
+		return nil, errors.New("penugasan tidak ditemukan untuk user ini")
+	}
+
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, err
+	}
+
+	if s.wsHub != nil {
+		// Broadcast to requester
+		s.wsHub.BroadcastToUser(assignment.RequestedByID.Hex(), WSEventAssignmentUpdated, map[string]any{
+			"id":      id,
+			"user_id": userID,
+			"status":  req.Status,
+			"type":    "response",
+		})
+	}
+
+	return s.GetByID(ctx, id)
 }
 
 func (s *assignmentService) Update(ctx context.Context, id string, req models.UpdateAssignmentRequest) (*models.AssignmentResponse, error) {
@@ -279,7 +451,7 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 		var employees []models.AssignmentEmployee
 		for _, empInput := range *req.Employees {
 			empOID, _ := primitive.ObjectIDFromHex(empInput.UserID)
-			
+
 			// Cari jadwal asli
 			origShift, _ := s.GetOriginalSchedule(ctx, empInput.UserID, assignment.Date)
 
@@ -322,3 +494,91 @@ func (s *assignmentService) Delete(ctx context.Context, id string) error {
 	oid, _ := primitive.ObjectIDFromHex(id)
 	return s.assignmentRepo.Delete(ctx, oid)
 }
+
+func (s *assignmentService) UseReplacementDayOff(ctx context.Context, assignmentID string, userID string, replacementDate time.Time) (*models.AssignmentResponse, error) {
+	oid, err := primitive.ObjectIDFromHex(assignmentID)
+	if err != nil {
+		return nil, errors.New("id penugasan tidak valid")
+	}
+
+	assignment, err := s.assignmentRepo.GetByID(ctx, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+	now := time.Now()
+	for i := range assignment.Employees {
+		emp := &assignment.Employees[i]
+		if emp.UserID.Hex() != userID {
+			continue
+		}
+		found = true
+
+		if !emp.DayOffReward.Eligible {
+			return nil, errors.New("anda tidak memenuhi syarat untuk day off reward")
+		}
+		if emp.DayOffReward.Status != models.DayOffRewardStatusGranted {
+			return nil, errors.New("day off reward belum diberikan atau sudah digunakan")
+		}
+
+		emp.DayOffReward.Status = models.DayOffRewardStatusUsed
+		emp.DayOffReward.UsedAt = &now
+		emp.DayOffReward.ReplacementOffDate = &replacementDate
+		break
+	}
+
+	if !found {
+		return nil, errors.New("karyawan tidak ditemukan dalam penugasan ini")
+	}
+
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, assignmentID)
+}
+
+func (s *assignmentService) GrantDayOffReward(ctx context.Context, assignmentID string, userID string) (*models.AssignmentResponse, error) {
+	oid, err := primitive.ObjectIDFromHex(assignmentID)
+	if err != nil {
+		return nil, errors.New("id penugasan tidak valid")
+	}
+
+	assignment, err := s.assignmentRepo.GetByID(ctx, oid)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+	now := time.Now()
+	for i := range assignment.Employees {
+		emp := &assignment.Employees[i]
+		if emp.UserID.Hex() != userID {
+			continue
+		}
+		found = true
+
+		if !emp.DayOffReward.Eligible {
+			return nil, errors.New("karyawan tidak memenuhi syarat untuk day off reward")
+		}
+		if emp.DayOffReward.Status != models.DayOffRewardStatusPending {
+			return nil, fmt.Errorf("day off reward tidak dalam status pending (status: %s)", emp.DayOffReward.Status)
+		}
+
+		emp.DayOffReward.Status = models.DayOffRewardStatusGranted
+		emp.DayOffReward.GrantedAt = &now
+		break
+	}
+
+	if !found {
+		return nil, errors.New("karyawan tidak ditemukan dalam penugasan ini")
+	}
+
+	if err := s.assignmentRepo.Update(ctx, assignment); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, assignmentID)
+}
+

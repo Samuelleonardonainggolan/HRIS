@@ -30,11 +30,19 @@ class SSEService {
   
   // ValueNotifier untuk memicu refresh di UI secara global
   final refreshCounter = ValueNotifier<int>(0);
+  
+  // Flag untuk indikator data baru (badge)
+  final hasNewOvertime = ValueNotifier<bool>(false);
+  final hasNewAssignment = ValueNotifier<bool>(false);
+  final hasNewLeaveRequest = ValueNotifier<bool>(false);
 
   Stream<SSEEvent> get events => _eventController.stream;
 
   Future<void> connect() async {
-    if (_isConnected) return;
+    if (_isConnected) {
+      print('[SSE] Already connected');
+      return;
+    }
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
@@ -46,16 +54,17 @@ class SSEService {
 
     try {
       _client = http.Client();
-      final request = http.Request(
-        'GET',
-        Uri.parse('${ApiService.baseUrl}/realtime/connect?token=$token'),
-      );
+      final baseUri = Uri.parse('${ApiService.baseUrl}/realtime/connect');
+      final uri = baseUri.replace(queryParameters: {'token': token});
+
+      print('[SSE] Connecting to: ${uri.toString()}');
+      final request = http.Request('GET', uri);
 
       final response = await _client!.send(request);
 
       if (response.statusCode == 200) {
         _isConnected = true;
-        print('[SSE] Connected to realtime stream');
+        print('[SSE] Connected to realtime stream successfully');
 
         response.stream
             .transform(utf8.decoder)
@@ -63,7 +72,7 @@ class SSEService {
             .listen(
           (line) {
             if (line.startsWith('data: ')) {
-              final dataStr = line.substring(6);
+              final dataStr = line.substring(6).trim();
               if (dataStr.isEmpty) return;
 
               try {
@@ -74,9 +83,18 @@ class SSEService {
                 // Trigger global refresh
                 refreshCounter.value++;
                 
+                // Set badge flags
+                if (event.type == 'overtime_updated') {
+                  hasNewOvertime.value = true;
+                } else if (event.type == 'assignment_updated') {
+                  hasNewAssignment.value = true;
+                } else if (event.type == 'leave_updated') {
+                  hasNewLeaveRequest.value = true;
+                }
+                
                 print('[SSE] Received event: ${event.type}');
               } catch (e) {
-                print('[SSE] JSON parse error: $e');
+                print('[SSE] JSON parse error: $e | Data: $dataStr');
               }
             }
           },
@@ -105,8 +123,10 @@ class SSEService {
 
   void _reconnect() {
     if (!_isConnected) {
-      print('[SSE] Attempting reconnect in 5 seconds...');
-      Future.delayed(const Duration(seconds: 5), connect);
+      print('[SSE] Reconnect scheduled in 5 seconds...');
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!_isConnected) connect();
+      });
     }
   }
 
@@ -114,6 +134,9 @@ class SSEService {
     _isConnected = false;
     _client?.close();
     _client = null;
-    print('[SSE] Disconnected');
+    hasNewOvertime.value = false;
+    hasNewAssignment.value = false;
+    hasNewLeaveRequest.value = false;
+    print('[SSE] Disconnected and flags cleared');
   }
 }

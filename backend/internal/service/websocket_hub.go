@@ -16,6 +16,8 @@ const (
 	WSEventAttendanceUpdated WSEventType = "attendance_updated"
 	WSEventLeaveUpdated      WSEventType = "leave_updated"
 	WSEventStatsUpdated      WSEventType = "stats_updated"
+	WSEventOvertimeUpdated   WSEventType = "overtime_updated"
+	WSEventAssignmentUpdated WSEventType = "assignment_updated"
 	WSEventPing              WSEventType = "ping"
 )
 

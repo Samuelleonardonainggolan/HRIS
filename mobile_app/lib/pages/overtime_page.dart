@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/models/overtime_request.dart';
+import 'package:mobile_app/models/assignment.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/services/sse_service.dart';
@@ -18,6 +19,9 @@ class _OvertimePageState extends State<OvertimePage> {
   bool _isLoading = true;
   User? _user;
   List<OvertimeRequest> _items = [];
+  List<Assignment> _assignments = [];
+  List<dynamic> _combinedItems = []; // gabungan lembur + penugasan
+  String _filterType = 'semua'; // semua | lembur | penugasan
   StreamSubscription? _sseSubscription;
 
   @override
@@ -57,8 +61,17 @@ class _OvertimePageState extends State<OvertimePage> {
     return request.employees.any((e) => _sameUserId(e.userId, userId));
   }
 
+  bool _isAssignmentAssignedToUser(Assignment assignment, String userId) {
+    return assignment.employees.any((e) => _sameUserId(e.userId, userId));
+  }
+
   bool _canUserSeeRequest(User user, OvertimeRequest request) {
     final assignedToMe = _isAssignedToUser(request, user.id);
+    return assignedToMe;
+  }
+
+  bool _canUserSeeAssignment(User user, Assignment assignment) {
+    final assignedToMe = _isAssignmentAssignedToUser(assignment, user.id);
     return assignedToMe;
   }
 
@@ -68,24 +81,49 @@ class _OvertimePageState extends State<OvertimePage> {
       final user =
           ApiService.currentUser.value ?? await ApiService.getProfile();
 
-      List<OvertimeRequest> data =
+      // Load overtime requests
+      List<OvertimeRequest> overtimeData =
           await ApiService.getAssignedOvertimeRequests();
-      final mine = await ApiService.getMyOvertimeRequests();
+      final myOvertime = await ApiService.getMyOvertimeRequests();
       final shouldMergeMine = user.isManagerDept || user.isManagerHR;
       if (shouldMergeMine) {
         final merged = <String, OvertimeRequest>{
-          for (final item in data) item.id: item,
-          for (final item in mine) item.id: item,
+          for (final item in overtimeData) item.id: item,
+          for (final item in myOvertime) item.id: item,
         };
-        data = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
+        overtimeData = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
       }
 
-      data = data.where((item) => _canUserSeeRequest(user, item)).toList();
+      overtimeData = overtimeData.where((item) => _canUserSeeRequest(user, item)).toList();
+
+      // Load assignments
+      List<Assignment> assignmentData =
+          await ApiService.getAssignedAssignments();
+      final myAssignments = await ApiService.getMyAssignments();
+      if (shouldMergeMine) {
+        final merged = <String, Assignment>{
+          for (final item in assignmentData) item.id: item,
+          for (final item in myAssignments) item.id: item,
+        };
+        assignmentData = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
+      }
+
+      assignmentData = assignmentData.where((item) => _canUserSeeAssignment(user, item)).toList();
+
+      // Combine & sort
+      final combined = <dynamic>[...overtimeData, ...assignmentData]
+        ..sort((a, b) {
+          final dateA = (a is OvertimeRequest ? a.date : (a as Assignment).date);
+          final dateB = (b is OvertimeRequest ? b.date : (b as Assignment).date);
+          return dateB.compareTo(dateA);
+        });
 
       if (!mounted) return;
       setState(() {
         _user = user;
-        _items = data;
+        _items = overtimeData;
+        _assignments = assignmentData;
+        _combinedItems = combined;
         _isLoading = false;
       });
     } catch (_) {
@@ -94,25 +132,29 @@ class _OvertimePageState extends State<OvertimePage> {
     }
   }
 
-  Future<void> _agree(OvertimeRequest r) async {
+  Future<void> _agree(dynamic item) async {
     try {
-      await ApiService.agreeOvertimeRequest(r.id);
+      if (item is OvertimeRequest) {
+        await ApiService.agreeOvertimeRequest(item.id);
+      } else if (item is Assignment) {
+        await ApiService.agreeAssignment(item.id);
+      }
       if (!mounted) return;
-      _showSnackBar('Anda menyetujui lembur', isError: false);
+      _showSnackBar('Anda menyetujui pengajuan', isError: false);
       await _loadData();
     } catch (e) {
       _showSnackBar('Gagal setuju: $e', isError: true);
     }
   }
 
-  Future<void> _reject(OvertimeRequest r) async {
+  Future<void> _reject(dynamic item) async {
     final noteCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'Tolak Pengajuan Lembur',
+          'Tolak Pengajuan',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: TextField(
@@ -148,12 +190,19 @@ class _OvertimePageState extends State<OvertimePage> {
     if (ok != true) return;
 
     try {
-      await ApiService.rejectOvertimeRequest(
-        r.id,
-        rejectionNote: noteCtrl.text.trim(),
-      );
+      if (item is OvertimeRequest) {
+        await ApiService.rejectOvertimeRequest(
+          item.id,
+          rejectionNote: noteCtrl.text.trim(),
+        );
+      } else if (item is Assignment) {
+        await ApiService.rejectAssignment(
+          item.id,
+          rejectionNote: noteCtrl.text.trim(),
+        );
+      }
       if (!mounted) return;
-      _showSnackBar('Pengajuan lembur ditolak', isError: false);
+      _showSnackBar('Pengajuan ditolak', isError: false);
       await _loadData();
     } catch (e) {
       _showSnackBar('Gagal menolak: $e', isError: true);
@@ -289,38 +338,60 @@ class _OvertimePageState extends State<OvertimePage> {
               ],
             ),
           ),
-          Stack(
-            children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Color(0xFF475569),
-                    size: 22,
-                  ),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: Container(
-                  height: 8,
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFEF4444),
-                  ),
-                ),
-              ),
-            ],
+          ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewOvertime,
+            builder: (context, hasOvertime, _) {
+              return ValueListenableBuilder<bool>(
+                valueListenable: SSEService().hasNewAssignment,
+                builder: (context, hasAssignment, _) {
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: SSEService().hasNewLeaveRequest,
+                    builder: (context, hasLeave, _) {
+                      final hasNew = hasOvertime || hasAssignment || hasLeave;
+                      return Stack(
+                        children: [
+                          Container(
+                            height: 44,
+                            width: 44,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF1F5F9),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.notifications_none,
+                                color: Color(0xFF475569),
+                                size: 22,
+                              ),
+                              onPressed: () {
+                                // Clear all badges when clicking the bell too
+                                SSEService().hasNewOvertime.value = false;
+                                SSEService().hasNewAssignment.value = false;
+                                SSEService().hasNewLeaveRequest.value = false;
+                              },
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                          if (hasNew)
+                            Positioned(
+                              top: 9,
+                              right: 9,
+                              child: Container(
+                                height: 8,
+                                width: 8,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            },
           ),
         ],
       ),
@@ -349,6 +420,7 @@ class _OvertimePageState extends State<OvertimePage> {
         child: Column(
           children: [
             _buildHeader(),
+            _buildFilterBar(),
             Expanded(
               child: _isLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -357,9 +429,110 @@ class _OvertimePageState extends State<OvertimePage> {
                   : RefreshIndicator(
                       onRefresh: _loadData,
                       color: const Color(0xFF135BEC),
-                      child: _items.isEmpty ? _buildEmptyState() : _buildList(),
+                      child: _getFilteredItems().isEmpty ? _buildEmptyState() : _buildList(),
                     ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<dynamic> _getFilteredItems() {
+    switch (_filterType) {
+      case 'lembur':
+        return _items;
+      case 'penugasan':
+        return _assignments;
+      default:
+        return _combinedItems;
+    }
+  }
+
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          const Text(
+            'Filter:',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF475569),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _filterChip('Semua', 'semua'),
+                  const SizedBox(width: 8),
+                  _filterChip('Lembur', 'lembur'),
+                  const SizedBox(width: 8),
+                  _filterChip('Penugasan', 'penugasan'),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, String value) {
+    final isSelected = _filterType == value;
+    return GestureDetector(
+      onTap: () {
+        setState(() => _filterType = value);
+        // Clear badge on tap
+        if (value == 'lembur') {
+          SSEService().hasNewOvertime.value = false;
+        } else if (value == 'penugasan') {
+          SSEService().hasNewAssignment.value = false;
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF135BEC) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF135BEC) : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
+              ),
+            ),
+            // Show dot if new data
+            if (value == 'lembur' || value == 'penugasan')
+              ValueListenableBuilder<bool>(
+                valueListenable: value == 'lembur' 
+                  ? SSEService().hasNewOvertime 
+                  : SSEService().hasNewAssignment,
+                builder: (context, hasNew, _) {
+                  if (!hasNew) return const SizedBox.shrink();
+                  return Container(
+                    margin: const EdgeInsets.only(left: 6),
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.white : const Color(0xFFEF4444),
+                      shape: BoxShape.circle,
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       ),
@@ -443,19 +616,31 @@ class _OvertimePageState extends State<OvertimePage> {
   }
 
   Widget _buildList() {
+    final items = _getFilteredItems();
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-      itemCount: _items.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final item = _items[index];
-        return _OvertimeCard(
-          item: item,
-          user: _user!,
-          onTap: () => _showDetail(item),
-          onAgree: () => _agree(item),
-          onReject: () => _reject(item),
-        );
+        final item = items[index];
+        if (item is OvertimeRequest) {
+          return _OvertimeCard(
+            item: item,
+            user: _user!,
+            onTap: () => _showDetail(item),
+            onAgree: () => _agree(item),
+            onReject: () => _reject(item),
+          );
+        } else if (item is Assignment) {
+          return _AssignmentCard(
+            item: item,
+            user: _user!,
+            onTap: () => _showDetailAssignment(item),
+            onAgree: () => _agree(item),
+            onReject: () => _reject(item),
+          );
+        }
+        return const SizedBox.shrink();
       },
     );
   }
@@ -478,6 +663,57 @@ class _OvertimePageState extends State<OvertimePage> {
         },
       ),
     );
+  }
+
+  void _showDetailAssignment(Assignment a) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _AssignmentDetailSheet(
+        assignment: a,
+        user: _user!,
+        onAgree: () {
+          Navigator.pop(context);
+          _agree(a);
+        },
+        onReject: () {
+          Navigator.pop(context);
+          _reject(a);
+        },
+        onUseDayOff: () {
+          Navigator.pop(context);
+          _useDayOff(a);
+        },
+      ),
+    );
+  }
+
+  Future<void> _useDayOff(Assignment a) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('id', 'ID'),
+      helpText: 'Pilih Hari Libur Pengganti',
+      cancelText: 'Batal',
+      confirmText: 'Pilih',
+    );
+
+    if (picked == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final dateStr = DateFormat('yyyy-MM-dd').format(picked);
+      await ApiService.useReplacementDayOff(a.id, dateStr);
+      _showSnackBar('Hari libur pengganti berhasil ditetapkan');
+      await _loadData();
+    } catch (e) {
+      _showSnackBar(e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 }
 
@@ -1223,6 +1459,824 @@ class _OvertimeDetailSheet extends StatelessWidget {
           const SnackBar(content: Text('Gagal membuka dokumen')),
         );
       }
+    }
+  }
+}
+
+class _AssignmentCard extends StatelessWidget {
+  final Assignment item;
+  final User user;
+  final VoidCallback onTap;
+  final VoidCallback onAgree;
+  final VoidCallback onReject;
+
+  const _AssignmentCard({
+    required this.item,
+    required this.user,
+    required this.onTap,
+    required this.onAgree,
+    required this.onReject,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = _getStatusColor(item.status);
+    final dateText = DateFormat('dd MMM yyyy', 'id').format(item.date);
+    final participantSummary = _buildParticipantSummary();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icon kategori penugasan (berbeda dari lembur)
+              Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.assignment_rounded,
+                  color: Color(0xFF8B5CF6),
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Konten tengah
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Tanggal diajukan
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 11,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          dateText,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade400,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Judul / alasan penugasan
+                    Text(
+                      item.reason.isNotEmpty ? item.reason : 'Penugasan',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    // Waktu penugasan
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.access_time_filled_rounded,
+                          size: 13,
+                          color: Color(0xFF8B5CF6),
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '${item.startTime} - ${item.endTime}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF8B5CF6),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Approval chain peserta
+                    _buildParticipantPills(),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Kolom kanan: status
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const SizedBox(height: 24),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Text(
+                      item.statusDisplay,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Penugasan',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8B5CF6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildParticipantPills() {
+    final myEntryList = item.employees.where(
+      (e) => e.userId.trim().toLowerCase() == user.id.trim().toLowerCase(),
+    );
+    final myEntry = myEntryList.isNotEmpty ? myEntryList.first : null;
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        _miniPill(
+          Icons.people_alt_rounded,
+          _buildParticipantSummary(),
+          const Color(0xFF10B981),
+        ),
+        _miniPill(
+          Icons.shield_rounded,
+          myEntry != null ? _getEmployeeStatusDisplay(myEntry.employeeStatus) : '-',
+          _getEmployeeStatusColor(myEntry?.employeeStatus ?? ''),
+        ),
+      ],
+    );
+  }
+
+  Widget _miniPill(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getEmployeeStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return const Color(0xFFF59E0B);
+      case 'agreed':
+        return const Color(0xFF10B981);
+      case 'rejected':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  String _getEmployeeStatusDisplay(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Menunggu';
+      case 'agreed':
+        return 'Disetujui';
+      case 'rejected':
+        return 'Ditolak';
+      default:
+        return status;
+    }
+  }
+
+  String _buildParticipantSummary() {
+    if (item.employees.isEmpty) return 'Belum ada peserta';
+
+    final names = item.employees.map((e) => e.fullName).toList();
+    if (names.length <= 2) return names.join(', ');
+
+    return '${names.take(2).join(', ')} +${names.length - 2}';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return const Color(0xFF94A3B8);
+      case 'submitted':
+        return const Color(0xFFF59E0B);
+      case 'published':
+        return const Color(0xFF10B981);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+}
+
+class _AssignmentDetailSheet extends StatelessWidget {
+  final Assignment assignment;
+  final User user;
+  final VoidCallback onAgree;
+  final VoidCallback onReject;
+  final VoidCallback onUseDayOff;
+
+  const _AssignmentDetailSheet({
+    required this.assignment,
+    required this.user,
+    required this.onAgree,
+    required this.onReject,
+    required this.onUseDayOff,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final myEntry = _findMyEntry();
+    final canRespond =
+        assignment.isSubmitted && myEntry != null && myEntry.employeeStatus == 'pending';
+    final participantCount = assignment.employees.length;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (_, controller) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: ListView(
+          controller: controller,
+          padding: const EdgeInsets.all(20),
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Container(
+                  height: 46,
+                  width: 46,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.assignment_rounded,
+                    color: Color(0xFF8B5CF6),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Detail Penugasan',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        DateFormat(
+                          'EEEE, dd MMMM yyyy',
+                          'id',
+                        ).format(assignment.date),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _statusPill(
+                  'Status ${assignment.statusDisplay}',
+                  _getRequestStatusColor(assignment.status),
+                ),
+                _statusPill(
+                  'Peserta $participantCount orang',
+                  const Color(0xFF135BEC),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _buildInfoRow(
+              Icons.calendar_today_rounded,
+              'Tanggal',
+              DateFormat('dd MMM yyyy', 'id').format(assignment.date),
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.access_time_filled,
+              'Waktu',
+              '${assignment.startTime} - ${assignment.endTime}',
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(
+              Icons.business_center,
+              'Departemen',
+              assignment.departmentName,
+            ),
+            const SizedBox(height: 12),
+            _buildInfoRow(Icons.person, 'Pengaju', assignment.requestedByName),
+            const SizedBox(height: 16),
+            const Text(
+              'Alasan Penugasan',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Text(
+                assignment.reason.isNotEmpty
+                    ? assignment.reason
+                    : 'Tidak ada alasan yang disertakan.',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF334155),
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Peserta Penugasan',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (assignment.employees.isEmpty)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Text(
+                  'Belum ada peserta yang tercatat.',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                ),
+              )
+            else
+              ...assignment.employees.map(_buildParticipantRow),
+            const SizedBox(height: 24),
+            _buildRewardSection(context),
+            const SizedBox(height: 24),
+            if (canRespond)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onReject,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFFEF4444)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Tolak',
+                        style: TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: onAgree,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        backgroundColor: const Color(0xFF10B981),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Setujui',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRewardSection(BuildContext context) {
+    final myEntry = _findMyEntry();
+    if (myEntry == null || !myEntry.dayOffEligible) return const SizedBox.shrink();
+
+    final status = myEntry.dayOffStatus.toLowerCase();
+    Color statusColor;
+    String statusText;
+    bool canUse = false;
+
+    switch (status) {
+      case 'granted':
+        statusColor = const Color(0xFF10B981);
+        statusText = 'Tersedia';
+        canUse = true;
+        break;
+      case 'used':
+        statusColor = const Color(0xFF135BEC);
+        statusText = 'Sudah Digunakan';
+        break;
+      case 'pending':
+        statusColor = const Color(0xFFF59E0B);
+        statusText = 'Menunggu Konfirmasi';
+        break;
+      default:
+        statusColor = const Color(0xFF64748B);
+        statusText = 'Belum Diproses';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Day Off Reward',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: statusColor.withOpacity(0.2)),
+          ),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.card_giftcard_rounded,
+                      color: statusColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Reward Hari Libur Pengganti',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (status == 'used' && myEntry.replacementOffDate != null) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tanggal Pengganti:',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      DateFormat('EEEE, dd MMM yyyy', 'id').format(myEntry.replacementOffDate!),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (canUse) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: onUseDayOff,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: statusColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: const Text(
+                      'Pilih Hari Libur Pengganti',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  AssignmentEmployee? _findMyEntry() {
+    for (final employee in assignment.employees) {
+      if (employee.userId.trim().toLowerCase() ==
+          user.id.trim().toLowerCase()) {
+        return employee;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF64748B)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+              ),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildParticipantRow(AssignmentEmployee employee) {
+    final isMe =
+        employee.userId.trim().toLowerCase() == user.id.trim().toLowerCase();
+    final statusColor = _getEmployeeStatusColor(employee.employeeStatus);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isMe ? const Color(0xFFF0F9FF) : const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isMe ? const Color(0xFFBAE6FD) : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 34,
+            width: 34,
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isMe ? Icons.person_rounded : Icons.groups_rounded,
+              color: statusColor,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        isMe
+                            ? '${employee.fullName} (Anda)'
+                            : employee.fullName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF0F172A),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _statusPill(_getStatusDisplay(employee.employeeStatus), statusColor),
+                  ],
+                ),
+                if (employee.rejectionNote != null &&
+                    employee.rejectionNote!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    employee.rejectionNote!.trim(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF475569),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusPill(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Color _getRequestStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return const Color(0xFF94A3B8);
+      case 'submitted':
+        return const Color(0xFFF59E0B);
+      case 'published':
+        return const Color(0xFF10B981);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  Color _getEmployeeStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return const Color(0xFFF59E0B);
+      case 'agreed':
+        return const Color(0xFF10B981);
+      case 'rejected':
+        return const Color(0xFFEF4444);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  String _getStatusDisplay(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Menunggu';
+      case 'agreed':
+        return 'Disetujui';
+      case 'rejected':
+        return 'Ditolak';
+      default:
+        return status;
     }
   }
 }

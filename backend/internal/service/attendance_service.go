@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // wib adalah timezone WIB (UTC+7).
@@ -229,6 +230,71 @@ func blockedAttendanceMessage(leave *models.LeaveRequest) string {
 	return fmt.Sprintf("Tidak dapat melakukan attendance karena %s Anda sudah disetujui pada hari ini", title)
 }
 
+func (s *attendanceService) resolveEffectiveJamKerjaForToday(ctx context.Context, userID primitive.ObjectID, jamKerja *models.JamKerja) (*models.JamKerja, bool, error) {
+	if jamKerja == nil {
+		return nil, false, nil
+	}
+	if s.db == nil {
+		return jamKerja, false, nil
+	}
+
+	nowWIB := time.Now().In(wib)
+	startOfDayWIB := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, wib)
+	endOfDayWIB := startOfDayWIB.Add(24 * time.Hour)
+
+	filter := bson.M{
+		"date": bson.M{
+			"$gte": startOfDayWIB.UTC(),
+			"$lt":  endOfDayWIB.UTC(),
+		},
+		"status": bson.M{"$in": bson.A{models.AssignmentStatusSubmitted, models.AssignmentStatusPublished}},
+		"employees": bson.M{"$elemMatch": bson.M{
+			"user_id":         userID,
+			"employee_status": models.AssignmentEmployeeStatusAgreed,
+		}},
+	}
+
+	var assignment models.Assignment
+	err := s.db.Collection("assignments").FindOne(ctx, filter, options.FindOne().SetSort(bson.D{{Key: "updated_at", Value: -1}})).Decode(&assignment)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return jamKerja, false, nil
+		}
+		return nil, false, err
+	}
+
+	for _, employee := range assignment.Employees {
+		if employee.UserID != userID || employee.EmployeeStatus != models.AssignmentEmployeeStatusAgreed {
+			continue
+		}
+
+		startShift := strings.TrimSpace(employee.AssignedShift.StartTime)
+		endShift := strings.TrimSpace(employee.AssignedShift.EndTime)
+		if startShift == "" || endShift == "" {
+			return jamKerja, false, nil
+		}
+
+		startTime, startErr := time.ParseInLocation("15:04", startShift, wib)
+		if startErr != nil {
+			return nil, false, fmt.Errorf("invalid assigned_shift start_time: %w", startErr)
+		}
+		endTime, endErr := time.ParseInLocation("15:04", endShift, wib)
+		if endErr != nil {
+			return nil, false, fmt.Errorf("invalid assigned_shift end_time: %w", endErr)
+		}
+
+		effective := *jamKerja
+		effective.StartTime = startTime
+		effective.EndTime = endTime
+		effective.DayOfWeek = []string{s.getDayName(nowWIB.Weekday())}
+		effective.IsActive = true
+
+		return &effective, true, nil
+	}
+
+	return jamKerja, false, nil
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  JADWAL KERJA (JamKerja)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -247,6 +313,11 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 	if jamKerja == nil {
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
+	effectiveJamKerja, _, err := s.resolveEffectiveJamKerjaForToday(ctx, userObjID, jamKerja)
+	if err != nil {
+		return nil, err
+	}
+	jamKerja = effectiveJamKerja
 
 	waktuMulaiStr := jamKerja.StartTime.Format("15:04")
 	waktuSelesaiStr := jamKerja.EndTime.Format("15:04")
@@ -316,6 +387,11 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	if jamKerja == nil {
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
+	effectiveJamKerja, _, err := s.resolveEffectiveJamKerjaForToday(ctx, userObjID, jamKerja)
+	if err != nil {
+		return nil, err
+	}
+	jamKerja = effectiveJamKerja
 
 	waktuMulaiStr := jamKerja.StartTime.Format("15:04")
 	waktuSelesaiStr := jamKerja.EndTime.Format("15:04")
@@ -385,6 +461,11 @@ func (s *attendanceService) ValidateClockInWindow(ctx context.Context, userID st
 	if jamKerja == nil {
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
+	effectiveJamKerja, _, err := s.resolveEffectiveJamKerjaForToday(ctx, userObjID, jamKerja)
+	if err != nil {
+		return false, nil, err
+	}
+	jamKerja = effectiveJamKerja
 	if !jamKerja.IsActive {
 		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
 	}
@@ -425,6 +506,11 @@ func (s *attendanceService) ValidateClockOutWindow(ctx context.Context, userID s
 	if jamKerja == nil {
 		jamKerja = s.getDefaultJamKerja(userObjID)
 	}
+	effectiveJamKerja, _, err := s.resolveEffectiveJamKerjaForToday(ctx, userObjID, jamKerja)
+	if err != nil {
+		return false, nil, err
+	}
+	jamKerja = effectiveJamKerja
 	if !jamKerja.IsActive {
 		return false, jamKerja, errors.New("jadwal kerja tidak aktif")
 	}
