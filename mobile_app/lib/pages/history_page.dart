@@ -67,7 +67,7 @@ class _HistoryPageState extends State<HistoryPage> {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
     _sseSubscription = SSEService().events.listen((event) {
-      if (mounted) _loadData();
+      if (mounted) _loadData(silent: true);
     });
     _init();
   }
@@ -99,11 +99,17 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   // ── Core: ambil attendance + pengajuan lalu merge ──────────────────────────
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _error = null;
+      });
+    }
     try {
       // Ambil tiga sumber data secara paralel
       final results = await Future.wait([
@@ -555,6 +561,27 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         ),
       ),
+      floatingActionButton: _isLoading || _error != null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _exportToPDF,
+              backgroundColor: const Color(0xFF135BEC),
+              elevation: 4,
+              icon: const Icon(
+                Icons.picture_as_pdf_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              label: const Text(
+                'Laporan PDF',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
     );
   }
 
@@ -575,64 +602,47 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
       child: Row(
         children: [
-          Stack(
-            children: [
-              Hero(
-                tag: 'profile_history',
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF135BEC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+          Hero(
+            tag: 'profile_history',
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF135BEC).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: ClipOval(
-                        child: _profileImage != null
-                            ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : Image.network(
-                                _avatarUrl(),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF135BEC),
-                                  size: 26,
-                                ),
-                              ),
-                      ),
-                    ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: ClipOval(
+                    child: _profileImage != null
+                        ? Image.file(_profileImage!, fit: BoxFit.cover)
+                        : Image.network(
+                            _avatarUrl(),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.person,
+                              color: Color(0xFF135BEC),
+                              size: 26,
+                            ),
+                          ),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -659,34 +669,7 @@ class _HistoryPageState extends State<HistoryPage> {
               ],
             ),
           ),
-          // ── Export Button ──
-          InkWell(
-            onTap: _exportToPDF,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF135BEC).withOpacity(0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF135BEC).withOpacity(0.1)),
-              ),
-              child: Row(
-                children: const [
-                  Icon(Icons.picture_as_pdf_rounded, color: Color(0xFF135BEC), size: 16),
-                  SizedBox(width: 4),
-                  Text(
-                    'PDF',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF135BEC),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
+
           ValueListenableBuilder<bool>(
             valueListenable: SSEService().hasNewOvertime,
             builder: (context, hasOvertime, _) {

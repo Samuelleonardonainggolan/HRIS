@@ -39,12 +39,14 @@ class _ProfilePageState extends State<ProfilePage> {
   void _setupSSE() {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
-      _loadProfile();
+      _loadProfile(silent: true);
     });
   }
 
-  Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadProfile({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final u = await ApiService.getProfile();
       if (mounted) {
@@ -292,52 +294,35 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       child: Row(
         children: [
-          Stack(
-            children: [
-              Hero(
-                tag: 'profile',
+          Hero(
+            tag: 'profile',
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF135BEC).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
                 child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF135BEC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    color: Colors.white,
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: ClipOval(child: _avatarPreview(size: 48)),
-                    ),
-                  ),
+                  child: ClipOval(child: _avatarPreview(size: 48)),
                 ),
               ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

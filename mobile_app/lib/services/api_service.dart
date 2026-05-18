@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.37:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.114:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 

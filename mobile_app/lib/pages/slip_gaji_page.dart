@@ -88,15 +88,21 @@ class _SlipGajiPageState extends State<SlipGajiPage>
   void _setupSSE() {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
-      _loadData();
+      _loadData(silent: true);
     });
   }
 
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _error = null;
+      });
+    }
     try {
       final user = await ApiService.getProfile();
       final userId = user.id;

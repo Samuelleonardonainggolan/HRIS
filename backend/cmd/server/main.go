@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"path/filepath"
 	"time"
@@ -150,6 +151,10 @@ func main() {
 	wsHub := service.NewWSHub()
 	log.Println("WebSocket/SSE Hub initialized")
 
+	// ==================== Initialize DB Watcher ====================
+	dbWatcher := service.NewDBWatcher(mongodb.Database, wsHub)
+	dbWatcher.Start(context.Background())
+
 	// ==================== Initialize Handlers ====================
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
@@ -167,8 +172,7 @@ func main() {
 	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // -… Dari kode kedua
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // Real-time SSE                           // -… Real-time SSE
+	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil

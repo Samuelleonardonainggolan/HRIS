@@ -45,7 +45,7 @@ class _RequestPageState extends State<RequestPage> {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
       _loadUser();
-      _loadRequests();
+      _loadRequests(silent: true);
     });
   }
 
@@ -63,8 +63,10 @@ class _RequestPageState extends State<RequestPage> {
     } catch (_) {}
   }
 
-  Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadRequests({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final data = await ApiService.getMyPengajuan();
       if (mounted) {
@@ -623,59 +625,42 @@ class _RequestPageState extends State<RequestPage> {
       ),
       child: Row(
         children: [
-          Stack(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
+          Container(
+            height: 48,
+            width: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF135BEC).withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Container(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF135BEC).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: Colors.white,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: ClipOval(
-                      child: Image.network(
-                        _avatarUrl(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.person,
-                          color: Color(0xFF135BEC),
-                          size: 26,
-                        ),
-                      ),
+                child: ClipOval(
+                  child: Image.network(
+                    _avatarUrl(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.person,
+                      color: Color(0xFF135BEC),
+                      size: 26,
                     ),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -702,6 +687,7 @@ class _RequestPageState extends State<RequestPage> {
               ],
             ),
           ),
+
           ValueListenableBuilder<bool>(
             valueListenable: SSEService().hasNewOvertime,
             builder: (context, hasOvertime, _) {

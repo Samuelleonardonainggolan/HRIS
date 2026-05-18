@@ -1,4 +1,5 @@
 // lib/pages/main_navigation.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_app/pages/dashboard_page.dart';
 import 'package:mobile_app/pages/history_page.dart';
@@ -18,16 +19,34 @@ class MainNavigationPage extends StatefulWidget {
 class _MainNavigationPageState extends State<MainNavigationPage>
     with TickerProviderStateMixin {
   int _selectedIndex = 0;
+  StreamSubscription? _sseSubscription;
 
   @override
   void initState() {
     super.initState();
     // Connect to real-time events when entering main app
     SSEService().connect();
+
+    // Auto-clear notifications if the user is already on the target page
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted) return;
+      if (_selectedIndex == 2 && event.type == 'leave_updated') {
+        SSEService().hasNewLeaveRequest.value = false;
+      }
+      if (_selectedIndex == 3) {
+        if (event.type == 'overtime_updated') {
+          SSEService().hasNewOvertime.value = false;
+        }
+        if (event.type == 'assignment_updated') {
+          SSEService().hasNewAssignment.value = false;
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _sseSubscription?.cancel();
     // Disconnect when exiting main app (e.g. logout)
     SSEService().disconnect();
     super.dispose();

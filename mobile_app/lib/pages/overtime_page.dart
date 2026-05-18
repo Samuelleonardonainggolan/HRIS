@@ -42,7 +42,7 @@ class _OvertimePageState extends State<OvertimePage> {
   void _setupSSE() {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
-      _loadData();
+      _loadData(silent: true);
     });
   }
 
@@ -75,8 +75,10 @@ class _OvertimePageState extends State<OvertimePage> {
     return assignedToMe;
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final user =
           ApiService.currentUser.value ?? await ApiService.getProfile();
@@ -259,59 +261,42 @@ class _OvertimePageState extends State<OvertimePage> {
       ),
       child: Row(
         children: [
-          Stack(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
+          Container(
+            height: 48,
+            width: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF135BEC).withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(2),
+              child: Container(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF135BEC).withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  color: Colors.white,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: ClipOval(
-                      child: Image.network(
-                        _avatarUrl(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.person,
-                          color: Color(0xFF135BEC),
-                          size: 26,
-                        ),
-                      ),
+                child: ClipOval(
+                  child: Image.network(
+                    _avatarUrl(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => const Icon(
+                      Icons.person,
+                      color: Color(0xFF135BEC),
+                      size: 26,
                     ),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -338,6 +323,7 @@ class _OvertimePageState extends State<OvertimePage> {
               ],
             ),
           ),
+
           ValueListenableBuilder<bool>(
             valueListenable: SSEService().hasNewOvertime,
             builder: (context, hasOvertime, _) {

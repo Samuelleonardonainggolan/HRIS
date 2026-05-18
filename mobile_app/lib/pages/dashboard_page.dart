@@ -105,9 +105,9 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           event.type == 'stats_updated' ||
           event.type == 'overtime_updated' ||
           event.type == 'assignment_updated') {
-        _loadTodayAttendance();
-        _loadWorkScheduleInfo();
-        _loadMonthlyStats();
+        _loadTodayAttendance(silent: true);
+        _loadWorkScheduleInfo(silent: true);
+        _loadMonthlyStats(silent: true);
       }
     });
   }
@@ -133,8 +133,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   // ✅ BARU: Load work schedule info
-  Future<void> _loadWorkScheduleInfo() async {
-    setState(() => _isLoadingSchedule = true);
+  Future<void> _loadWorkScheduleInfo({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoadingSchedule = true);
+    }
     try {
       final info = await ApiService.getWorkScheduleInfo();
       if (mounted) {
@@ -190,8 +192,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     });
   }
 
-  Future<void> _loadMonthlyStats() async {
-    setState(() => _isLoadingStats = true);
+  Future<void> _loadMonthlyStats({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoadingStats = true);
+    }
     try {
       final now = DateTime.now();
       
@@ -245,8 +249,10 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     } catch (_) {}
   }
 
-  Future<void> _loadTodayAttendance() async {
-    setState(() => _isLoadingAttendance = true);
+  Future<void> _loadTodayAttendance({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoadingAttendance = true);
+    }
     try {
       final attendance = await ApiService.getTodayAttendance();
       if (mounted) {
@@ -1749,64 +1755,47 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       ),
       child: Row(
         children: [
-          Stack(
-            children: [
-              Hero(
-                tag: 'profile',
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF135BEC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+          Hero(
+            tag: 'profile',
+            child: Container(
+              height: 48,
+              width: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF135BEC).withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: ClipOval(
-                        child: _profileImage != null
-                            ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : Image.network(
-                                _avatarUrl(),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF135BEC),
-                                  size: 26,
-                                ),
-                              ),
-                      ),
-                    ),
+                ],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(2),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: ClipOval(
+                    child: _profileImage != null
+                        ? Image.file(_profileImage!, fit: BoxFit.cover)
+                        : Image.network(
+                            _avatarUrl(),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.person,
+                              color: Color(0xFF135BEC),
+                              size: 26,
+                            ),
+                          ),
                   ),
                 ),
               ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1833,6 +1822,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
               ],
             ),
           ),
+
           ValueListenableBuilder<bool>(
             valueListenable: SSEService().hasNewOvertime,
             builder: (context, hasOvertime, _) {
