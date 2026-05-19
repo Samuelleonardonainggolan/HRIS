@@ -81,6 +81,7 @@ func main() {
 	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // -… Dari kode kedua
 	assignmentRepo := repository.NewAssignmentRepository(mongodb.Database)
 	payrollRepo := repository.NewPayrollRepository(mongodb.Database)
+	notificationRepo := repository.NewNotificationRepository(mongodb.Database)
 
 	log.Println("ðŸ“¦ Repositories initialized")
 
@@ -146,6 +147,7 @@ func main() {
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
 	payrollService := service.NewPayrollService(payrollRepo)
+	notificationService := service.NewNotificationService(notificationRepo)
 
 	log.Println("Services initialized")
 
@@ -174,8 +176,9 @@ func main() {
 	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // -… Dari kode kedua
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
-	payrollHandler := handler.NewPayrollHandler(payrollService)
+	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret) // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
+	payrollHandler := handler.NewPayrollHandler(payrollService, payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
+	notificationHandler := handler.NewNotificationHandler(notificationService) // Real-time SSE                           // -… Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil
@@ -184,6 +187,11 @@ func main() {
 	pengajuanIzinCutiService.SetWSHub(wsHub)
 	overtimeRequestService.SetWSHub(wsHub)
 	assignmentService.SetWSHub(wsHub)
+	notificationService.SetWSHub(wsHub)
+
+	// Inject NotificationService ke services pengajuan agar bisa kirim notifikasi database
+	pengajuanService.SetNotificationService(notificationService)
+	pengajuanIzinCutiService.SetNotificationService(notificationService)
 
 	log.Println("Handlers initialized")
 
@@ -208,14 +216,15 @@ func main() {
 		geofenceHandler,
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
-		jamKerjaHandler, 
+		jamKerjaHandler,
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
-		overtimeRequestHandler, 
+		overtimeRequestHandler,
 		assignmentHandler,
 		reportHandler,
-		sseHandler,             // ✅ Real-time SSE handler       
+		sseHandler, // ✅ Real-time SSE handler
 		payrollHandler,
+		notificationHandler,
 	)
 
 	log.Println("Routes configured")
@@ -266,4 +275,3 @@ func main() {
 		log.Fatal("Failed to start server:", err)
 	}
 }
-

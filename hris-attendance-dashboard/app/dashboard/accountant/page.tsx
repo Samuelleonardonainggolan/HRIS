@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { generateLastMonths, Period } from "@/lib/utils/date-periods";
 import {
   CalendarDays,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   FileText,
   ShieldAlert,
   Users,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,9 +23,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { payrollApi, PayrollSummary } from "@/lib/api/payroll";
+import { toast } from "react-hot-toast";
 
-type Period = { monthLabel: string; value: string }; // YYYY-MM
-type Pipeline = { draft: number; approved: number; paid: number };
+type Period = { monthLabel: string; month: number; year: number; value: string }; // YYYY-MM
 
 type TopLate = {
   initials: string;
@@ -44,67 +47,64 @@ function formatIDRFull(n: number) {
   return `Rp ${n.toLocaleString("id-ID")}`;
 }
 
+
+
 export default function AccountantDashboardPage() {
-  const periods: Period[] = [
-    { monthLabel: "June 2024", value: "2024-06" },
-    { monthLabel: "May 2024", value: "2024-05" },
-    { monthLabel: "April 2024", value: "2024-04" },
-  ];
+  const periods = useMemo(() => generateLastMonths(12, true), []);
 
-  const [period, setPeriod] = useState<Period>(periods[0]);
+  const [period, setPeriod] = useState<Period>(periods[1]); // Default to current month (not All)
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<PayrollSummary | null>(null);
+  const [topLate, setTopLate] = useState<TopLate[]>([]);
 
-  // Mock data (ganti ke API nanti)
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      const data = await payrollApi.getSummary(period.month, period.year);
+      setSummary(data);
+
+      // Get top 10 late from all payrolls for that month
+      const allPayrolls = (await payrollApi.getPayrolls({ month: period.month, year: period.year })) || [];
+      const sortedByLate = allPayrolls
+        .filter(p => p.deduction > 0)
+        .sort((a, b) => b.deduction - a.deduction)
+        .slice(0, 10)
+        .map(p => ({
+          initials: p.initials,
+          name: p.name,
+          department: p.department,
+          lateMinutes: 0, // We'd need late minutes in the API response to show this accurately
+          deductionAmount: p.deduction
+        }));
+      setTopLate(sortedByLate);
+
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal mengambil data dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [period]);
+
   const kpis = useMemo(() => {
+    if (!summary) return null;
     return {
-      totalPayrollNet: 1_452_000_000,
-      totalLateDeduction: 84_200_000,
-      bonusPool: 152_500_000,
-      employees: 245,
-      payrollNetTrend: 2.4,
-      lateDeductionTrend: -1.1,
+      totalPayrollNet: summary.totalPayrollNet,
+      totalLateDeduction: summary.totalLateDeduction,
+      bonusPool: summary.bonusPool,
+      employees: summary.employees,
+      payrollNetTrend: 0, // Requires historical data
+      lateDeductionTrend: 0,
       bonusTag: "Target Met",
-      employeeTag: "+ 5 New",
+      employeeTag: "Total Active",
     };
-  }, []);
+  }, [summary]);
 
-  const pipeline: Pipeline = { draft: 150, approved: 80, paid: 15 };
-
-  const alerts = [
-    {
-      title: "Revenue for this month has not been entered",
-      desc: "Required for Bonus Pool calc.",
-      tone: "warning" as const,
-    },
-    {
-      title: "Period not locked",
-      desc: "Ensure all data is finalized before lock.",
-      tone: "danger" as const,
-    },
-  ];
-
-  const topLate: TopLate[] = [
-    {
-      initials: "AS",
-      name: "Ahmad Santoso",
-      department: "Housekeeping",
-      lateMinutes: 420,
-      deductionAmount: 420_000,
-    },
-    {
-      initials: "BW",
-      name: "Budi Wijaya",
-      department: "Food & Beverage",
-      lateMinutes: 315,
-      deductionAmount: 315_000,
-    },
-    {
-      initials: "CP",
-      name: "Citra Putri",
-      department: "Front Office",
-      lateMinutes: 280,
-      deductionAmount: 280_000,
-    },
-  ];
+  const pipeline = summary?.pipeline || { draft: 0, approved: 0, paid: 0 };
 
   // ✅ PENTING:
   // Jangan bungkus page dengan <Sidebar/> atau <div className="flex ..."> lagi,
@@ -150,47 +150,55 @@ export default function AccountantDashboardPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KpiCard
-          icon={<CircleDollarSign className="h-5 w-5 text-blue-600" />}
-          title="Total Payroll (Net)"
-          value={formatIDRFull(kpis.totalPayrollNet)}
-          trendLabel={`${kpis.payrollNetTrend >= 0 ? "↗" : "↘"} ${Math.abs(
-            kpis.payrollNetTrend
-          ).toFixed(1)}%`}
-          trendTone={kpis.payrollNetTrend >= 0 ? "success" : "danger"}
-        />
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="rounded-2xl h-32 animate-pulse bg-gray-50" />
+          ))
+        ) : kpis ? (
+          <>
+            <KpiCard
+              icon={<CircleDollarSign className="h-5 w-5 text-blue-600" />}
+              title="Total Payroll (Net)"
+              value={formatIDRFull(kpis.totalPayrollNet)}
+              trendLabel={`${kpis.payrollNetTrend >= 0 ? "↗" : "↘"} ${Math.abs(
+                kpis.payrollNetTrend
+              ).toFixed(1)}%`}
+              trendTone={kpis.payrollNetTrend >= 0 ? "success" : "danger"}
+            />
 
-        <KpiCard
-          icon={<ShieldAlert className="h-5 w-5 text-rose-600" />}
-          title="Total Deduction (Late)"
-          value={formatIDRShort(kpis.totalLateDeduction)}
-          trendLabel={`${kpis.lateDeductionTrend >= 0 ? "↗" : "↘"} ${Math.abs(
-            kpis.lateDeductionTrend
-          ).toFixed(1)}%`}
-          trendTone={kpis.lateDeductionTrend <= 0 ? "success" : "danger"}
-        />
+            <KpiCard
+              icon={<ShieldAlert className="h-5 w-5 text-rose-600" />}
+              title="Total Deduction (Late)"
+              value={formatIDRShort(kpis.totalLateDeduction)}
+              trendLabel={`${kpis.lateDeductionTrend >= 0 ? "↗" : "↘"} ${Math.abs(
+                kpis.lateDeductionTrend
+              ).toFixed(1)}%`}
+              trendTone={kpis.lateDeductionTrend <= 0 ? "success" : "danger"}
+            />
 
-        <KpiCard
-          icon={<FileText className="h-5 w-5 text-orange-600" />}
-          title="Bonus Pool 10% (Revenue)"
-          value={formatIDRShort(kpis.bonusPool)}
-          rightBadge={
-            <Badge className="rounded-full bg-gray-900 text-white hover:bg-gray-900">
-              {kpis.bonusTag}
-            </Badge>
-          }
-        />
+            <KpiCard
+              icon={<FileText className="h-5 w-5 text-orange-600" />}
+              title="Bonus Pool (Overtime)"
+              value={formatIDRShort(kpis.bonusPool)}
+              rightBadge={
+                <Badge className="rounded-full bg-gray-900 text-white hover:bg-gray-900">
+                  {kpis.bonusTag}
+                </Badge>
+              }
+            />
 
-        <KpiCard
-          icon={<Users className="h-5 w-5 text-gray-900" />}
-          title="Number of Employees"
-          value={`${kpis.employees}`}
-          rightBadge={
-            <Badge className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              {kpis.employeeTag}
-            </Badge>
-          }
-        />
+            <KpiCard
+              icon={<Users className="h-5 w-5 text-gray-900" />}
+              title="Number of Employees"
+              value={`${kpis.employees}`}
+              rightBadge={
+                <Badge className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {kpis.employeeTag}
+                </Badge>
+              }
+            />
+          </>
+        ) : null}
       </div>
 
       {/* Mid section */}
@@ -313,31 +321,48 @@ export default function AccountantDashboardPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-100 bg-white">
-                {topLate.map((r, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">
-                          {r.initials}
-                        </div>
-                        <div className="text-sm font-semibold text-gray-900">
-                          {r.name}
-                        </div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Memuat data...
                       </div>
                     </td>
-
-                    <td className="px-6 py-4 text-sm text-gray-700">
-                      {r.department}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">
-                      {r.lateMinutes} mins
-                    </td>
-
-                    <td className="px-6 py-4 text-right text-sm font-semibold text-rose-600">
-                      {`Rp ${r.deductionAmount.toLocaleString("id-ID")}`}
+                  </tr>
+                ) : topLate.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-10 text-center text-sm text-gray-500">
+                      Tidak ada data pemotongan untuk periode ini.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  topLate.map((r, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">
+                            {r.initials}
+                          </div>
+                          <div className="text-sm font-semibold text-gray-900">
+                            {r.name}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {r.department}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {r.lateMinutes > 0 ? `${r.lateMinutes} mins` : "-"}
+                      </td>
+
+                      <td className="px-6 py-4 text-right text-sm font-semibold text-rose-600">
+                        {`Rp ${r.deductionAmount.toLocaleString("id-ID")}`}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

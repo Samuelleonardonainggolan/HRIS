@@ -18,6 +18,7 @@ const (
 	WSEventStatsUpdated      WSEventType = "stats_updated"
 	WSEventOvertimeUpdated   WSEventType = "overtime_updated"
 	WSEventAssignmentUpdated WSEventType = "assignment_updated"
+	WSEventNotificationCreated WSEventType = "notification_created"
 	WSEventPing              WSEventType = "ping"
 )
 
