@@ -22,6 +22,7 @@ class SlipGajiData {
   final String status;
   final double overtimeHours;
   final int cutiHari;
+  final int? customTotalBersih;
 
   SlipGajiData({
     required this.periode,
@@ -33,9 +34,10 @@ class SlipGajiData {
     required this.status,
     required this.overtimeHours,
     required this.cutiHari,
+    this.customTotalBersih,
   });
 
-  int get totalBersih => gajiPokok + lembur + tunjanganCuti + bonus - potongan;
+  int get totalBersih => customTotalBersih ?? (gajiPokok + lembur + tunjanganCuti + bonus - potongan);
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -105,36 +107,19 @@ class _SlipGajiPageState extends State<SlipGajiPage>
     }
     try {
       final user = await ApiService.getProfile();
-      final userId = user.id;
-
-      // Ambil gaji pokok dari endpoint active salary
-      final salaryResp = await ApiService.getActiveSalary(userId);
-      final gajiPokok = salaryResp['basic_salary'] as int? ?? 0;
-
-      // Ambil data lembur bulan ini
       final now = DateTime.now();
-      final overtimeList = await ApiService.getApprovedOvertimeByMonth(
-        month: now.month,
-        year: now.year,
-      );
-      final overtimeHours = overtimeList.fold<double>(
-        0,
-        (sum, o) => sum + o.getDurationHours(),
-      );
-      final overtimePay =
-          (overtimeHours * (gajiPokok / 173)).round(); // standar 173 jam/bulan
 
-      // Ambil cuti berbayar bulan ini
-      final cutiList = await ApiService.getApprovedPengajuanByMonth(
-        month: now.month,
-        year: now.year,
-      );
-      final cutiHari = cutiList.fold<int>(0, (sum, c) => sum + c.days);
-      final dailyRate = gajiPokok ~/ 22;
-      final tunjanganCuti = cutiHari * dailyRate;
-
-      // Potongan sederhana (BPJS 2% + absensi)
-      final potongan = (gajiPokok * 0.02).round();
+      // Ambil data payroll dari backend
+      final payrollResp = await ApiService.getMyPayroll(now.month, now.year);
+      
+      final gajiPokokStr = payrollResp['basic_salary'] ?? '0';
+      final netSalaryStr = payrollResp['net_salary'] ?? '0';
+      final totalLeaveStr = payrollResp['total_leave'] ?? '0';
+      
+      // Parse string ke int
+      final gajiPokok = int.tryParse(gajiPokokStr) ?? 0;
+      final netSalary = int.tryParse(netSalaryStr) ?? 0;
+      final cutiHari = int.tryParse(totalLeaveStr) ?? 0;
 
       final periode = DateFormat('MMMM yyyy', 'id_ID').format(now);
 
@@ -144,13 +129,14 @@ class _SlipGajiPageState extends State<SlipGajiPage>
           _slip = SlipGajiData(
             periode: periode,
             gajiPokok: gajiPokok,
-            lembur: overtimePay,
-            tunjanganCuti: tunjanganCuti,
-            potongan: potongan,
+            lembur: 0,
+            tunjanganCuti: 0,
+            potongan: 0,
             bonus: 0,
-            status: 'Terbayar',
-            overtimeHours: overtimeHours,
+            status: payrollResp['payment_status'] ?? 'Belum Terbayar',
+            overtimeHours: 0,
             cutiHari: cutiHari,
+            customTotalBersih: netSalary,
           );
           _isLoading = false;
         });

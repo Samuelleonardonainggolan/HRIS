@@ -80,6 +80,7 @@ func main() {
 	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
 	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // -… Dari kode kedua
 	assignmentRepo := repository.NewAssignmentRepository(mongodb.Database)
+	payrollRepo := repository.NewPayrollRepository(mongodb.Database)
 
 	log.Println("ðŸ“¦ Repositories initialized")
 
@@ -144,6 +145,7 @@ func main() {
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // -… Dari kode kedua
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
+	payrollService := service.NewPayrollService(payrollRepo)
 
 	log.Println("Services initialized")
 
@@ -173,6 +175,7 @@ func main() {
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
+	payrollHandler := handler.NewPayrollHandler(payrollService)
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil
@@ -212,6 +215,7 @@ func main() {
 		assignmentHandler,
 		reportHandler,
 		sseHandler,             // ✅ Real-time SSE handler       
+		payrollHandler,
 	)
 
 	log.Println("Routes configured")

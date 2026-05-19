@@ -28,6 +28,7 @@ func SetupRoutes(
 	assignmentHandler *handler.AssignmentHandler,
 	reportHandler *handler.ReportHandler,
 	sseHandler *handler.SSEHandler,
+	payrollHandler *handler.PayrollHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -286,6 +287,9 @@ func SetupRoutes(
 				deptLeaveRequests.POST("/:id/approve", pengajuanIzinCutiHandler.ApproveByKepalaDepartemen)
 				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
 			}
+
+			// PAYROLL
+			protected.GET("/my-payroll", payrollHandler.GetMyPayroll)
 
 			// REPORTS
 			reports := protected.Group("/reports")

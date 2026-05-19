@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.73:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.30:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -1021,6 +1021,32 @@ class ApiService {
     } catch (e) {
       print('[API] getActiveSalary error: $e');
       return {'basic_salary': 0};
+    }
+  }
+
+  static Future<Map<String, dynamic>> getMyPayroll(int month, int year) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/my-payroll?month=$month&year=$year'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getMyPayroll status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return (data['data'] as Map<String, dynamic>?) ?? {};
+      } else {
+        throw Exception('Slip gaji tidak ditemukan');
+      }
+    } catch (e) {
+      print('[API] getMyPayroll error: $e');
+      rethrow;
     }
   }
 
