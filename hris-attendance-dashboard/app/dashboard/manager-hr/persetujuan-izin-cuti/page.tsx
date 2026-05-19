@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Loader2, MoreVertical, X, AlertTriangle, FileText, ExternalLink, ZoomIn } from "lucide-react";
+import { Search, Loader2, MoreVertical, X, AlertTriangle, FileText, ExternalLink } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -168,9 +168,6 @@ export default function PersetujuanIzinCutiPage() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [rejectError, setRejectError] = useState<string | null>(null);
   const rejectTextareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // Modal preview dokumen
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const activeStatus = "ALL" as const;
 
@@ -552,9 +549,11 @@ export default function PersetujuanIzinCutiPage() {
                     Dokumen Pendukung
                   </div>
                   {selected.attachmentUrl ? (
-                    <div
-                      className="mt-2 rounded-xl border border-gray-100 overflow-hidden cursor-pointer group"
-                      onClick={() => setPreviewUrl(selected.attachmentUrl!)}
+                    <a
+                      href={selected.attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 block rounded-xl border border-gray-100 overflow-hidden cursor-pointer group"
                     >
                       {/* Thumbnail preview */}
                       <div className="relative h-36 bg-gray-50 flex items-center justify-center overflow-hidden">
@@ -568,17 +567,17 @@ export default function PersetujuanIzinCutiPage() {
                         ) : /\.pdf($|\?)/i.test(selected.attachmentUrl) ? (
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <div className="flex items-center justify-center bg-red-100 text-red-600 font-bold text-xs px-2 py-1 rounded">PDF</div>
-                            <span className="text-xs">Klik untuk pratinjau</span>
+                            <span className="text-xs">Klik untuk membuka</span>
                           </div>
                         ) : (
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <FileText className="h-10 w-10" />
-                            <span className="text-xs">Klik untuk pratinjau</span>
+                            <span className="text-xs">Klik untuk membuka</span>
                           </div>
                         )}
                         {/* Overlay hover */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors duration-200 flex items-center justify-center">
-                          <ZoomIn className="h-7 w-7 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+                          <ExternalLink className="h-7 w-7 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                         </div>
                       </div>
                       {/* Footer info */}
@@ -589,7 +588,7 @@ export default function PersetujuanIzinCutiPage() {
                         </div>
                         <ExternalLink className="h-3.5 w-3.5 text-gray-400 shrink-0 ml-2" />
                       </div>
-                    </div>
+                    </a>
                   ) : (
                     <div className="mt-2 rounded-xl border border-gray-100 bg-gray-50 p-6 flex flex-col items-center gap-2 text-gray-400">
                       <FileText className="h-8 w-8" />
@@ -624,80 +623,7 @@ export default function PersetujuanIzinCutiPage() {
     </div>
 
     {/* ===== MODAL ALASAN PENOLAKAN ===== */}
-    {/* ===== MODAL PREVIEW DOKUMEN ===== */}
-    {previewUrl && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-        onClick={() => setPreviewUrl(null)}
-      >
-        <div
-          className="relative max-w-4xl w-full max-h-[90vh] flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 bg-white shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <FileText className="h-4 w-4 text-gray-500 shrink-0" />
-              <span className="text-sm font-medium text-gray-700 truncate">
-                {selected?.attachmentName ?? "Dokumen Pendukung"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0 ml-3">
-              <a
-                href={previewUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 rounded-lg px-3 py-1.5 transition-colors"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Buka di tab baru
-              </a>
-              <button
-                onClick={() => setPreviewUrl(null)}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-auto bg-gray-50 flex items-center justify-center min-h-[400px]">
-            {/\.(png|jpe?g|gif|webp|bmp|svg)($|\?)/i.test(previewUrl) ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={previewUrl}
-                alt="Dokumen Pendukung"
-                className="max-w-full max-h-[75vh] object-contain p-4"
-              />
-            ) : /\.pdf($|\?)/i.test(previewUrl) ? (
-              <iframe
-                src={previewUrl}
-                className="w-full h-[75vh]"
-                title="Dokumen Pendukung"
-              />
-            ) : (
-              <div className="flex flex-col items-center gap-4 p-10 text-center">
-                <FileText className="h-16 w-16 text-gray-300" />
-                <p className="text-sm text-gray-500">
-                  Pratinjau tidak tersedia untuk format file ini.
-                </p>
-                <a
-                  href={previewUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 underline"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Unduh / Buka file
-                </a>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )}
 
     {showRejectModal && (
       <div

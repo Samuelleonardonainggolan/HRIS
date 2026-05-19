@@ -79,6 +79,8 @@ func main() {
 	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
 	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // -… Dari kode kedua
 	assignmentRepo := repository.NewAssignmentRepository(mongodb.Database)
+	payrollRepo := repository.NewPayrollRepository(mongodb.Database)
+	notificationRepo := repository.NewNotificationRepository(mongodb.Database)
 
 	log.Println("ðŸ“¦ Repositories initialized")
 
@@ -143,6 +145,7 @@ func main() {
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // -… Dari kode kedua
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
+	notificationService := service.NewNotificationService(notificationRepo)
 
 	log.Println("Services initialized")
 
@@ -168,7 +171,8 @@ func main() {
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // Real-time SSE                           // -… Real-time SSE
+	payrollHandler := handler.NewPayrollHandler(payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	// ==================== Inject WSHub ke services ====================
 	// Agar services bisa broadcast event real-time setelah operasi berhasil
@@ -177,6 +181,11 @@ func main() {
 	pengajuanIzinCutiService.SetWSHub(wsHub)
 	overtimeRequestService.SetWSHub(wsHub)
 	assignmentService.SetWSHub(wsHub)
+	notificationService.SetWSHub(wsHub)
+
+	// Inject NotificationService ke services pengajuan agar bisa kirim notifikasi database
+	pengajuanService.SetNotificationService(notificationService)
+	pengajuanIzinCutiService.SetNotificationService(notificationService)
 
 	log.Println("Handlers initialized")
 
@@ -208,6 +217,8 @@ func main() {
 		assignmentHandler,
 		reportHandler,
 		sseHandler,             // ✅ Real-time SSE handler       
+		payrollHandler,
+		notificationHandler,
 	)
 
 	log.Println("Routes configured")

@@ -28,6 +28,8 @@ func SetupRoutes(
 	assignmentHandler *handler.AssignmentHandler,
 	reportHandler *handler.ReportHandler,
 	sseHandler *handler.SSEHandler,
+	payrollHandler *handler.PayrollHandler,
+	notificationHandler *handler.NotificationHandler,
 ) {
 	// ==================== CORS MIDDLEWARE ====================
 	router.Use(func(c *gin.Context) {
@@ -292,6 +294,24 @@ func SetupRoutes(
 			reports.Use(middleware.ManagerHROnly())
 			{
 				reports.GET("/attendance-activity", reportHandler.GetAttendanceActivityReport)
+			}
+
+			// PAYROLLS (Accountant or HR)
+			payrolls := protected.Group("/payrolls")
+			payrolls.Use(middleware.AccountantOrHROnly())
+			{
+				payrolls.GET("", payrollHandler.GetPayrolls)
+				payrolls.GET("/:id", payrollHandler.GetPayrollDetail)
+				payrolls.POST("/generate", payrollHandler.GenerateMonthlyPayrolls)
+			}
+
+			// NOTIFICATIONS (All Authenticated Users)
+			notifications := protected.Group("/notifications")
+			{
+				notifications.GET("", notificationHandler.GetNotifications)
+				notifications.GET("/unread-count", notificationHandler.GetUnreadCount)
+				notifications.PATCH("/:id/read", notificationHandler.MarkAsRead)
+				notifications.POST("/read-all", notificationHandler.MarkAllAsRead)
 			}
 		}
 

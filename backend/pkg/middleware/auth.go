@@ -147,3 +147,43 @@ func ManagerDepartemenOnly() gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// AccountantOnly restricts access to Accountant only
+func AccountantOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
+
+		if role != models.RoleAccountant {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Accountant only"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// AccountantOrHROnly restricts access to Accountant or Manager HR
+func AccountantOrHROnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, exists := c.Get("userRole")
+		if !exists {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "User role not found"))
+			c.Abort()
+			return
+		}
+
+		if role != models.RoleAccountant && role != models.RoleManagerHR {
+			c.JSON(http.StatusForbidden, models.ErrorResponse("Forbidden", "Access denied: Accountant or Manager HR only"))
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}

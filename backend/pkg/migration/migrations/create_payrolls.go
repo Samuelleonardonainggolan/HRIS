@@ -10,7 +10,7 @@ import (
 )
 
 func CreatePayrolls() (int, string, string, func(*mongo.Database) error, func(*mongo.Database) error) {
-	version := 12 // ✅ sesuaikan urutan migration Anda
+	version := 19 // ✅ sesuaikan urutan migration Anda
 	name := "create_payrolls"
 	description := "Create payrolls collection and indexes"
 
