@@ -40,6 +40,8 @@ func NewPayrollHandler(
 		jamKerjaRepo:   jamKerjaRepo,
 	}
 }
+
+func (h *PayrollHandler) GetMyPayroll(c *gin.Context) {
 	userIDRaw, ok := c.Get("userID")
 	if !ok {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse("Unauthorized", "missing user"))
