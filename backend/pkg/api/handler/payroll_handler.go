@@ -2,25 +2,43 @@
 package handler
 
 import (
-package handler
-
-import (
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/andikatampubolon10/hris-backend/internal/service"
+	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type PayrollHandler struct {
-	payrollService service.PayrollService
+	repo           repository.PayrollRepository
+	userRepo       repository.UserRepository
+	salaryRepo     repository.EmployeeBasicSalaryRepository
+	attendanceRepo repository.AttendanceRepository
+	overtimeRepo   repository.OvertimeRequestRepository
+	jamKerjaRepo   repository.JamKerjaRepository
 }
 
-func NewPayrollHandler(payrollService service.PayrollService) *PayrollHandler {
-	return &PayrollHandler{payrollService: payrollService}
+func NewPayrollHandler(
+	repo repository.PayrollRepository,
+	userRepo repository.UserRepository,
+	salaryRepo repository.EmployeeBasicSalaryRepository,
+	attendanceRepo repository.AttendanceRepository,
+	overtimeRepo repository.OvertimeRequestRepository,
+	jamKerjaRepo repository.JamKerjaRepository,
+) *PayrollHandler {
+	return &PayrollHandler{
+		repo:           repo,
+		userRepo:       userRepo,
+		salaryRepo:     salaryRepo,
+		attendanceRepo: attendanceRepo,
+		overtimeRepo:   overtimeRepo,
+		jamKerjaRepo:   jamKerjaRepo,
+	}
 }
 
 func (h *PayrollHandler) GetMyPayroll(c *gin.Context) {
@@ -59,45 +77,13 @@ func (h *PayrollHandler) GetMyPayroll(c *gin.Context) {
 		}
 	}
 
-	payroll, err := h.payrollService.GetPayrollForEmployee(c.Request.Context(), userID, month, year)
+	payroll, err := h.repo.FindByUserAndMonthYear(c.Request.Context(), userID, month, year)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse("Not Found", err.Error()))
 		return
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse("Payroll retrieved successfully", payroll))
-	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
-	"github.com/andikatampubolon10/hris-backend/pkg/models"
-	"github.com/gin-gonic/gin"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-)
-
-type PayrollHandler struct {
-	repo           repository.PayrollRepository
-	userRepo       repository.UserRepository
-	salaryRepo     repository.EmployeeBasicSalaryRepository
-	attendanceRepo repository.AttendanceRepository
-	overtimeRepo   repository.OvertimeRequestRepository
-	jamKerjaRepo   repository.JamKerjaRepository
-}
-
-func NewPayrollHandler(
-	repo repository.PayrollRepository,
-	userRepo repository.UserRepository,
-	salaryRepo repository.EmployeeBasicSalaryRepository,
-	attendanceRepo repository.AttendanceRepository,
-	overtimeRepo repository.OvertimeRequestRepository,
-	jamKerjaRepo repository.JamKerjaRepository,
-) *PayrollHandler {
-	return &PayrollHandler{
-		repo:           repo,
-		userRepo:       userRepo,
-		salaryRepo:     salaryRepo,
-		attendanceRepo: attendanceRepo,
-		overtimeRepo:   overtimeRepo,
-		jamKerjaRepo:   jamKerjaRepo,
-	}
 }
 
 // GetPayrolls fetches payrolls with filters, including employees who don't have records yet

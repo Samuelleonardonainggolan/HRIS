@@ -10,16 +10,11 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type PayrollRepository interface {
 	FindByUserAndMonthYear(ctx context.Context, userID string, month, year int) (*models.Payroll, error)
-	Create(ctx context.Context, payroll *models.Payroll) error
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"time"
-)
-
-type PayrollRepository interface {
 	Create(ctx context.Context, payroll *models.Payroll) error
 	Update(ctx context.Context, id primitive.ObjectID, payroll *models.Payroll) error
 	FindByID(ctx context.Context, id primitive.ObjectID) (*models.Payroll, error)
@@ -54,9 +49,20 @@ func (r *payrollRepository) FindByUserAndMonthYear(ctx context.Context, userID s
 		if err == mongo.ErrNoDocuments {
 			return nil, nil
 		}
+		return nil, err
+	}
+	return &payroll, nil
+}
+
 func (r *payrollRepository) Create(ctx context.Context, payroll *models.Payroll) error {
-	payroll.CreatedAt = time.Now()
-	payroll.UpdatedAt = time.Now()
+	if payroll.ID.IsZero() {
+		payroll.ID = primitive.NewObjectID()
+	}
+	now := time.Now()
+	if payroll.CreatedAt.IsZero() {
+		payroll.CreatedAt = now
+	}
+	payroll.UpdatedAt = now
 	_, err := r.collection.InsertOne(ctx, payroll)
 	return err
 }
@@ -79,16 +85,6 @@ func (r *payrollRepository) FindByID(ctx context.Context, id primitive.ObjectID)
 	return &payroll, nil
 }
 
-func (r *payrollRepository) Create(ctx context.Context, payroll *models.Payroll) error {
-	if payroll.ID.IsZero() {
-		payroll.ID = primitive.NewObjectID()
-	}
-	now := time.Now()
-	if payroll.CreatedAt.IsZero() {
-		payroll.CreatedAt = now
-	}
-	payroll.UpdatedAt = now
-	_, err := r.collection.InsertOne(ctx, payroll)
 func (r *payrollRepository) FindAll(ctx context.Context, filter bson.M) ([]models.Payroll, error) {
 	var payrolls []models.Payroll
 	opts := options.Find().SetSort(bson.M{"created_at": -1})
