@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/models/assignment.dart';
@@ -9,6 +10,9 @@ import 'package:mobile_app/services/sse_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:mobile_app/widgets/app_sidebar.dart';
 import 'package:mobile_app/widgets/app_header.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class OvertimePage extends StatefulWidget {
   const OvertimePage({super.key});
@@ -1947,6 +1951,23 @@ class _AssignmentDetailSheet extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _exportToPDF(context),
+                    icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                    label: const Text('Download Surat Penugasan'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF135BEC),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
               ],
               if (!isUsed) ...[
                 const SizedBox(height: 16),
@@ -2148,5 +2169,152 @@ class _AssignmentDetailSheet extends StatelessWidget {
       default:
         return status;
     }
+  }
+
+  Future<void> _exportToPDF(BuildContext context) async {
+    try {
+      final pdf = pw.Document();
+      final times = pw.Font.times();
+      final timesBold = pw.Font.timesBold();
+
+      // Load logo
+      final ByteData bytes = await rootBundle.load('assets/Picture1.jpg');
+      final Uint8List list = bytes.buffer.asUint8List();
+      final pw.MemoryImage logoImage = pw.MemoryImage(list);
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          header: (context) => pw.Column(
+            children: [
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Image(logoImage, width: 60, height: 60),
+                  pw.SizedBox(width: 15),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'PT. Labersa Hutahaean',
+                        style: pw.TextStyle(
+                          font: timesBold,
+                          fontSize: 16,
+                          color: PdfColor.fromInt(0xFF988300), // Golden
+                        ),
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        'HEAD OFFICE - WILAYAH TOBA',
+                        style: pw.TextStyle(
+                          font: timesBold,
+                          fontSize: 12,
+                          color: PdfColor.fromInt(0xFF006400), // Dark Green
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 5),
+              pw.Divider(thickness: 0.5, color: PdfColors.black),
+              pw.SizedBox(height: 10),
+            ],
+          ),
+          build: (context) => [
+            pw.Text(
+              'SURAT PERINTAH PENUGASAN',
+              style: pw.TextStyle(
+                font: timesBold,
+                fontSize: 14,
+                color: PdfColors.black,
+              ),
+              textAlign: pw.TextAlign.center,
+            ),
+            pw.SizedBox(height: 15),
+            pw.Text(
+              'Kepada saudara yang namanya tersebut di bawah ini diperintahkan untuk melaksanakan tugas:',
+              style: pw.TextStyle(font: times, fontSize: 11),
+            ),
+            pw.SizedBox(height: 10),
+            
+            // Employees (No Table)
+            for (final emp in assignment.employees)
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 10, bottom: 5),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('- ', style: pw.TextStyle(font: times, fontSize: 11)),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(emp.fullName, style: pw.TextStyle(font: timesBold, fontSize: 11)),
+                          pw.Text('Jabatan: ${emp.positionName.isNotEmpty ? emp.positionName : '-'}', style: pw.TextStyle(font: times, fontSize: 10, color: PdfColors.grey700)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
+            pw.SizedBox(height: 15),
+            
+            // Details
+            _pdfDetailRow('Untuk keperluan / tugas', assignment.reason.isNotEmpty ? assignment.reason : '-', times, timesBold),
+            _pdfDetailRow('Pada hari / tanggal', DateFormat('EEEE, dd MMMM yyyy', 'id').format(assignment.date), times, timesBold),
+            _pdfDetailRow('Waktu', '${assignment.startTime} - ${assignment.endTime}', times, timesBold),
+            _pdfDetailRow('Pilihan Reward', 'Hari Libur Pengganti', times, timesBold),
+            
+            pw.SizedBox(height: 30),
+            
+            // Signatures
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                _pdfSignBlock('Yang memberi perintah,', 'Departement Head', times, timesBold),
+                _pdfSignBlock('Yang menerima perintah,', 'Karyawan', times, timesBold),
+                _pdfSignBlock('Disetujui Oleh,', 'Office Manager / HRM', times, timesBold),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: 'Surat_Penugasan_${assignment.id}.pdf',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
+    }
+  }
+
+  pw.Widget _pdfDetailRow(String label, String value, pw.Font font, pw.Font fontBold) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.symmetric(vertical: 2),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(width: 120, child: pw.Text(label, style: pw.TextStyle(font: font, fontSize: 11))),
+          pw.Text(': ', style: pw.TextStyle(font: font, fontSize: 11)),
+          pw.Expanded(child: pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 11))),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfSignBlock(String label, String subLabel, pw.Font font, pw.Font fontBold) {
+    return pw.Column(
+      children: [
+        pw.Text(label, style: pw.TextStyle(font: font, fontSize: 10)),
+        pw.SizedBox(height: 30),
+        pw.Text('( ____________________ )', style: pw.TextStyle(font: font, fontSize: 10)),
+        pw.SizedBox(height: 4),
+        pw.Text(subLabel, style: pw.TextStyle(font: fontBold, fontSize: 8)),
+      ],
+    );
   }
 }
