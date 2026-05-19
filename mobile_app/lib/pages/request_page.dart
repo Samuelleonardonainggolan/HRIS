@@ -7,6 +7,8 @@ import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/services/sse_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mobile_app/widgets/app_sidebar.dart';
+import 'package:mobile_app/widgets/app_header.dart';
 
 import 'new_request_page.dart';
 
@@ -19,7 +21,7 @@ class RequestPage extends StatefulWidget {
 
 class _RequestPageState extends State<RequestPage> {
   int _selectedTab = 0;
-  final List<String> _tabs = ['Pengajuan Terbaru', 'Izin', 'Cuti'];
+  final List<String> _tabs = ['Semua', 'Izin', 'Cuti'];
   bool _isLoading = true;
   User? _user;
   List<LeaveRequest> _requests = [];
@@ -45,7 +47,7 @@ class _RequestPageState extends State<RequestPage> {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
       _loadUser();
-      _loadRequests();
+      _loadRequests(silent: true);
     });
   }
 
@@ -63,8 +65,10 @@ class _RequestPageState extends State<RequestPage> {
     } catch (_) {}
   }
 
-  Future<void> _loadRequests() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadRequests({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final data = await ApiService.getMyPengajuan();
       if (mounted) {
@@ -607,204 +611,49 @@ class _RequestPageState extends State<RequestPage> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Stack(
-            children: [
-              Container(
-                height: 48,
-                width: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF135BEC).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    child: ClipOval(
-                      child: Image.network(
-                        _avatarUrl(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const Icon(
-                          Icons.person,
-                          color: Color(0xFF135BEC),
-                          size: 26,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _greeting(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  _user?.fullName ?? 'Profil Saya',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: SSEService().hasNewOvertime,
-            builder: (context, hasOvertime, _) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: SSEService().hasNewAssignment,
-                builder: (context, hasAssignment, _) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: SSEService().hasNewLeaveRequest,
-                    builder: (context, hasLeave, _) {
-                      final hasNew = hasOvertime || hasAssignment || hasLeave;
-                      return Stack(
-                        children: [
-                          Container(
-                            height: 44,
-                            width: 44,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.notifications_none,
-                                color: Color(0xFF475569),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                SSEService().hasNewOvertime.value = false;
-                                SSEService().hasNewAssignment.value = false;
-                                SSEService().hasNewLeaveRequest.value = false;
-                              },
-                              padding: EdgeInsets.zero,
-                            ),
-                          ),
-                          if (hasNew)
-                            Positioned(
-                              top: 9,
-                              right: 9,
-                              child: Container(
-                                height: 8,
-                                width: 8,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFEF4444),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildTabs() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: List.generate(_tabs.length, (i) {
-            final selected = _selectedTab == i;
-            return Padding(
-              padding: const EdgeInsets.only(right: 10),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: List.generate(_tabs.length, (i) {
+          final selected = _selectedTab == i;
+          return Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: i == 0 ? 0 : 4,
+                right: i == _tabs.length - 1 ? 0 : 4,
+              ),
               child: InkWell(
                 onTap: () => setState(() => _selectedTab = i),
                 borderRadius: BorderRadius.circular(20),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 250),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: selected ? const Color(0xFF135BEC) : const Color(0xFFF1F5F9),
+                    color: selected ? const Color(0xFF135BEC) : Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF135BEC).withOpacity(0.3),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            )
-                          ]
-                        : null,
+                    border: Border.all(
+                      color: selected ? const Color(0xFF135BEC) : const Color(0xFFE2E8F0),
+                    ),
                   ),
                   child: Text(
                     _tabs[i],
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: selected ? FontWeight.bold : FontWeight.w600,
-                      color: selected ? Colors.white : const Color(0xFF64748B),
+                      color: selected ? Colors.white : const Color(0xFF475569),
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
-            );
-          }),
-        ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -820,11 +669,12 @@ class _RequestPageState extends State<RequestPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      endDrawer: const AppSidebar(),
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            const AppHeader(),
             _buildTabs(),
             Expanded(child: _buildBody()),
           ],
@@ -1035,20 +885,7 @@ class _RequestPageState extends State<RequestPage> {
     return true; // Pending or Rejected can be edited
   }
 
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Selamat Pagi';
-    if (hour < 15) return 'Selamat Siang';
-    if (hour < 18) return 'Selamat Sore';
-    return 'Selamat Malam';
-  }
 
-  String _avatarUrl() {
-    final avatar = (_user?.avatar ?? '').trim();
-    if (avatar.isNotEmpty) return avatar;
-    final name = Uri.encodeComponent(_user?.fullName ?? 'Employee');
-    return 'https://ui-avatars.com/api/?name=$name&background=135BEC&color=fff&size=100';
-  }
 
   String _statusLabel(String status) {
     switch (status.toUpperCase()) {

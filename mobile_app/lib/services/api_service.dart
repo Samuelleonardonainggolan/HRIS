@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.38:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.73:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -160,6 +160,7 @@ class ApiService {
       await http.post(Uri.parse('$baseUrl/auth/logout'), headers: headers);
     } finally {
       await clearTokens();
+      currentUser.value = null;
     }
   }
 
@@ -1799,6 +1800,22 @@ class ApiService {
       return list;
     } catch (e) {
       print('[API] getAssignedAssignments error: $e');
+      return [];
+    }
+  }
+
+  static Future<List<Assignment>> getApprovedAssignmentsByMonth({
+    required int month,
+    required int year,
+  }) async {
+    try {
+      final all = await getAssignedAssignments();
+      final filtered = all.where((a) {
+        return a.date.month == month && a.date.year == year && a.isPublished;
+      }).toList();
+      return filtered;
+    } catch (e) {
+      print('[API] getApprovedAssignmentsByMonth error: $e');
       return [];
     }
   }

@@ -39,12 +39,14 @@ class _ProfilePageState extends State<ProfilePage> {
   void _setupSSE() {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
-      _loadProfile();
+      _loadProfile(silent: true);
     });
   }
 
-  Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadProfile({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final u = await ApiService.getProfile();
       if (mounted) {
@@ -277,125 +279,52 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // ── Header sama persis seperti profile ────────────────────────────────────
   Widget _buildHeader() {
+    String displayRole = 'Karyawan';
+    if (_user?.role != null && _user!.role.isNotEmpty) {
+      final parts = _user!.role.split('_');
+      displayRole = parts.map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '').join(' ');
+    }
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      color: Colors.transparent,
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Stack(
-            children: [
-              Hero(
-                tag: 'profile',
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF135BEC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: ClipOval(child: _avatarPreview(size: 48)),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            'Profil Saya',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+              letterSpacing: -0.5,
+            ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF135BEC).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  _greeting(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
+                const Icon(
+                  Icons.verified_user_rounded,
+                  color: Color(0xFF135BEC),
+                  size: 14,
                 ),
+                const SizedBox(width: 6),
                 Text(
-                  _user?.fullName ?? 'Profil Saya',
+                  displayRole,
                   style: const TextStyle(
-                    fontSize: 16,
+                    color: Color(0xFF135BEC),
+                    fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
-          ),
-          Stack(
-            children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Color(0xFF475569),
-                    size: 22,
-                  ),
-                  onPressed: () {},
-                  padding: EdgeInsets.zero,
-                ),
-              ),
-              Positioned(
-                top: 9,
-                right: 9,
-                child: Container(
-                  height: 8,
-                  width: 8,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFFEF4444),
-                  ),
-                ),
-              ),
-            ],
           ),
         ],
       ),

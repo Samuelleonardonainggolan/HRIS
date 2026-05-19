@@ -1,11 +1,12 @@
 // lib/pages/main_navigation.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mobile_app/pages/dashboard_page.dart';
 import 'package:mobile_app/pages/history_page.dart';
 import 'package:mobile_app/pages/overtime_page.dart';
 import 'package:mobile_app/pages/request_page.dart';
 import 'package:mobile_app/pages/profile_page.dart';
-import 'package:mobile_app/services/sse_service.dart';
+import 'package:mobile_app/services/sse_service.dart'; 
 
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
@@ -18,16 +19,34 @@ class MainNavigationPage extends StatefulWidget {
 class _MainNavigationPageState extends State<MainNavigationPage>
     with TickerProviderStateMixin {
   int _selectedIndex = 0;
+  StreamSubscription? _sseSubscription;
 
   @override
   void initState() {
     super.initState();
     // Connect to real-time events when entering main app
     SSEService().connect();
+
+    // Auto-clear notifications if the user is already on the target page
+    _sseSubscription = SSEService().events.listen((event) {
+      if (!mounted) return;
+      if (_selectedIndex == 2 && event.type == 'leave_updated') {
+        SSEService().hasNewLeaveRequest.value = false;
+      }
+      if (_selectedIndex == 3) {
+        if (event.type == 'overtime_updated') {
+          SSEService().hasNewOvertime.value = false;
+        }
+        if (event.type == 'assignment_updated') {
+          SSEService().hasNewAssignment.value = false;
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
+    _sseSubscription?.cancel();
     // Disconnect when exiting main app (e.g. logout)
     SSEService().disconnect();
     super.dispose();
@@ -38,7 +57,6 @@ class _MainNavigationPageState extends State<MainNavigationPage>
     HistoryPage(),
     RequestPage(),
     OvertimePage(),
-    ProfilePage(),
   ];
 
   // Nav items config
@@ -46,8 +64,7 @@ class _MainNavigationPageState extends State<MainNavigationPage>
     _NavItem(icon: Icons.home_rounded,          activeIcon: Icons.home_rounded,          label: 'Beranda'),
     _NavItem(icon: Icons.history_rounded,        activeIcon: Icons.history_rounded,        label: 'Riwayat'),
     _NavItem(icon: Icons.assignment_rounded,     activeIcon: Icons.assignment_rounded,     label: 'Pengajuan'),
-    _NavItem(icon: Icons.schedule_rounded,       activeIcon: Icons.schedule_rounded,       label: 'Lembur'),
-    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded,         label: 'Profil'),
+    _NavItem(icon: Icons.schedule_rounded,       activeIcon: Icons.schedule_rounded,       label: 'Lembur & Tugas'),
   ];
 
   @override

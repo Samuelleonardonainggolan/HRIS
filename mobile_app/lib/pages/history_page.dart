@@ -10,6 +10,13 @@ import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:intl/date_symbol_data_local.dart';
 import 'dart:async';
+import 'package:mobile_app/models/assignment.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:flutter/services.dart';
+import 'package:mobile_app/widgets/app_sidebar.dart';
+import 'package:mobile_app/widgets/app_header.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -43,6 +50,7 @@ class _HistoryPageState extends State<HistoryPage> {
     'Izin',
     'Cuti',
     'Lembur',
+    'Penugasan',
   ];
 
   // Label chip → nilai AttendanceRecord.status
@@ -53,6 +61,7 @@ class _HistoryPageState extends State<HistoryPage> {
     'Izin': 'Izin',
     'Cuti': 'Cuti',
     'Lembur': 'Lembur',
+    'Penugasan': 'Penugasan',
   };
 
   @override
@@ -60,7 +69,7 @@ class _HistoryPageState extends State<HistoryPage> {
     super.initState();
     ApiService.currentUser.addListener(_syncProfile);
     _sseSubscription = SSEService().events.listen((event) {
-      if (mounted) _loadData();
+      if (mounted) _loadData(silent: true);
     });
     _init();
   }
@@ -92,11 +101,17 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   // ── Core: ambil attendance + pengajuan lalu merge ──────────────────────────
-  Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    } else {
+      setState(() {
+        _error = null;
+      });
+    }
     try {
       // Ambil tiga sumber data secara paralel
       final results = await Future.wait([
@@ -112,11 +127,16 @@ class _HistoryPageState extends State<HistoryPage> {
           month: _selectedMonth.month,
           year: _selectedMonth.year,
         ),
+        ApiService.getApprovedAssignmentsByMonth(
+          month: _selectedMonth.month,
+          year: _selectedMonth.year,
+        ),
       ]);
 
       final summary = results[0] as MonthlyAttendanceSummary;
       final pengajuan = results[1] as List<LeaveRequest>;
       final overtime = results[2] as List<OvertimeRequest>;
+      final assignments = results[3] as List<Assignment>;
 
       print('[History] attendance records: ${summary.records.length}');
       print('[History] approved pengajuan for this month: ${pengajuan.length}');
@@ -147,25 +167,22 @@ class _HistoryPageState extends State<HistoryPage> {
           if (cur.month == _selectedMonth.month &&
               cur.year == _selectedMonth.year) {
             final k = _key(cur);
-            if (!existingKeys.contains(k)) {
-              final rec = AttendanceRecord.fromLeave(
-                pengajuanId: p.id,
-                date: cur,
-                leaveType: p.type, // "Izin Sakit" / "Cuti Tahunan" dll.
-                leaveKategori: p.namaKategori, // "Izin" / "Cuti" / "Lembur"
-                leaveReason: p.reason,
-              );
-              merged.add(rec);
-              existingKeys.add(k);
-              print(
-                '[History]   + added leave record ${_fmtDate(cur)} '
-                'status=${rec.status}',
-              );
-            } else {
-              print(
-                '[History]   ~ skip ${_fmtDate(cur)} (absensi real sudah ada)',
-              );
-            }
+            // Hapus penanda "Absent/Unknown" jika ada pengajuan yang disetujui untuk hari ini
+            merged.removeWhere((r) =>
+                _key(r.date) == k &&
+                (r.status == 'Absent' || r.status == 'Unknown'));
+
+            final rec = AttendanceRecord.fromLeave(
+              pengajuanId: p.id,
+              date: cur,
+              leaveType: p.type,
+              leaveKategori: p.namaKategori,
+              leaveReason: p.reason,
+            );
+            merged.add(rec);
+            print('[History] + added leave record ${_fmtDate(cur)}');
+            cur = cur.add(const Duration(days: 1));
+          } else {
             cur = cur.add(const Duration(days: 1));
           }
         }
@@ -174,6 +191,11 @@ class _HistoryPageState extends State<HistoryPage> {
       // Merge Overtime Requests
       for (final o in overtime) {
         if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
+          final k = _key(o.date);
+          merged.removeWhere((r) =>
+              _key(r.date) == k &&
+              (r.status == 'Absent' || r.status == 'Unknown'));
+
           final myEntry = o.employees.cast<OvertimeEmployee?>().firstWhere(
             (e) => e?.userId == ApiService.currentUser.value?.id,
             orElse: () => null,
@@ -193,6 +215,31 @@ class _HistoryPageState extends State<HistoryPage> {
             overtimeHours: o.getDurationHours(),
             summary: null, // Removed approval summary as requested
             rewardInfo: rewardText,
+          );
+          merged.add(rec);
+        }
+      }
+
+      // Merge Assignments
+      for (final a in assignments) {
+        if (a.date.month == _selectedMonth.month && a.date.year == _selectedMonth.year) {
+          final k = _key(a.date);
+          merged.removeWhere((r) =>
+              _key(r.date) == k &&
+              (r.status == 'Absent' || r.status == 'Unknown'));
+
+          final myEntry = a.employees.firstWhere(
+            (e) => e.userId == ApiService.currentUser.value?.id,
+            orElse: () => a.employees.first, // Fallback (should not happen if filtered correctly)
+          );
+
+          final rec = AttendanceRecord.fromAssignment(
+            id: a.id,
+            date: a.date,
+            startTime: myEntry.assignedStartTime,
+            endTime: myEntry.assignedEndTime,
+            reason: a.reason,
+            rewardInfo: null, // Assignments use replacement day off which is separate
           );
           merged.add(rec);
         }
@@ -259,20 +306,18 @@ class _HistoryPageState extends State<HistoryPage> {
     }).toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    final List<dynamic> grouped = [];
-    DateTime? lastDate;
-
+    // Grouping by date for daily summary cards
+    final Map<String, List<AttendanceRecord>> dailyMap = {};
     for (final r in raw) {
-      final curDate = DateTime(r.date.year, r.date.month, r.date.day);
-      if (lastDate == null || !_isSameDay(lastDate, curDate)) {
-        grouped.add(curDate);
-        lastDate = curDate;
-      }
-      grouped.add(r);
+      final k = _key(r.date);
+      dailyMap.putIfAbsent(k, () => []).add(r);
     }
 
+    final List<MapEntry<String, List<AttendanceRecord>>> dailyGroups =
+        dailyMap.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
+
     setState(() {
-      _filtered = grouped;
+      _filtered = dailyGroups;
     });
   }
 
@@ -478,24 +523,14 @@ class _HistoryPageState extends State<HistoryPage> {
   int get _cntCuti => _all.where((r) => r.status == 'Cuti').length;
   int get _cntLembur =>
       _all.where((r) => r.status == 'Lembur' || r.status == 'Overtime').length;
+  int get _cntPenugasan => _all.where((r) => r.status == 'Penugasan').length;
 
   String _fmt(DateTime dt, String p) =>
       _localeReady ? DateFormat(p, 'id').format(dt) : '';
 
-  String _greeting() {
-    final h = DateTime.now().hour;
-    if (h < 12) return 'Selamat Pagi';
-    if (h < 15) return 'Selamat Siang';
-    if (h < 18) return 'Selamat Sore';
-    return 'Selamat Malam';
-  }
 
-  String _avatarUrl() {
-    final avatar = (_user?.avatar ?? '').trim();
-    if (avatar.isNotEmpty) return avatar;
-    final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
-    return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
-  }
+
+
 
   // ═════════════════════════════════════════════════════════════════════════
   // BUILD
@@ -506,179 +541,43 @@ class _HistoryPageState extends State<HistoryPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
+      endDrawer: const AppSidebar(),
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            const AppHeader(),
             _buildMonthBanner(),
             _buildFilterChips(),
             Expanded(child: _buildBody()),
           ],
         ),
       ),
+      floatingActionButton: _isLoading || _error != null
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _exportToPDF,
+              backgroundColor: const Color(0xFF135BEC),
+              elevation: 4,
+              icon: const Icon(
+                Icons.picture_as_pdf_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              label: const Text(
+                'Laporan PDF',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
     );
   }
 
-  // ── Header ────────────────────────────────────────────────────────────────
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Stack(
-            children: [
-              Hero(
-                tag: 'profile_history',
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF135BEC).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(2),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white,
-                      ),
-                      child: ClipOval(
-                        child: _profileImage != null
-                            ? Image.file(_profileImage!, fit: BoxFit.cover)
-                            : Image.network(
-                                _avatarUrl(),
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person,
-                                  color: Color(0xFF135BEC),
-                                  size: 26,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 1,
-                right: 1,
-                child: Container(
-                  height: 12,
-                  width: 12,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF2ECC71),
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _greeting(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  _user?.fullName ?? 'Profil Saya',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          ValueListenableBuilder<bool>(
-            valueListenable: SSEService().hasNewOvertime,
-            builder: (context, hasOvertime, _) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: SSEService().hasNewAssignment,
-                builder: (context, hasAssignment, _) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: SSEService().hasNewLeaveRequest,
-                    builder: (context, hasLeave, _) {
-                      final hasNew = hasOvertime || hasAssignment || hasLeave;
-                      return Stack(
-                        children: [
-                          Container(
-                            height: 44,
-                            width: 44,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.notifications_none,
-                                color: Color(0xFF475569),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                SSEService().hasNewOvertime.value = false;
-                                SSEService().hasNewAssignment.value = false;
-                                SSEService().hasNewLeaveRequest.value = false;
-                              },
-                              padding: EdgeInsets.zero,
-                            ),
-                          ),
-                          if (hasNew)
-                            Positioned(
-                              top: 9,
-                              right: 9,
-                              child: Container(
-                                height: 8,
-                                width: 8,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFEF4444),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
+
 
   // ── Month banner ──────────────────────────────────────────────────────────
   Widget _buildMonthBanner() {
@@ -797,17 +696,18 @@ class _HistoryPageState extends State<HistoryPage> {
           const SizedBox(height: 14),
           // 5 statistik — semuanya dari _all (sudah merged)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _stat('TEPAT WAKTU', '$_cntHadir', Colors.white),
+              Expanded(child: _stat('ONTIME', '$_cntHadir', Colors.white)),
               _vDiv(),
-              _stat('TERLAMBAT', '$_cntLate', const Color(0xFFFCD34D)),
+              Expanded(child: _stat('TELAT', '$_cntLate', const Color(0xFFFCD34D))),
               _vDiv(),
-              _stat('IZIN', '$_cntIzin', Colors.white),
+              Expanded(child: _stat('IZIN', '$_cntIzin', Colors.white)),
               _vDiv(),
-              _stat('CUTI', '$_cntCuti', const Color(0xFFD8B4FE)),
+              Expanded(child: _stat('CUTI', '$_cntCuti', const Color(0xFFD8B4FE))),
               _vDiv(),
-              _stat('LEMBUR', '$_cntLembur', const Color(0xFFFBBF24)),
+              Expanded(child: _stat('LEMBUR', '$_cntLembur', const Color(0xFFFBBF24))),
+              _vDiv(),
+              Expanded(child: _stat('TUGAS', '$_cntPenugasan', const Color(0xFF0EA5E9))),
             ],
           ),
         ],
@@ -1079,228 +979,65 @@ class _HistoryPageState extends State<HistoryPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
         itemCount: _filtered.length,
         itemBuilder: (_, i) {
-          final item = _filtered[i];
-          if (item is DateTime) {
-            return _buildDateHeader(item);
-          }
-          final r = item as AttendanceRecord;
-          return r.isLeaveRecord ? _buildLeaveCard(r) : _buildAttendanceCard(r);
+          final group = _filtered[i] as MapEntry<String, List<AttendanceRecord>>;
+          return _buildDailySummaryCard(group.value);
         },
       ),
     );
   }
 
-  // ── Header Tanggal (Daily Log Group) ──────────────────────────────────────
-  Widget _buildDateHeader(DateTime date) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 10, left: 4),
-      child: Row(
-        children: [
-          Icon(
-            Icons.calendar_today_rounded,
-            size: 16,
-            color: Colors.grey.shade600,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            _fmt(date, 'EEE, dd MMM yyyy'),
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey.shade700,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Card absensi real ─────────────────────────────────────────────────────
-  Widget _buildAttendanceCard(AttendanceRecord r) {
-    final sc = _statusColor(r.status);
-    final sl = _statusLabel(r.status);
-    final hasBreak =
-        (r.breakStart?.isNotEmpty ?? false) ||
-        (r.breakEnd?.isNotEmpty ?? false);
+  // ── Daily Summary Card (Unified) ──────────────────────────────────────────
+  Widget _buildDailySummaryCard(List<AttendanceRecord> records) {
+    if (records.isEmpty) return const SizedBox.shrink();
+    final date = records.first.date;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      r.shiftName.isNotEmpty ? r.shiftName : 'Shift Kerja',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sc.withOpacity(0.07),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: sc.withOpacity(0.16)),
-                  ),
-                  child: Text(
-                    sl,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: sc.withOpacity(0.85),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _timeChip(
-                    Icons.login_rounded,
-                    'JAM MASUK',
-                    r.clockIn.isEmpty ? '--:--' : '${r.clockIn} WIB',
-                    const Color(0xFF2ECC71),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _timeChip(
-                    Icons.logout_rounded,
-                    'JAM KELUAR',
-                    (r.clockOut.isEmpty || r.clockOut == '--:--')
-                        ? '-'
-                        : '${r.clockOut} WIB',
-                    const Color(0xFFEF4444),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (hasBreak) ...[
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _timeChip(
-                      Icons.coffee_rounded,
-                      'ISTIRAHAT MULAI',
-                      r.breakStart?.isNotEmpty == true
-                          ? '${r.breakStart} WIB'
-                          : '-',
-                      const Color(0xFFF59E0B),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _timeChip(
-                      Icons.free_breakfast_rounded,
-                      'ISTIRAHAT SELESAI',
-                      r.breakEnd?.isNotEmpty == true
-                          ? '${r.breakEnd} WIB'
-                          : '-',
-                      const Color(0xFF059669),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
+          // Day Header inside card
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            decoration: const BoxDecoration(
-              color: Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(18)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF135BEC).withOpacity(0.03),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 13,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      r.location.isNotEmpty ? r.location : 'Area Hotel',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  Icons.calendar_today_rounded,
+                  size: 14,
+                  color: const Color(0xFF135BEC).withOpacity(0.7),
                 ),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.timer_outlined,
-                      size: 13,
-                      color: Color(0xFF135BEC),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${r.workHours.toStringAsFixed(1)} jam',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF135BEC),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (r.faceSimilarity != null && r.faceSimilarity! > 0) ...[
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.face_retouching_natural,
-                        size: 13,
-                        color: Colors.grey.shade400,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'FACE VERIFIED',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.grey.shade500,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ],
+                const SizedBox(width: 8),
+                Text(
+                  _fmt(date, 'EEEE, dd MMMM yyyy'),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1E293B),
+                    letterSpacing: 0.1,
+                  ),
                 ),
               ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: records.map((r) => _buildActivityItem(r)).toList(),
             ),
           ),
         ],
@@ -1308,135 +1045,159 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  // ── Card izin/cuti/lembur (dari pengajuan APPROVED) ───────────────────────
-  Widget _buildLeaveCard(AttendanceRecord r) {
+  Widget _buildActivityItem(AttendanceRecord r) {
+    return r.isLeaveRecord ? _buildLeaveItem(r) : _buildAttendanceItem(r);
+  }
+
+  Widget _buildAttendanceItem(AttendanceRecord r) {
+    final sc = _statusColor(r.status);
+    final sl = _statusLabel(r.status);
+    final hasBreak = (r.breakStart?.isNotEmpty ?? false) || (r.breakEnd?.isNotEmpty ?? false);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _typeBadge(Icons.fingerprint_rounded, 'ABSENSI', sc),
+              const Spacer(),
+              _statusChip(sl, sc),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _timeSmall('Masuk', r.clockIn, const Color(0xFF2ECC71))),
+              Expanded(child: _timeSmall('Pulang', r.clockOut, const Color(0xFFEF4444))),
+            ],
+          ),
+          if (hasBreak) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(child: _timeSmall('Istirahat In', r.breakStart ?? '-', const Color(0xFFF59E0B))),
+                Expanded(child: _timeSmall('Istirahat Out', r.breakEnd ?? '-', const Color(0xFF059669))),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.location_on_outlined, size: 11, color: Colors.grey.shade400),
+              const SizedBox(width: 4),
+              Text(
+                r.location.isNotEmpty ? r.location : 'Area Hotel',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+              ),
+              const Spacer(),
+              Text(
+                '${r.workHours.toStringAsFixed(1)} jam kerja',
+                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF135BEC)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLeaveItem(AttendanceRecord r) {
     final sc = _statusColor(r.status);
     final sl = _statusLabel(r.status);
     final icon = _leaveIcon(r.leaveKategori ?? '');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade100),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            children: [
+              _typeBadge(icon, (r.leaveKategori ?? r.status).toUpperCase(), sc),
+              const Spacer(),
+              _statusChip(sl, sc),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            r.leaveType ?? r.status,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          ),
+          if (r.leaveReason != null && r.leaveReason!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              r.leaveReason!,
+              style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          if (r.status == 'Lembur' || r.status == 'Penugasan') ...[
+            const SizedBox(height: 8),
+            Row(
               children: [
-                // Ikon kategori
-                Container(
-                  height: 44,
-                  width: 44,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: sc, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 2),
-                      Text(
-                        r.leaveType ?? r.status,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      if (r.leaveType != 'Lembur' && r.leaveReason != null &&
-                          r.leaveReason!.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          r.leaveReason!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade500,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                      if (r.leaveType == 'Lembur') ...[
-                        const SizedBox(height: 8),
-                        // Row 1: Time and Total
-                        Row(
-                          children: [
-                            _buildMiniInfo(
-                              Icons.access_time_filled_rounded,
-                              '${r.clockIn} - ${r.clockOut}',
-                              const Color(0xFF135BEC),
-                            ),
-                            const SizedBox(width: 12),
-                            _buildMiniInfo(
-                              Icons.hourglass_bottom_rounded,
-                              '${r.overtimeHours.toStringAsFixed(1)} Jam',
-                              const Color(0xFF6366F1),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        // Row 2: Alasan
-                        if (r.leaveReason != null && r.leaveReason!.isNotEmpty)
-                          _buildMiniInfo(
-                            Icons.chat_bubble_rounded,
-                            r.leaveReason!,
-                            Colors.grey.shade600,
-                          ),
-                        // Row 3: Reward
-                        if (r.rewardInfo != null) ...[
-                          const SizedBox(height: 6),
-                          _buildMiniInfo(
-                            Icons.stars_rounded,
-                            r.rewardInfo!,
-                            const Color(0xFFD97706),
-                          ),
-                        ],
-                      ],
-                      
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sc.withOpacity(0.07),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: sc.withOpacity(0.16)),
-                  ),
-                  child: Text(
-                    sl,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: sc.withOpacity(0.85),
-                    ),
-                  ),
-                ),
+                _buildMiniInfo(Icons.access_time_rounded, '${r.clockIn} - ${r.clockOut}', const Color(0xFF1E293B)),
+                if (r.overtimeHours > 0) ...[
+                  const SizedBox(width: 12),
+                  _buildMiniInfo(Icons.timer_outlined, '${r.overtimeHours.toStringAsFixed(1)} jam', const Color(0xFF1E293B)),
+                ],
               ],
             ),
-          ),
+            if (r.rewardInfo != null) ...[
+              const SizedBox(height: 6),
+              _buildMiniInfo(Icons.stars_rounded, r.rewardInfo!, const Color(0xFFD97706)),
+            ],
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _typeBadge(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: color, letterSpacing: 0.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.1))),
+      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
+    );
+  }
+
+  Widget _timeSmall(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label.toUpperCase(), style: TextStyle(fontSize: 8, color: Colors.grey.shade400, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 2),
+        Text(value.isEmpty || value == '--:--' ? '-' : value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+      ],
     );
   }
 
@@ -1497,6 +1258,8 @@ class _HistoryPageState extends State<HistoryPage> {
         return const Color(0xFF6366F1);
       case 'Lembur':
         return const Color(0xFFD97706);
+      case 'Penugasan':
+        return const Color(0xFF0EA5E9);
       default:
         return Colors.grey;
     }
@@ -1518,6 +1281,8 @@ class _HistoryPageState extends State<HistoryPage> {
         return 'CUTI';
       case 'Lembur':
         return 'LEMBUR';
+      case 'Penugasan':
+        return 'PENUGASAN';
       default:
         return s.toUpperCase();
     }
@@ -1525,10 +1290,10 @@ class _HistoryPageState extends State<HistoryPage> {
 
   IconData _leaveIcon(String k) {
     switch (k.trim().toLowerCase()) {
-      case 'cuti':
-        return Icons.beach_access_rounded;
       case 'lembur':
         return Icons.timelapse_rounded;
+      case 'penugasan':
+        return Icons.assignment_turned_in_rounded;
       default:
         return Icons.assignment_late_rounded;
     }
@@ -1552,6 +1317,209 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         ),
       ],
+    );
+  }
+
+  // ── PDF Export ────────────────────────────────────────────────────────────
+  Future<void> _exportToPDF() async {
+    try {
+      final pdf = pw.Document();
+      final monthName = _fmt(_selectedMonth, 'MMMM yyyy');
+      final userName = _user?.fullName ?? 'Karyawan';
+      final payroll = _user?.nik ?? '-';
+
+      // Group activities by date
+      final Map<String, List<AttendanceRecord>> grouped = {};
+      for (final r in _all) {
+        final key = DateFormat('yyyy-MM-dd').format(r.date);
+        grouped.putIfAbsent(key, () => []).add(r);
+      }
+      final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          header: (context) => pw.Column(
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        'LAPORAN AKTIVITAS KARYAWAN',
+                        style: pw.TextStyle(
+                          fontSize: 16,
+                          fontWeight: pw.FontWeight.bold,
+                          color: PdfColors.blue900,
+                        ),
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Text('Periode: $monthName', style: const pw.TextStyle(fontSize: 10)),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text(userName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
+                      pw.Text('NIK: $payroll', style: const pw.TextStyle(fontSize: 9)),
+                    ],
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Divider(thickness: 0.5, color: PdfColors.grey300),
+              pw.SizedBox(height: 10),
+            ],
+          ),
+          footer: (context) => pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text(
+              'Halaman ${context.pageNumber} dari ${context.pagesCount}',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
+            ),
+          ),
+          build: (context) => [
+            for (final dateStr in sortedKeys) ...[
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: const pw.BoxDecoration(
+                  color: PdfColors.grey200,
+                  borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text(
+                  DateFormat('EEEE, dd MMMM yyyy', 'id').format(DateTime.parse(dateStr)),
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.blue900),
+                ),
+              ),
+              pw.SizedBox(height: 4),
+              pw.Table(
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(2),
+                  1: const pw.FlexColumnWidth(2),
+                  2: const pw.FlexColumnWidth(2),
+                  3: const pw.FlexColumnWidth(1),
+                  4: const pw.FlexColumnWidth(3),
+                },
+                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                children: [
+                  pw.TableRow(
+                    decoration: const pw.BoxDecoration(color: PdfColors.blue50),
+                    children: [
+                      _pdfCell('Jenis Aktivitas', isHeader: true),
+                      _pdfCell('Masuk', isHeader: true),
+                      _pdfCell('Pulang', isHeader: true),
+                      _pdfCell('Jam', isHeader: true),
+                      _pdfCell('Keterangan', isHeader: true),
+                    ],
+                  ),
+                  for (final r in grouped[dateStr]!)
+                    pw.TableRow(
+                      children: [
+                        _pdfCell(r.status),
+                        _pdfCell(r.clockIn.isEmpty ? '-' : r.clockIn),
+                        _pdfCell(r.clockOut.isEmpty || r.clockOut == '--:--' ? '-' : r.clockOut),
+                        _pdfCell('${(r.status == 'Lembur' ? r.overtimeHours : r.workHours).toStringAsFixed(1)} h'),
+                        _pdfCell(r.leaveReason ?? r.rewardInfo ?? r.location ?? '-'),
+                      ],
+                    ),
+                ],
+              ),
+              pw.SizedBox(height: 12),
+            ],
+            
+            pw.SizedBox(height: 20),
+            pw.Divider(thickness: 1, color: PdfColors.blue900),
+            pw.SizedBox(height: 10),
+            pw.Text('RINGKASAN BULANAN', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.blue900)),
+            pw.SizedBox(height: 8),
+            pw.Table(
+              columnWidths: const {
+                0: pw.FractionColumnWidth(1 / 6),
+                1: pw.FractionColumnWidth(1 / 6),
+                2: pw.FractionColumnWidth(1 / 6),
+                3: pw.FractionColumnWidth(1 / 6),
+                4: pw.FractionColumnWidth(1 / 6),
+                5: pw.FractionColumnWidth(1 / 6),
+              },
+              border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.blue900),
+                  children: [
+                    _pdfCell('Ontime', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Telat', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Izin', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Cuti', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Lembur', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Tugas', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                  ],
+                ),
+                pw.TableRow(
+                  children: [
+                    _pdfCell('$_cntHadir', align: pw.Alignment.center),
+                    _pdfCell('$_cntLate', align: pw.Alignment.center),
+                    _pdfCell('$_cntIzin', align: pw.Alignment.center),
+                    _pdfCell('$_cntCuti', align: pw.Alignment.center),
+                    _pdfCell('$_cntLembur', align: pw.Alignment.center),
+                    _pdfCell('$_cntPenugasan', align: pw.Alignment.center),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Dicetak: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
+                    pw.Text('Dokumen ini dihasilkan secara otomatis oleh Sistem HRIS.', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
+                  ],
+                ),
+                pw.Column(
+                  children: [
+                    pw.SizedBox(height: 40),
+                    pw.Container(
+                      width: 130,
+                      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 0.5))),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(userName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                    pw.Text('NIK: $payroll', style: const pw.TextStyle(fontSize: 7)),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: 'Laporan_${userName}_${monthName.replaceAll(' ', '_')}.pdf',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
+    }
+  }
+
+  pw.Widget _pdfCell(String text, {bool isHeader = false, PdfColor? color, pw.Alignment align = pw.Alignment.centerLeft}) {
+    return pw.Container(
+      alignment: align,
+      padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(
+          fontSize: 8,
+          fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
+          color: color ?? PdfColors.black,
+        ),
+      ),
     );
   }
 }
