@@ -146,7 +146,7 @@ func main() {
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // -… Dari kode kedua
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
-	payrollService := service.NewPayrollService(payrollRepo)
+
 	notificationService := service.NewNotificationService(notificationRepo)
 
 	log.Println("Services initialized")
@@ -177,7 +177,7 @@ func main() {
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
 	reportHandler := handler.NewReportHandler(reportService)
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret) // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
-	payrollHandler := handler.NewPayrollHandler(payrollService, payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
+	payrollHandler := handler.NewPayrollHandler(payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
 	notificationHandler := handler.NewNotificationHandler(notificationService) // Real-time SSE                           // -… Real-time SSE
 
 	// ==================== Inject WSHub ke services ====================
@@ -192,6 +192,7 @@ func main() {
 	// Inject NotificationService ke services pengajuan agar bisa kirim notifikasi database
 	pengajuanService.SetNotificationService(notificationService)
 	pengajuanIzinCutiService.SetNotificationService(notificationService)
+	assignmentService.SetNotificationService(notificationService)
 
 	log.Println("Handlers initialized")
 

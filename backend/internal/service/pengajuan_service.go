@@ -324,6 +324,7 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		if !kepalaDepartemenID.IsZero() {
 			_, errNotif := s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
 				UserID:      kepalaDepartemenID.Hex(),
+				SenderID:    requester.ID.Hex(),
 				Title:       "Pengajuan Cuti / Izin Baru",
 				Message:     message,
 				Type:        "leave_request",
@@ -340,6 +341,7 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 		if !managerHRID.IsZero() && managerHRID != kepalaDepartemenID {
 			_, errNotif := s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
 				UserID:      managerHRID.Hex(),
+				SenderID:    requester.ID.Hex(),
 				Title:       "Pengajuan Cuti / Izin Baru",
 				Message:     message,
 				Type:        "leave_request",

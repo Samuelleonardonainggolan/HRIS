@@ -258,6 +258,7 @@ func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context,
 		
 		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
 			UserID:      updated.UserID.Hex(),
+			SenderID:    kepalaDepartemenUserID,
 			Title:       "Update Status Pengajuan",
 			Message:     message,
 			Type:        "leave_request",
@@ -329,6 +330,7 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 		
 		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
 			UserID:      updated.UserID.Hex(),
+			SenderID:    managerHRUserID,
 			Title:       "Update Status Pengajuan",
 			Message:     message,
 			Type:        "leave_request",

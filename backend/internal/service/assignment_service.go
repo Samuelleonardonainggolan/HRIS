@@ -30,14 +30,16 @@ type AssignmentService interface {
 	UseReplacementDayOff(ctx context.Context, assignmentID string, userID string, replacementDate time.Time) (*models.AssignmentResponse, error)
 	GrantDayOffReward(ctx context.Context, assignmentID string, userID string) (*models.AssignmentResponse, error)
 	SetWSHub(hub *WSHub)
+	SetNotificationService(service NotificationService)
 }
 
 type assignmentService struct {
-	assignmentRepo repository.AssignmentRepository
-	userRepo       repository.UserRepository
-	jamKerjaRepo   repository.JamKerjaRepository
-	departmentRepo repository.DepartmentRepository
-	wsHub          *WSHub
+	assignmentRepo      repository.AssignmentRepository
+	userRepo            repository.UserRepository
+	jamKerjaRepo        repository.JamKerjaRepository
+	departmentRepo      repository.DepartmentRepository
+	wsHub               *WSHub
+	notificationService NotificationService
 }
 
 func NewAssignmentService(
@@ -56,6 +58,10 @@ func NewAssignmentService(
 
 func (s *assignmentService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *assignmentService) SetNotificationService(service NotificationService) {
+	s.notificationService = service
 }
 
 func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID string, date time.Time) (models.AssignmentOriginalShift, error) {
@@ -353,6 +359,21 @@ func (s *assignmentService) Submit(ctx context.Context, id string, requestedByID
 		})
 	}
 
+	// Kirim Notifikasi ke Karyawan yang ditugaskan
+	if s.notificationService != nil {
+		for _, emp := range assignment.Employees {
+			msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+			_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+				UserID:      emp.UserID.Hex(),
+				SenderID:    requestedByID,
+				Title:       "Penugasan Baru",
+				Message:     msg,
+				Type:        "assignment",
+				ReferenceID: assignment.ID.Hex(),
+			})
+		}
+	}
+
 	return s.GetByID(ctx, id)
 }
 
@@ -411,6 +432,33 @@ func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string,
 			"user_id": userID,
 			"status":  req.Status,
 			"type":    "response",
+		})
+	}
+
+	// Kirim Notifikasi ke Manager yang memberikan tugas
+	if s.notificationService != nil {
+		empUser, _ := s.userRepo.FindByID(ctx, userID)
+		empName := "Seorang Karyawan"
+		if empUser != nil {
+			empName = empUser.FullName
+		}
+		
+		statusText := "MENYETUJUI"
+		if req.Status == models.AssignmentEmployeeStatusRejected {
+			statusText = "MENOLAK"
+		}
+		msg := fmt.Sprintf("%s %s penugasan pada tanggal %s.", empName, statusText, assignment.Date.Format("2006-01-02"))
+		if req.RejectionNote != "" {
+			msg += fmt.Sprintf(" Alasan: %s", req.RejectionNote)
+		}
+
+		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+			UserID:      assignment.RequestedByID.Hex(),
+			SenderID:    userID,
+			Title:       "Respon Penugasan",
+			Message:     msg,
+			Type:        "assignment",
+			ReferenceID: assignment.ID.Hex(),
 		})
 	}
 

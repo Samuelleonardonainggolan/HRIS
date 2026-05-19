@@ -289,9 +289,6 @@ func SetupRoutes(
 				deptLeaveRequests.POST("/:id/reject", pengajuanIzinCutiHandler.RejectByKepalaDepartemen)
 			}
 
-			// PAYROLL
-			protected.GET("/my-payroll", payrollHandler.GetMyPayroll)
-
 			// REPORTS
 			reports := protected.Group("/reports")
 			reports.Use(middleware.ManagerHROnly())

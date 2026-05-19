@@ -11,6 +11,7 @@ import (
 type Notification struct {
 	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	UserID      primitive.ObjectID `json:"user_id" bson:"user_id"`
+	SenderID    primitive.ObjectID `json:"sender_id,omitempty" bson:"sender_id,omitempty"`
 	Title       string             `json:"title" bson:"title"`
 	Message     string             `json:"message" bson:"message"`
 	Type        string             `json:"type" bson:"type"` // e.g. "leave_request", "overtime", "assignment", "system"
@@ -23,6 +24,7 @@ type Notification struct {
 // CreateNotificationRequest represents request to create notification
 type CreateNotificationRequest struct {
 	UserID      string `json:"user_id" binding:"required"`
+	SenderID    string `json:"sender_id,omitempty"`
 	Title       string `json:"title" binding:"required"`
 	Message     string `json:"message" binding:"required"`
 	Type        string `json:"type" binding:"required"`
@@ -38,6 +40,7 @@ type UpdateNotificationRequest struct {
 type NotificationResponse struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"user_id"`
+	SenderID    string    `json:"sender_id,omitempty"`
 	Title       string    `json:"title"`
 	Message     string    `json:"message"`
 	Type        string    `json:"type"`
@@ -58,6 +61,10 @@ func (n *Notification) ToResponse() NotificationResponse {
 		IsRead:    n.IsRead,
 		CreatedAt: n.CreatedAt,
 		UpdatedAt: n.UpdatedAt,
+	}
+
+	if !n.SenderID.IsZero() {
+		response.SenderID = n.SenderID.Hex()
 	}
 
 	if !n.ReferenceID.IsZero() {

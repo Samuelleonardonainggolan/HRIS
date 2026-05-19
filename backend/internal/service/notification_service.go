@@ -47,6 +47,13 @@ func (s *notificationService) CreateNotification(ctx context.Context, req models
 		Type:    req.Type,
 	}
 
+	if req.SenderID != "" {
+		senderID, err := primitive.ObjectIDFromHex(req.SenderID)
+		if err == nil {
+			n.SenderID = senderID
+		}
+	}
+
 	if req.ReferenceID != "" {
 		refID, err := primitive.ObjectIDFromHex(req.ReferenceID)
 		if err == nil {
@@ -65,6 +72,7 @@ func (s *notificationService) CreateNotification(ctx context.Context, req models
 	if s.wsHub != nil {
 		s.wsHub.BroadcastToUser(req.UserID, WSEventNotificationCreated, map[string]any{
 			"id":           resp.ID,
+			"sender_id":    resp.SenderID,
 			"title":        resp.Title,
 			"message":      resp.Message,
 			"type":         resp.Type,
