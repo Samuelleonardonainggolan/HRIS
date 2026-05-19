@@ -7,6 +7,8 @@ import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/services/sse_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:mobile_app/widgets/app_sidebar.dart';
+import 'package:mobile_app/widgets/app_header.dart';
 
 class OvertimePage extends StatefulWidget {
   const OvertimePage({super.key});
@@ -245,144 +247,7 @@ class _OvertimePageState extends State<OvertimePage> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            height: 48,
-            width: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF135BEC).withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: Container(
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
-                ),
-                child: ClipOval(
-                  child: Image.network(
-                    _avatarUrl(),
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => const Icon(
-                      Icons.person,
-                      color: Color(0xFF135BEC),
-                      size: 26,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _greeting(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  _user?.fullName ?? 'Profil Saya',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
 
-          ValueListenableBuilder<bool>(
-            valueListenable: SSEService().hasNewOvertime,
-            builder: (context, hasOvertime, _) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: SSEService().hasNewAssignment,
-                builder: (context, hasAssignment, _) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: SSEService().hasNewLeaveRequest,
-                    builder: (context, hasLeave, _) {
-                      final hasNew = hasOvertime || hasAssignment || hasLeave;
-                      return Stack(
-                        children: [
-                          Container(
-                            height: 44,
-                            width: 44,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.notifications_none,
-                                color: Color(0xFF475569),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                // Clear all badges when clicking the bell too
-                                SSEService().hasNewOvertime.value = false;
-                                SSEService().hasNewAssignment.value = false;
-                                SSEService().hasNewLeaveRequest.value = false;
-                              },
-                              padding: EdgeInsets.zero,
-                            ),
-                          ),
-                          if (hasNew)
-                            Positioned(
-                              top: 9,
-                              right: 9,
-                              child: Container(
-                                height: 8,
-                                width: 8,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFEF4444),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -401,11 +266,12 @@ class _OvertimePageState extends State<OvertimePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      endDrawer: const AppSidebar(),
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            const AppHeader(),
             _buildFilterBar(),
             Expanded(
               child: _isLoading
@@ -440,28 +306,16 @@ class _OvertimePageState extends State<OvertimePage> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
-          const Text(
-            'Filter:',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF475569),
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  _filterChip('Semua', 'semua'),
-                  const SizedBox(width: 8),
-                  _filterChip('Lembur', 'lembur'),
-                  const SizedBox(width: 8),
-                  _filterChip('Penugasan', 'penugasan'),
-                ],
-              ),
-            ),
+            child: _filterChip('Semua', 'semua'),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _filterChip('Lembur', 'lembur'),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _filterChip('Penugasan', 'penugasan'),
           ),
         ],
       ),
@@ -481,7 +335,7 @@ class _OvertimePageState extends State<OvertimePage> {
         }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFF135BEC) : Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -490,7 +344,7 @@ class _OvertimePageState extends State<OvertimePage> {
           ),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               label,
@@ -499,6 +353,8 @@ class _OvertimePageState extends State<OvertimePage> {
                 fontWeight: FontWeight.w600,
                 color: isSelected ? Colors.white : const Color(0xFF475569),
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
             // Show dot if new data
             if (value == 'lembur' || value == 'penugasan')
@@ -624,6 +480,7 @@ class _OvertimePageState extends State<OvertimePage> {
             onTap: () => _showDetailAssignment(item),
             onAgree: () => _agree(item),
             onReject: () => _reject(item),
+            onUseDayOff: () => _useDayOff(item),
           );
         }
         return const SizedBox.shrink();
@@ -1455,6 +1312,7 @@ class _AssignmentCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onAgree;
   final VoidCallback onReject;
+  final VoidCallback onUseDayOff;
 
   const _AssignmentCard({
     required this.item,
@@ -1462,6 +1320,7 @@ class _AssignmentCard extends StatelessWidget {
     required this.onTap,
     required this.onAgree,
     required this.onReject,
+    required this.onUseDayOff,
   });
 
   @override
@@ -1469,6 +1328,11 @@ class _AssignmentCard extends StatelessWidget {
     final statusColor = _getStatusColor(item.status);
     final dateText = DateFormat('dd MMM yyyy', 'id').format(item.date);
     final participantSummary = _buildParticipantSummary();
+    
+    final myEntryList = item.employees.where(
+      (e) => e.userId.trim().toLowerCase() == user.id.trim().toLowerCase(),
+    );
+    final myEntry = myEntryList.isNotEmpty ? myEntryList.first : null;
 
     return GestureDetector(
       onTap: onTap,
@@ -1613,6 +1477,24 @@ class _AssignmentCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (myEntry != null && myEntry.dayOffEligible && myEntry.dayOffStatus != 'used') ...[
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: onUseDayOff,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Klaim Libur',
+                        style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -1957,18 +1839,16 @@ class _AssignmentDetailSheet extends StatelessWidget {
 
   Widget _buildRewardSection(BuildContext context) {
     final myEntry = _findMyEntry();
-    if (myEntry == null || !myEntry.dayOffEligible) return const SizedBox.shrink();
+    if (myEntry == null) return const SizedBox.shrink(); // Always show if participant
 
     final status = myEntry.dayOffStatus.toLowerCase();
     Color statusColor;
     String statusText;
-    bool canUse = false;
 
     switch (status) {
       case 'granted':
         statusColor = const Color(0xFF10B981);
         statusText = 'Tersedia';
-        canUse = true;
         break;
       case 'used':
         statusColor = const Color(0xFF135BEC);
@@ -1982,6 +1862,8 @@ class _AssignmentDetailSheet extends StatelessWidget {
         statusColor = const Color(0xFF64748B);
         statusText = 'Belum Diproses';
     }
+
+    final isUsed = status == 'used';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2044,7 +1926,7 @@ class _AssignmentDetailSheet extends StatelessWidget {
                   ),
                 ],
               ),
-              if (status == 'used' && myEntry.replacementOffDate != null) ...[
+              if (isUsed && myEntry.replacementOffDate != null) ...[
                 const SizedBox(height: 12),
                 const Divider(),
                 const SizedBox(height: 8),
@@ -2066,23 +1948,25 @@ class _AssignmentDetailSheet extends StatelessWidget {
                   ],
                 ),
               ],
-              if (canUse) ...[
+              if (!isUsed) ...[
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: onUseDayOff,
+                    onPressed: myEntry.employeeStatus == 'agreed' ? onUseDayOff : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: statusColor,
+                      backgroundColor: myEntry.employeeStatus == 'agreed' 
+                          ? (status == 'granted' ? statusColor : const Color(0xFF8B5CF6))
+                          : Colors.grey.shade400,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    child: const Text(
-                      'Pilih Hari Libur Pengganti',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    child: Text(
+                      myEntry.employeeStatus == 'agreed' ? 'Pilih Hari Libur Pengganti' : 'Setujui Penugasan Terlebih Dahulu',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),
                 ),

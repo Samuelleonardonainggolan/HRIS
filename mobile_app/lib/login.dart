@@ -695,7 +695,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
         return Transform.scale(
           scale: 0.8 + (0.2 * value),
           child: Opacity(
-            opacity: value,
+            opacity: value.clamp(0.0, 1.0),
             child: SizedBox(
               width: double.infinity,
               height: 56,

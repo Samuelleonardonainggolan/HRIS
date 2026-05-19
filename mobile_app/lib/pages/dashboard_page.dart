@@ -9,7 +9,10 @@ import 'package:mobile_app/widgets/overtime_reward_picker.dart';
 import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/models/overtime_request.dart';
+import 'package:mobile_app/models/assignment.dart';
 import 'package:mobile_app/services/sse_service.dart';
+import 'package:mobile_app/widgets/app_sidebar.dart';
+import 'package:mobile_app/widgets/app_header.dart';
 
 class EmployeeDashboardPage extends StatefulWidget {
   const EmployeeDashboardPage({super.key});
@@ -86,6 +89,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _loadTodayAttendance();
     _loadMonthlyStats();
     _loadUser();
+    _checkReplacementDayOff();
 
     _statsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (mounted) {
@@ -108,6 +112,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         _loadTodayAttendance(silent: true);
         _loadWorkScheduleInfo(silent: true);
         _loadMonthlyStats(silent: true);
+        _checkReplacementDayOff();
       }
     });
   }
@@ -149,6 +154,42 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     } catch (e) {
       print('[Dashboard] Load work schedule error: $e');
       if (mounted) setState(() => _isLoadingSchedule = false);
+    }
+  }
+
+  bool _isTodayReplacementDayOff = false;
+
+  Future<void> _checkReplacementDayOff() async {
+    try {
+      final assignments = await ApiService.getAssignedAssignments();
+      final userId = ApiService.currentUser.value?.id;
+      final now = DateTime.now();
+      
+      final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+      bool isDayOff = false;
+      for (final a in assignments) {
+        final myEntryList = a.employees.where((e) => e.userId == userId).toList();
+        if (myEntryList.isNotEmpty) {
+          final myEntry = myEntryList.first;
+          if (myEntry.dayOffEligible && myEntry.dayOffStatus == 'used' && myEntry.replacementOffDate != null) {
+            final offDate = myEntry.replacementOffDate!;
+            final offDateStr = "${offDate.year}-${offDate.month.toString().padLeft(2, '0')}-${offDate.day.toString().padLeft(2, '0')}";
+            if (offDateStr == todayStr) {
+              isDayOff = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _isTodayReplacementDayOff = isDayOff;
+        });
+      }
+    } catch (e) {
+      print('[Dashboard] Error checking replacement day off: $e');
     }
   }
 
@@ -416,12 +457,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     }
   }
 
-  String _avatarUrl() {
-    final avatar = (_user?.avatar ?? '').trim();
-    if (avatar.isNotEmpty) return avatar;
-    final n = Uri.encodeComponent(_user?.fullName ?? 'Employee');
-    return 'https://ui-avatars.com/api/?name=$n&background=135BEC&color=fff&size=100';
-  }
+
 
   @override
   void dispose() {
@@ -441,6 +477,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       canPop: false,
       child: Scaffold(
         key: _scaffoldKey,
+        endDrawer: const AppSidebar(),
         backgroundColor: const Color(0xFFF8FAFC),
         body: SafeArea(
           child: LayoutBuilder(
@@ -457,7 +494,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                     opacity: _fadeAnimation,
                     child: Column(
                       children: [
-                        _buildHeader(),
+                        const AppHeader(),
                         Expanded(
                           child: RefreshIndicator(
                             onRefresh: () async {
@@ -515,13 +552,15 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         (backendCanClockIn || inferredCanClockIn) &&
         !isClockedIn &&
         !hasClockedOut &&
-        !_isLoadingAttendance;
+        !_isLoadingAttendance &&
+        !_isTodayReplacementDayOff;
 
     bool canClockOut =
         (backendCanClockOut || inferredCanClockOut) &&
         isClockedIn &&
         !hasClockedOut &&
-        !_isLoadingAttendance;
+        !_isLoadingAttendance &&
+        !_isTodayReplacementDayOff;
 
     String clockInButtonLabel = canClockIn
         ? "CLOCK IN"
@@ -601,6 +640,8 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                               ? "SELESAI HARI INI"
                               : isClockedIn
                               ? "SEDANG BEKERJA"
+                              : _isTodayReplacementDayOff
+                              ? "LIBUR (REWARD)"
                               : "BELUM ABSEN",
                           style: const TextStyle(
                             color: Colors.white,
@@ -670,74 +711,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                   ),
                 ],
               ),
-              if (isClockedIn || hasClockedOut) ...[
-                const SizedBox(height: 8),
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 8,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.login,
-                            color: Colors.white,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            "Masuk: $clockInTime WIB",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (hasClockedOut && clockOutTime != "--:--")
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.logout,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              "Pulang: $clockOutTime WIB",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -1068,87 +1041,127 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       );
     }
 
-    return Row(
-      children: [
-        // ── Card 1: Hari Kerja & Sisa Cuti ──
-        Expanded(
-          flex: 2,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: borderColor, width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 15,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _buildStatItem(
-                      icon: Icons.today_rounded,
-                      value: '$_workDays',
-                      label: 'Hari Kerja',
-                      color: const Color(0xFF135BEC),
-                      bgColor: const Color(0xFFEFF6FF),
-                    ),
-                  ),
-                  Container(
-                    width: 1,
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    color: Colors.grey.shade100,
-                  ),
-                  Expanded(
-                    child: _buildStatItem(
-                      icon: Icons.beach_access_rounded,
-                      value: '$_leaveRemaining',
-                      label: 'Sisa Cuti',
-                      color: const Color(0xFFF59E0B),
-                      bgColor: const Color(0xFFFFFBEB),
-                    ),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ── Card 1: Hari Kerja & Sisa Cuti ──
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: borderColor, width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
                   ),
                 ],
               ),
+              child: IntrinsicHeight(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatItem(
+                        icon: Icons.today_rounded,
+                        value: '$_workDays',
+                        label: 'Hari Kerja',
+                        color: const Color(0xFF135BEC),
+                        bgColor: const Color(0xFFEFF6FF),
+                      ),
+                    ),
+                    Container(
+                      width: 1,
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      color: Colors.grey.shade100,
+                    ),
+                    Expanded(
+                      child: _buildStatItem(
+                        icon: Icons.beach_access_rounded,
+                        value: '$_leaveRemaining',
+                        label: 'Sisa Cuti',
+                        color: const Color(0xFFF59E0B),
+                        bgColor: const Color(0xFFFFFBEB),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        // ── Card 2: Total Lembur (Interactive, same shape) ──
-        Expanded(
-          flex: 1,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: SSEService().hasNewOvertime,
-            builder: (context, hasNewOT, _) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: SSEService().hasNewAssignment,
-                builder: (context, hasNewAssign, _) {
-                  final hasNotif = hasNewOT || hasNewAssign;
-                  return _buildStatItem(
-                    icon: Icons.timelapse_rounded,
-                    value: '${_overtimeHours.toStringAsFixed(1)}j',
-                    label: 'Lembur',
-                    color: const Color(0xFF7C3AED),
-                    bgColor: const Color(0xFFF5F3FF),
-                    onTap: _showOvertimeRewardPicker,
-                    showNotif: hasNotif,
-                    // Pass specific border color for interactive card
-                    customBorder: Border.all(
-                      color: const Color(0xFF7C3AED).withOpacity(0.3),
-                      width: 1.5,
-                    ),
-                  );
-                },
-              );
-            },
+          const SizedBox(width: 12),
+          // ── Card 2: Total Lembur (Interactive, same shape, button underneath) ──
+          Expanded(
+            flex: 1,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: SSEService().hasNewOvertime,
+              builder: (context, hasNewOT, _) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: SSEService().hasNewAssignment,
+                  builder: (context, hasNewAssign, _) {
+                    final hasNotif = hasNewOT || hasNewAssign;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(
+                          child: _buildStatItem(
+                            icon: Icons.timelapse_rounded,
+                            value: '${_overtimeHours.toStringAsFixed(1)}j',
+                            label: 'Lembur',
+                            color: const Color(0xFF7C3AED),
+                            bgColor: const Color(0xFFF5F3FF),
+                            onTap: _showOvertimeRewardPicker,
+                            showNotif: hasNotif,
+                            customBorder: Border.all(
+                              color: const Color(0xFF7C3AED).withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // Sleek KLAIM button underneath the card
+                        Material(
+                          color: const Color(0xFFF5F3FF),
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            onTap: _showOvertimeRewardPicker,
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFF7C3AED).withOpacity(0.3),
+                                  width: 1.5,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text(
+                                "KLAIM",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF7C3AED),
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -1205,7 +1218,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         onTap: onTap,
         borderRadius: BorderRadius.circular(24),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1214,13 +1227,13 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 clipBehavior: Clip.none,
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 30,
+                    height: 30,
                     decoration: BoxDecoration(
                       color: bgColor,
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icon, color: color, size: 18),
+                    child: Icon(icon, color: color, size: 15),
                   ),
                   // Notif dot merah untuk lembur
                   if (showNotif)
@@ -1259,7 +1272,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 3),
               // ── Nilai ──
               Text(
                 value,
@@ -1284,24 +1297,6 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                 ),
                 textAlign: TextAlign.center,
               ),
-              if (isInteractive) ...[
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    "KLAIM",
-                    style: TextStyle(
-                      fontSize: 7,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -1739,149 +1734,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Hero(
-            tag: 'profile',
-            child: Container(
-              height: 48,
-              width: 48,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF135BEC).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white,
-                  ),
-                  child: ClipOval(
-                    child: _profileImage != null
-                        ? Image.file(_profileImage!, fit: BoxFit.cover)
-                        : Image.network(
-                            _avatarUrl(),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.person,
-                              color: Color(0xFF135BEC),
-                              size: 26,
-                            ),
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _greeting(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade500,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  _user?.fullName ?? 'Profil Saya',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF0F172A),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
 
-          ValueListenableBuilder<bool>(
-            valueListenable: SSEService().hasNewOvertime,
-            builder: (context, hasOvertime, _) {
-              return ValueListenableBuilder<bool>(
-                valueListenable: SSEService().hasNewAssignment,
-                builder: (context, hasAssignment, _) {
-                  return ValueListenableBuilder<bool>(
-                    valueListenable: SSEService().hasNewLeaveRequest,
-                    builder: (context, hasLeave, _) {
-                      final hasNew = hasOvertime || hasAssignment || hasLeave;
-                      return Stack(
-                        children: [
-                          Container(
-                            height: 44,
-                            width: 44,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF1F5F9),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.notifications_none,
-                                color: Color(0xFF475569),
-                                size: 22,
-                              ),
-                              onPressed: () {
-                                // Reset all flags when clicking the bell
-                                SSEService().hasNewOvertime.value = false;
-                                SSEService().hasNewAssignment.value = false;
-                                SSEService().hasNewLeaveRequest.value = false;
-                              },
-                              padding: EdgeInsets.zero,
-                            ),
-                          ),
-                          if (hasNew)
-                            Positioned(
-                              top: 9,
-                              right: 9,
-                              child: Container(
-                                height: 8,
-                                width: 8,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Color(0xFFEF4444),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
 
   void _showSuccessSnackBar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1931,13 +1784,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     );
   }
 
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return "Selamat Pagi";
-    if (hour < 15) return "Selamat Siang";
-    if (hour < 18) return "Selamat Sore";
-    return "Selamat Malam";
-  }
+
 
   bool _isWithinClockInWindow(TodayScheduleInfo? schedule) {
     if (schedule == null || !schedule.isWorkDay) return false;

@@ -36,7 +36,6 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
       if (mounted) {
         setState(() {
           _overtimeRequests = allOvertime.where((o) {
-            // Count if submitted (sent by Kadep) or published (approved by HR)
             if (o.status != 'submitted' && o.status != 'published') return false;
             return o.employees.any((e) => e.userId == userId && e.isAgreed);
           }).toList();
@@ -387,7 +386,6 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
         helpText: 'Pilih Tanggal Reward',
       );
       if (picked != null) {
-        // Per user request: only early_out is allowed for overtime reward
         final dateStr = DateFormat('yyyy-MM-dd').format(picked);
         _showFinalConfirmation(request, type, dateStr, 'early_out');
       }
