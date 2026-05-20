@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.30:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.62:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -1836,8 +1836,17 @@ class ApiService {
   }) async {
     try {
       final all = await getAssignedAssignments();
+      final userId = currentUser.value?.id ?? await getUserId();
       final filtered = all.where((a) {
-        return a.date.month == month && a.date.year == year && a.isPublished;
+        final inMonth = a.date.month == month && a.date.year == year;
+        if (!inMonth) return false;
+
+        if (a.status != 'submitted' && a.status != 'published') return false;
+
+        if (userId == null || userId.isEmpty) return false;
+        final myEntry = a.employees.where((e) => e.userId == userId).toList();
+        if (myEntry.isEmpty) return false;
+        return myEntry.any((e) => e.employeeStatus == 'agreed');
       }).toList();
       return filtered;
     } catch (e) {

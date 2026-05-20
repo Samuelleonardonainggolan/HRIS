@@ -74,6 +74,7 @@ class AttendanceRecord {
           json['break_start_time']?.toString(),
       breakEnd:
           json['break_end']?.toString() ?? json['break_end_time']?.toString(),
+      rewardInfo: json['reward_info']?.toString(),
     );
   }
 

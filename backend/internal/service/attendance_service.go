@@ -366,6 +366,21 @@ func (s *attendanceService) GetWorkScheduleInfo(ctx context.Context, userID stri
 
 	startTimeToday := s.extractTimeForToday(nowWIB, jamKerja.StartTime)
 	endTimeToday := s.extractTimeForToday(nowWIB, jamKerja.EndTime)
+
+	// Cek reward Early Leave (Pulang Cepat)
+	reductionOut, _ := s.getTimeOffReductionForToday(ctx, userObjID, "early_out")
+	if reductionOut > 0 {
+		endTimeToday = endTimeToday.Add(-time.Duration(reductionOut * float64(time.Hour)))
+		info.WaktuSelesai = endTimeToday.Format("15:04")
+	}
+
+	// Cek reward Late In (Masuk Terlambat)
+	reductionIn, _ := s.getTimeOffReductionForToday(ctx, userObjID, "late_in")
+	if reductionIn > 0 {
+		startTimeToday = startTimeToday.Add(time.Duration(reductionIn * float64(time.Hour)))
+		info.WaktuMulai = startTimeToday.Format("15:04")
+	}
+
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
 	// Clock out window: tutup 6 jam setelah jam pulang (bukan 30 menit)
 	clockOutWindowClose := endTimeToday.Add(6 * time.Hour)
@@ -445,12 +460,14 @@ func (s *attendanceService) GetScheduleInfo(ctx context.Context, userID string) 
 	reductionOut, _ := s.getTimeOffReductionForToday(ctx, userObjID, "early_out")
 	if reductionOut > 0 {
 		endTimeToday = endTimeToday.Add(-time.Duration(reductionOut * float64(time.Hour)))
+		info.WaktuSelesai = endTimeToday.Format("15:04")
 	}
 
 	// Cek reward Late In (Masuk Terlambat)
 	reductionIn, _ := s.getTimeOffReductionForToday(ctx, userObjID, "late_in")
 	if reductionIn > 0 {
 		startTimeToday = startTimeToday.Add(time.Duration(reductionIn * float64(time.Hour)))
+		info.WaktuMulai = startTimeToday.Format("15:04")
 	}
 
 	clockInWindowOpen := startTimeToday.Add(-15 * time.Minute)
@@ -935,6 +952,56 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 		}
 		if rec.BreakEndTime == "" && !br.EndTime.IsZero() {
 			rec.BreakEndTime = br.EndTime.In(wib).Format("15:04")
+		}
+	}
+
+	// Cari semua overtime reward time_off di bulan ini
+	startOfMonthWIB := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, wib)
+	endOfMonthWIB := startOfMonthWIB.AddDate(0, 1, 0)
+	
+	rewardFilter := bson.M{
+		"employees": bson.M{
+			"$elemMatch": bson.M{
+				"user_id":              userObjID,
+				"reward.reward_type":   models.OvertimeRewardTypeTimeOff,
+				"reward.reward_date": bson.M{
+					"$gte": startOfMonthWIB,
+					"$lt":  endOfMonthWIB,
+				},
+				"reward.status": bson.M{"$in": []string{models.OvertimeRewardStatusGranted, models.OvertimeRewardStatusUsed}},
+			},
+		},
+	}
+	
+	rewardsInfoByDate := make(map[string]string)
+	if s.overtimeRepo != nil {
+		requests, _ := s.overtimeRepo.Find(ctx, rewardFilter)
+		for _, req := range requests {
+			for _, emp := range req.Employees {
+				if emp.UserID == userObjID && emp.Reward.RewardType == models.OvertimeRewardTypeTimeOff && emp.Reward.RewardDate != nil {
+					rd := emp.Reward.RewardDate.In(wib).Format("2006-01-02")
+					hours := req.GetDurationHours()
+					var label string
+					if emp.Reward.RewardOption == "early_out" {
+						label = fmt.Sprintf("Pulang Cepat %.1f jam (Reward Lembur)", hours)
+					} else {
+						label = fmt.Sprintf("Masuk Siang %.1f jam (Reward Lembur)", hours)
+					}
+					
+					if existing, ok := rewardsInfoByDate[rd]; ok {
+					    rewardsInfoByDate[rd] = existing + ", " + label
+					} else {
+					    rewardsInfoByDate[rd] = label
+					}
+				}
+			}
+		}
+	}
+
+	for i := range summary.Records {
+		rec := &summary.Records[i]
+		if info, ok := rewardsInfoByDate[rec.Date]; ok {
+			rec.RewardInfo = info
 		}
 	}
 

@@ -11,6 +11,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
+// wib adalah timezone WIB (UTC+7).
+var overtimeSvcWIB = time.FixedZone("WIB", 7*60*60)
+
 type OvertimeRequestService interface {
 	// Management (Manager HR / Manager Dept)
 	ListOvertimeRequests(ctx context.Context, filter bson.M) ([]models.OvertimeRequestResponse, error)
@@ -22,7 +25,7 @@ type OvertimeRequestService interface {
 	// Employee Actions
 	UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error
 	PublishEmployeeSPKL(ctx context.Context, overtimeID string, userID string, letterURL string) error
-	ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardDate string) error
+	ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardOption string, rewardDate string) error
 	GetEmployeeOvertimeHistory(ctx context.Context, userID string) ([]models.OvertimeRequestResponse, error)
 
 	// Legacy/Compat methods (to minimize handler changes)
@@ -224,16 +227,18 @@ func (s *overtimeRequestService) PublishEmployeeSPKL(ctx context.Context, overti
 	return s.overtimeRepo.UpdateEmployeeLetterURL(ctx, overtimeID, userID, letterURL)
 }
 
-func (s *overtimeRequestService) ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardDate string) error {
+func (s *overtimeRequestService) ClaimReward(ctx context.Context, overtimeID string, userID string, rewardType string, rewardOption string, rewardDate string) error {
 	reward := models.OvertimeReward{
-		RewardType: rewardType,
-		Status:     models.OvertimeRewardStatusGranted,
+		RewardType:   rewardType,
+		RewardOption: rewardOption,
+		Status:       models.OvertimeRewardStatusGranted,
 	}
 	now := time.Now()
 	reward.GrantedAt = &now
 
 	if rewardDate != "" {
-		if d, err := time.Parse("2006-01-02", rewardDate); err == nil {
+		// Parse tanggal sebagai WIB midnight agar konsisten dengan penyimpanan attendance record
+		if d, err := time.ParseInLocation("2006-01-02", rewardDate, overtimeSvcWIB); err == nil {
 			reward.RewardDate = &d
 		}
 	}

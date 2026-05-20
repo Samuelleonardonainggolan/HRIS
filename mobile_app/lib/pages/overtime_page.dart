@@ -492,6 +492,20 @@ class _OvertimePageState extends State<OvertimePage> {
     );
   }
 
+  Future<void> _claimOvertimeReward(OvertimeRequest r, String rewardType, String? rewardDate, String? rewardOption) async {
+    setState(() => _isLoading = true);
+    try {
+      await ApiService.claimOvertimeReward(r.id, rewardType, rewardDate: rewardDate, rewardOption: rewardOption);
+      String typeLabel = rewardType == 'money' ? 'Uang' : 'Potong Jam Kerja';
+      _showSnackBar('Reward $typeLabel berhasil dipilih');
+      await _loadData();
+    } catch (e) {
+      _showSnackBar(e.toString(), isError: true);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _showDetail(OvertimeRequest r) {
     showModalBottomSheet(
       context: context,
@@ -507,6 +521,10 @@ class _OvertimePageState extends State<OvertimePage> {
         onReject: () {
           Navigator.pop(context);
           _reject(r);
+        },
+        onClaimReward: (rewardType, rewardDate, rewardOption) {
+          Navigator.pop(context);
+          _claimOvertimeReward(r, rewardType, rewardDate, rewardOption);
         },
       ),
     );
@@ -829,12 +847,14 @@ class _OvertimeDetailSheet extends StatelessWidget {
   final User user;
   final VoidCallback onAgree;
   final VoidCallback onReject;
+  final void Function(String rewardType, String? rewardDate, String? rewardOption) onClaimReward;
 
   const _OvertimeDetailSheet({
     required this.request,
     required this.user,
     required this.onAgree,
     required this.onReject,
+    required this.onClaimReward,
   });
 
   @override
@@ -1018,6 +1038,8 @@ class _OvertimeDetailSheet extends StatelessWidget {
               const SizedBox(height: 10),
               _buildDocumentTile(context, myEntry.letterUrl!),
             ],
+            const SizedBox(height: 20),
+            _buildRewardSection(context),
             const SizedBox(height: 24),
             if (canRespond)
               Row(
@@ -1285,6 +1307,325 @@ class _OvertimeDetailSheet extends StatelessWidget {
       default:
         return const Color(0xFF64748B);
     }
+  }
+
+  Widget _buildRewardSection(BuildContext context) {
+    final myEntry = _findMyEntry();
+    if (myEntry == null) return const SizedBox.shrink();
+
+    final reward = myEntry.reward;
+    final hasReward = reward != null && reward.rewardType.isNotEmpty && reward.rewardType != 'none';
+
+    if (!hasReward) {
+      final canChoose = (request.status == 'submitted' || request.status == 'published') && myEntry.isAgreed;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Reward Lembur',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.card_giftcard_rounded,
+                        color: Colors.grey.shade500,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Reward belum dipilih',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          Text(
+                            canChoose ? 'Silakan pilih jenis reward di bawah' : 'Belum dapat memilih reward',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (canChoose) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _confirmClaim(context, 'money'),
+                          icon: const Icon(Icons.payments_rounded, size: 16),
+                          label: const Text('Uang'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.teal,
+                            side: const BorderSide(color: Colors.teal),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _confirmClaim(context, 'time_off'),
+                          icon: const Icon(Icons.timer_rounded, size: 16),
+                          label: const Text('Jam Kerja'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    final status = reward.status.toLowerCase();
+    Color statusColor;
+    String statusText;
+
+    switch (status) {
+      case 'granted':
+        statusColor = const Color(0xFF10B981);
+        statusText = 'Disetujui';
+        break;
+      case 'used':
+        statusColor = const Color(0xFF135BEC);
+        statusText = 'Sudah Digunakan';
+        break;
+      case 'pending':
+        statusColor = const Color(0xFFF59E0B);
+        statusText = 'Menunggu Persetujuan';
+        break;
+      default:
+        statusColor = const Color(0xFF64748B);
+        statusText = 'Belum Diproses';
+    }
+
+    final isTimeOff = reward.rewardType == 'time_off';
+    String optionText = '';
+    if (isTimeOff) {
+      if (reward.rewardOption == 'early_out') {
+        optionText = ' (Pulang Cepat)';
+      } else if (reward.rewardOption == 'late_in') {
+        optionText = ' (Masuk Terlambat)';
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Reward Lembur',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: statusColor.withOpacity(0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      reward.rewardType == 'money' ? Icons.payments_rounded : Icons.timer_rounded,
+                      color: statusColor,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${reward.rewardTypeDisplay}$optionText',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (isTimeOff && reward.rewardDate != null) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Tanggal Pengurangan:',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                    ),
+                    Text(
+                      DateFormat('EEEE, dd MMM yyyy', 'id').format(reward.rewardDate!),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _confirmClaim(BuildContext context, String type) async {
+    if (type == 'time_off') {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: DateTime.now().add(const Duration(days: 1)),
+        firstDate: DateTime.now(),
+        lastDate: DateTime.now().add(const Duration(days: 90)),
+        locale: const Locale('id', 'ID'),
+        helpText: 'Pilih Tanggal Reward',
+        cancelText: 'Batal',
+        confirmText: 'Pilih',
+      );
+      if (picked != null) {
+        final dateStr = DateFormat('yyyy-MM-dd').format(picked);
+        if (!context.mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Pilih Opsi Pengurangan'),
+            content: const Text('Pilih bagaimana Anda ingin menggunakan pengurangan jam kerja ini:'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showFinalConfirmation(context, type, dateStr, 'late_in');
+                },
+                child: const Text('Masuk Terlambat'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _showFinalConfirmation(context, type, dateStr, 'early_out');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF135BEC),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Pulang Cepat'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    _showFinalConfirmation(context, 'money', null, null);
+  }
+
+  void _showFinalConfirmation(BuildContext context, String type, String? dateStr, String? option) {
+    String rewardName = type == 'money' ? 'Uang Lembur' : 'Potong Jam Kerja';
+    if (option == 'early_out') rewardName += ' (Pulang Cepat)';
+    if (option == 'late_in') rewardName += ' (Masuk Terlambat)';
+
+    final dateInfo = dateStr != null ? '\nTanggal Klaim: ${DateFormat('dd MMM yyyy', 'id').format(DateTime.parse(dateStr))}' : '';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Konfirmasi Reward'),
+        content: Text('Anda akan mengklaim:\n\n$rewardName\nUntuk lembur tanggal ${DateFormat('dd MMM yyyy', 'id').format(request.date)}.$dateInfo\n\nLanjutkan?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onClaimReward(type, dateStr, option);
+            },
+            child: const Text('Klaim'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _launchURL(BuildContext context, String url) async {
@@ -2176,11 +2517,18 @@ class _AssignmentDetailSheet extends StatelessWidget {
       final pdf = pw.Document();
       final times = pw.Font.times();
       final timesBold = pw.Font.timesBold();
+      final myEntry = _findMyEntry();
 
       // Load logo
       final ByteData bytes = await rootBundle.load('assets/Picture1.jpg');
       final Uint8List list = bytes.buffer.asUint8List();
       final pw.MemoryImage logoImage = pw.MemoryImage(list);
+
+      String rewardText = 'Hari Libur Pengganti';
+      if (myEntry != null && myEntry.replacementOffDate != null) {
+        final dateStr = DateFormat('EEEE, dd MMMM yyyy', 'id').format(myEntry.replacementOffDate!);
+        rewardText += ' ($dateStr)';
+      }
 
       pdf.addPage(
         pw.MultiPage(
@@ -2188,19 +2536,21 @@ class _AssignmentDetailSheet extends StatelessWidget {
           margin: const pw.EdgeInsets.all(32),
           header: (context) => pw.Column(
             children: [
-              pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.center,
+              pw.Stack(
+                alignment: pw.Alignment.center,
                 children: [
-                  pw.Image(logoImage, width: 60, height: 60),
-                  pw.SizedBox(width: 15),
+                  pw.Align(
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(logoImage, width: 60, height: 60),
+                  ),
                   pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
                       pw.Text(
                         'PT. Labersa Hutahaean',
                         style: pw.TextStyle(
                           font: timesBold,
-                          fontSize: 16,
+                          fontSize: 18,
                           color: PdfColor.fromInt(0xFF988300), // Golden
                         ),
                       ),
@@ -2209,7 +2559,7 @@ class _AssignmentDetailSheet extends StatelessWidget {
                         'HEAD OFFICE - WILAYAH TOBA',
                         style: pw.TextStyle(
                           font: timesBold,
-                          fontSize: 12,
+                          fontSize: 14,
                           color: PdfColor.fromInt(0xFF006400), // Dark Green
                         ),
                       ),
@@ -2266,7 +2616,7 @@ class _AssignmentDetailSheet extends StatelessWidget {
             _pdfDetailRow('Untuk keperluan / tugas', assignment.reason.isNotEmpty ? assignment.reason : '-', times, timesBold),
             _pdfDetailRow('Pada hari / tanggal', DateFormat('EEEE, dd MMMM yyyy', 'id').format(assignment.date), times, timesBold),
             _pdfDetailRow('Waktu', '${assignment.startTime} - ${assignment.endTime}', times, timesBold),
-            _pdfDetailRow('Pilihan Reward', 'Hari Libur Pengganti', times, timesBold),
+            _pdfDetailRow('Pilihan Reward', rewardText, times, timesBold),
             
             pw.SizedBox(height: 30),
             
@@ -2276,7 +2626,7 @@ class _AssignmentDetailSheet extends StatelessWidget {
               children: [
                 _pdfSignBlock('Yang memberi perintah,', 'Departement Head', times, timesBold),
                 _pdfSignBlock('Yang menerima perintah,', 'Karyawan', times, timesBold),
-                _pdfSignBlock('Disetujui Oleh,', 'Office Manager / HRM', times, timesBold),
+                _pdfSignBlock('Disetujui Oleh,', 'Office Manager / HRM / General Manager', times, timesBold),
               ],
             ),
           ],

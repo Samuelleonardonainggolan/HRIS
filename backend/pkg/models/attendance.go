@@ -63,6 +63,7 @@ type AttendanceResponse struct {
 	WorkHours      float64          `json:"work_hours"`
 	OvertimeHours  float64          `json:"overtime_hours"`
 	FaceSimilarity float64          `json:"face_similarity,omitempty"`
+	RewardInfo     string           `json:"reward_info,omitempty"`
 }
 
 type MonthlyAttendanceResponse struct {
