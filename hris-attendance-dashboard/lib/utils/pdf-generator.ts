@@ -1,5 +1,5 @@
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+// lib/utils/pdf-generator.ts
+// NOTE: jsPDF is browser-only. Never import/call this from server components.
 
 interface OvertimeData {
   id: string;
@@ -16,32 +16,30 @@ interface EmployeeData {
   position_name: string;
 }
 
-export const generateSPKLPDF = async (overtime: OvertimeData, employee: EmployeeData): Promise<Blob> => {
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
+export const generateSPKLPDF = async (
+  overtime: OvertimeData,
+  employee: EmployeeData
+): Promise<Blob> => {
+  // Dynamic import to avoid SSR issues
+  const { jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
 
-  // Helper for Logo (Try to load it if exists)
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  // Logo
   try {
-    // Note: In a real environment, you might want to use a base64 string for the logo 
-    // to ensure it's always available and loads instantly.
     doc.addImage("/logo.jpg", "JPG", 20, 10, 25, 25);
-  } catch (e) {
-    console.warn("Logo not found or could not be loaded");
+  } catch {
+    // skip if logo not found
   }
 
-  // Header - Centered
-  doc.setFont("times", "bold");
+  // Header
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
-  // Golden/Brownish color for company name
-  doc.setTextColor(152, 131, 0); 
+  doc.setTextColor(152, 131, 0);
   doc.text("PT. Labersa Hutahaean", 105, 18, { align: "center" });
-  
+
   doc.setFontSize(14);
-  doc.setFont("times", "bold");
-  // Dark Green color for branch
   doc.setTextColor(0, 100, 0);
   doc.text("HEAD OFFICE - WILAYAH TOBA", 105, 26, { align: "center" });
 
@@ -50,110 +48,96 @@ export const generateSPKLPDF = async (overtime: OvertimeData, employee: Employee
   doc.line(20, 38, 190, 38);
 
   // Title
-  doc.setFont("times", "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(0, 0, 0);
   doc.text("SURAT PERINTAH KERJA LEMBUR", 105, 50, { align: "center" });
-  // Underline removed as requested
 
-  // Instruction
-  doc.setFont("times", "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
-  doc.text("Kepada saudara yang namanya tersebut di bawah ini diperintahkan kerja lembur:", 20, 65);
+  doc.text(
+    "Kepada saudara yang namanya tersebut di bawah ini diperintahkan kerja lembur:",
+    20,
+    65
+  );
 
-  // Overtime Details
   const detailsX = 20;
-  const labelWidth = 40;
-  const lineSpacing = 10; // Consistent vertical spacing
+  const labelWidth = 45;
+  const lineSpacing = 10;
   let currentY = 75;
 
-  // Row 1: Reason
-  doc.text("Untuk keperluan / tugas", detailsX, currentY);
-  doc.text(":", detailsX + labelWidth, currentY);
-  const reasonText = overtime.reason || "-";
-  const reasonLinesArr = doc.splitTextToSize(reasonText, 120);
-  doc.text(reasonLinesArr, detailsX + labelWidth + 5, currentY);
-  
-  // Increment Y based on reason height
-  currentY += Math.max(lineSpacing, reasonLinesArr.length * 5 + 3);
-
-  // Row 2: Date
-  doc.text("Pada hari / tanggal", detailsX, currentY);
-  doc.text(":", detailsX + labelWidth, currentY);
-  const formattedDate = new Date(overtime.date).toLocaleDateString("id-ID", { 
-    weekday: 'long', 
-    day: '2-digit', 
-    month: 'long', 
-    year: 'numeric' 
+  const formattedDate = new Date(overtime.date).toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
   });
-  doc.text(formattedDate, detailsX + labelWidth + 5, currentY);
-  
-  currentY += lineSpacing;
 
-  // Row 3: Time
-  doc.text("Dimulai jam", detailsX, currentY);
-  doc.text(":", detailsX + labelWidth, currentY);
-  doc.text(overtime.start_time.slice(0, 5) + " WIB", detailsX + labelWidth + 5, currentY);
-  
-  currentY += 15;
+  const rows: [string, string][] = [
+    ["Untuk keperluan / tugas", overtime.reason || "-"],
+    ["Pada hari / tanggal", formattedDate],
+    ["Dimulai jam", (overtime.start_time || "").slice(0, 5) + " WIB"],
+    ["Selesai jam", (overtime.end_time || "").slice(0, 5) + " WIB"],
+  ];
 
-  // Employee Table
+  for (const [label, value] of rows) {
+    doc.text(label, detailsX, currentY);
+    doc.text(":", detailsX + labelWidth, currentY);
+    const lines = doc.splitTextToSize(value, 115);
+    doc.text(lines, detailsX + labelWidth + 5, currentY);
+    currentY += Math.max(lineSpacing, lines.length * 6);
+  }
+
+  currentY += 5;
+
   autoTable(doc, {
     startY: currentY,
     margin: { left: 20, right: 20 },
     head: [["Nama", "Jabatan", "Tanda Tangan"]],
     body: [[employee.full_name, employee.position_name, ""]],
     theme: "grid",
-    headStyles: { 
-      fillColor: [255, 255, 255], 
-      textColor: [0, 0, 0], 
-      fontStyle: "bold", 
+    headStyles: {
+      fillColor: [255, 255, 255],
+      textColor: [0, 0, 0],
+      fontStyle: "bold",
       halign: "center",
       lineWidth: 0.2,
       lineColor: [0, 0, 0],
-      font: "times"
     },
-    styles: { 
-      fontSize: 11, 
+    styles: {
+      fontSize: 11,
       textColor: [0, 0, 0],
       lineWidth: 0.2,
       lineColor: [0, 0, 0],
       minCellHeight: 12,
       valign: "middle",
-      font: "times"
     },
     columnStyles: {
       0: { cellWidth: 70 },
       1: { cellWidth: 60 },
-      2: { cellWidth: 40 }
-    }
+      2: { cellWidth: 40 },
+    },
   });
 
-  // Signatures
   const footerY = (doc as any).lastAutoTable.finalY + 25;
-  doc.setFont("times", "normal");
+  doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
-  
-  // Calculate center of each column (Content area is 170mm, 210mm wide)
-  const col1X = 48; // Left center
-  const col2X = 105; // Middle center
-  const col3X = 162; // Right center
 
-  // Signature Labels
+  const col1X = 48;
+  const col2X = 105;
+  const col3X = 162;
+
   doc.text("Yang memberi perintah lembur,", col1X, footerY, { align: "center" });
   doc.text("Yang menerima perintah lembur,", col2X, footerY, { align: "center" });
   doc.text("Disetujui Oleh,", col3X, footerY, { align: "center" });
 
   const signLineY = footerY + 30;
-  
-  // Signature Lines
   doc.text("( ____________________ )", col1X, signLineY, { align: "center" });
   doc.text("( ____________________ )", col2X, signLineY, { align: "center" });
   doc.text("( ____________________ )", col3X, signLineY, { align: "center" });
 
-  // Signature Sub-labels
   doc.setFontSize(9);
-  doc.setFont("times", "bold");
+  doc.setFont("helvetica", "bold");
   doc.text("Departement Head", col1X, signLineY + 6, { align: "center" });
   doc.text("Karyawan", col2X, signLineY + 6, { align: "center" });
   doc.text("Office Manager / HRM /", col3X, signLineY + 6, { align: "center" });
@@ -169,28 +153,30 @@ interface AttendanceReportData {
   body: any[][];
 }
 
-export const generateAttendanceReportPDF = async (report: AttendanceReportData): Promise<Blob> => {
-  const doc = new jsPDF({
-    orientation: "landscape",
-    unit: "mm",
-    format: "a4",
-  });
+export const generateAttendanceReportPDF = async (
+  report: AttendanceReportData
+): Promise<Blob> => {
+  // Dynamic import to avoid SSR issues
+  const { jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
   // Logo
   try {
     doc.addImage("/logo.jpg", "JPG", 20, 10, 20, 20);
-  } catch (e) {
-    // skip logo if not found
+  } catch {
+    // skip if logo not found
   }
 
-  // Header - Centered
-  doc.setFont("times", "bold");
+  // Company Header
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.setTextColor(152, 131, 0); // Golden
+  doc.setTextColor(152, 131, 0);
   doc.text("PT. Labersa Hutahaean", 148, 15, { align: "center" });
-  
+
   doc.setFontSize(12);
-  doc.setTextColor(0, 100, 0); // Dark Green
+  doc.setTextColor(0, 100, 0);
   doc.text("HEAD OFFICE - WILAYAH TOBA", 148, 22, { align: "center" });
 
   doc.setDrawColor(0, 0, 0);
@@ -198,45 +184,62 @@ export const generateAttendanceReportPDF = async (report: AttendanceReportData):
   doc.line(20, 32, 277, 32);
 
   // Report Title
-  doc.setFont("times", "bold");
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(0, 0, 0);
   doc.text(report.title.toUpperCase(), 148, 42, { align: "center" });
-  
+
   doc.setFontSize(11);
-  doc.setFont("times", "normal");
-  doc.text(`Periode: ${report.period}`, 148, 48, { align: "center" });
+  doc.setFont("helvetica", "normal");
+  doc.text(`Periode: ${report.period}`, 148, 49, { align: "center" });
 
   // Table
   autoTable(doc, {
-    startY: 55,
-    margin: { left: 20, right: 20 },
+    startY: 56,
+    margin: { left: 15, right: 15 },
     head: [report.headers],
     body: report.body,
     theme: "grid",
-    headStyles: { 
-      fillColor: [240, 240, 240], 
-      textColor: [0, 0, 0], 
-      fontStyle: "bold", 
+    headStyles: {
+      fillColor: [37, 99, 235],   // Blue-600
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
       halign: "center",
       lineWidth: 0.1,
       lineColor: [0, 0, 0],
-      font: "times"
+      fontSize: 9,
     },
-    styles: { 
-      fontSize: 9, 
+    alternateRowStyles: {
+      fillColor: [239, 246, 255], // Blue-50
+    },
+    styles: {
+      fontSize: 8,
       textColor: [0, 0, 0],
       lineWidth: 0.1,
-      lineColor: [0, 0, 0],
+      lineColor: [200, 200, 200],
       valign: "middle",
-      font: "times"
-    }
+      overflow: "linebreak",
+    },
+    columnStyles: {
+      0: { cellWidth: 25 },  // Tanggal
+      1: { cellWidth: 45 },  // Karyawan
+      2: { cellWidth: 20 },  // NIK
+      3: { cellWidth: 22 },  // Jenis
+      4: { cellWidth: "auto" }, // Detail
+      5: { cellWidth: 22 },  // Status
+    },
   });
 
-  // Footer / Print Date
-  const finalY = (doc as any).lastAutoTable.finalY || 55;
+  // Footer
+  const finalY = (doc as any).lastAutoTable?.finalY ?? 56;
   doc.setFontSize(8);
-  doc.text(`Dicetak pada: ${new Date().toLocaleString("id-ID")}`, 20, finalY + 10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100, 100, 100);
+  doc.text(
+    `Dicetak pada: ${new Date().toLocaleString("id-ID")}`,
+    15,
+    Math.min(finalY + 8, 200)
+  );
 
   return doc.output("blob");
 };

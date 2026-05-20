@@ -95,9 +95,14 @@ export default function BuatPenugasanBaruKadep() {
       
       setPicked((prev) => [...prev, newEmp]);
       setSearchEmp("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to preview schedule", err);
-      toast.error("Gagal mengambil jadwal asli karyawan");
+      // Read the specific validation message from backend (field: `message`)
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        "Gagal mengambil jadwal karyawan";
+      toast.error(`⚠️ ${msg}`, { duration: 5000 });
     }
   };
 

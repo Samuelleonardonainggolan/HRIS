@@ -8,6 +8,7 @@ import (
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -38,6 +39,7 @@ type assignmentService struct {
 	userRepo            repository.UserRepository
 	jamKerjaRepo        repository.JamKerjaRepository
 	departmentRepo      repository.DepartmentRepository
+	pengajuanRepo       repository.PengajuanIzinCutiRepository
 	wsHub               *WSHub
 	notificationService NotificationService
 }
@@ -47,12 +49,14 @@ func NewAssignmentService(
 	userRepo repository.UserRepository,
 	jamKerjaRepo repository.JamKerjaRepository,
 	departmentRepo repository.DepartmentRepository,
+	pengajuanRepo repository.PengajuanIzinCutiRepository,
 ) AssignmentService {
 	return &assignmentService{
 		assignmentRepo: assignmentRepo,
 		userRepo:       userRepo,
 		jamKerjaRepo:   jamKerjaRepo,
 		departmentRepo: departmentRepo,
+		pengajuanRepo:  pengajuanRepo,
 	}
 }
 
@@ -65,6 +69,39 @@ func (s *assignmentService) SetNotificationService(service NotificationService) 
 }
 
 func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID string, date time.Time) (models.AssignmentOriginalShift, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return models.AssignmentOriginalShift{}, errors.New("user_id tidak valid")
+	}
+
+	// 1. Cek apakah karyawan sedang cuti/izin
+	dateStr := date.Format("2006-01-02")
+	leaveFilter := bson.M{
+		"user_id": userOID,
+		"final_status": "APPROVED",
+		"tanggal_mulai": bson.M{"$lte": dateStr},
+		"tanggal_selesai": bson.M{"$gte": dateStr},
+	}
+	leaves, _ := s.pengajuanRepo.Find(ctx, leaveFilter)
+	if len(leaves) > 0 {
+		return models.AssignmentOriginalShift{}, fmt.Errorf("Karyawan sedang cuti / izin pada tanggal tersebut")
+	}
+
+	// 2. Cek apakah karyawan sedang menggunakan reward (hari libur pengganti)
+	assignFilter := bson.M{
+		"employees": bson.M{
+			"$elemMatch": bson.M{
+				"user_id": userOID,
+				"day_off_reward.replacement_off_date": date,
+				"day_off_reward.status": models.DayOffRewardStatusUsed,
+			},
+		},
+	}
+	assignments, _ := s.assignmentRepo.Find(ctx, assignFilter)
+	if len(assignments) > 0 {
+		return models.AssignmentOriginalShift{}, fmt.Errorf("Karyawan sedang mengambil hari libur pengganti (reward) pada tanggal tersebut")
+	}
+
 	jk, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return models.AssignmentOriginalShift{}, err

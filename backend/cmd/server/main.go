@@ -144,7 +144,7 @@ func main() {
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
 	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // -… Dari kode kedua
-	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
+	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo, pengajuanIzinCutiRepo)
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
 
 	notificationService := service.NewNotificationService(notificationRepo)

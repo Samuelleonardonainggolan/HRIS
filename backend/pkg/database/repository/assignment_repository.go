@@ -18,6 +18,7 @@ type AssignmentRepository interface {
 	Update(ctx context.Context, assignment *models.Assignment) error
 	Delete(ctx context.Context, id primitive.ObjectID) error
 	ListByEmployee(ctx context.Context, userID primitive.ObjectID) ([]models.Assignment, error)
+	Find(ctx context.Context, filter bson.M) ([]models.Assignment, error)
 }
 
 type assignmentRepository struct {
@@ -80,6 +81,21 @@ func (r *assignmentRepository) ListByEmployee(ctx context.Context, userID primit
 	var assignments []models.Assignment
 	// Mencari penugasan di mana userID ada di dalam array employees
 	filter := bson.M{"employees.user_id": userID}
+	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}})
+	cursor, err := r.collection.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &assignments); err != nil {
+		return nil, err
+	}
+	return assignments, nil
+}
+
+func (r *assignmentRepository) Find(ctx context.Context, filter bson.M) ([]models.Assignment, error) {
+	var assignments []models.Assignment
 	opts := options.Find().SetSort(bson.D{{Key: "date", Value: -1}})
 	cursor, err := r.collection.Find(ctx, filter, opts)
 	if err != nil {
