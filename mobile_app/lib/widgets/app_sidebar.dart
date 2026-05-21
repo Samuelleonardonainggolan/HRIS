@@ -1,6 +1,7 @@
 // lib/widgets/app_sidebar.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_app/pages/profile_page.dart';
+import 'package:mobile_app/pages/notifications_page.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/services/sse_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -248,6 +249,18 @@ class AppSidebar extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   physics: const BouncingScrollPhysics(),
                   children: [
+                    _buildSidebarItem(
+                      icon: Icons.notifications_rounded,
+                      label: 'Notifikasi',
+                      color: const Color(0xFF135BEC),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const NotificationsPage()),
+                        );
+                      },
+                    ),
                     _buildSidebarItem(
                       icon: Icons.person_rounded,
                       label: 'Profil Saya',

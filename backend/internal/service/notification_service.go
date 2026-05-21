@@ -2,8 +2,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"os"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
@@ -17,16 +21,20 @@ type NotificationService interface {
 	MarkAsRead(ctx context.Context, id string) error
 	MarkAllAsRead(ctx context.Context, userID string) error
 	SetWSHub(hub *WSHub)
+	RegisterDeviceToken(ctx context.Context, userID string, token string) error
+	UnregisterDeviceToken(ctx context.Context, token string) error
 }
 
 type notificationService struct {
-	repo  repository.NotificationRepository
-	wsHub *WSHub
+	repo            repository.NotificationRepository
+	deviceTokenRepo repository.DeviceTokenRepository
+	wsHub           *WSHub
 }
 
-func NewNotificationService(repo repository.NotificationRepository) NotificationService {
+func NewNotificationService(repo repository.NotificationRepository, deviceRepo repository.DeviceTokenRepository) NotificationService {
 	return &notificationService{
-		repo: repo,
+		repo:            repo,
+		deviceTokenRepo: deviceRepo,
 	}
 }
 
@@ -82,6 +90,14 @@ func (s *notificationService) CreateNotification(ctx context.Context, req models
 		})
 	}
 
+	// Send push via FCM if server key provided and device tokens available
+	if s.deviceTokenRepo != nil {
+		tokens, _ := s.deviceTokenRepo.FindByUserID(ctx, req.UserID)
+		if len(tokens) > 0 {
+			go sendFCM(tokens, req.Title, req.Message, map[string]string{"type": req.Type, "reference_id": req.ReferenceID})
+		}
+	}
+
 	return &resp, nil
 }
 
@@ -108,4 +124,49 @@ func (s *notificationService) MarkAsRead(ctx context.Context, id string) error {
 
 func (s *notificationService) MarkAllAsRead(ctx context.Context, userID string) error {
 	return s.repo.MarkAllAsRead(ctx, userID)
+}
+
+func (s *notificationService) RegisterDeviceToken(ctx context.Context, userID string, token string) error {
+	if s.deviceTokenRepo == nil {
+		return errors.New("device token repository not configured")
+	}
+	return s.deviceTokenRepo.Save(ctx, userID, token)
+}
+
+func (s *notificationService) UnregisterDeviceToken(ctx context.Context, token string) error {
+	if s.deviceTokenRepo == nil {
+		return errors.New("device token repository not configured")
+	}
+	return s.deviceTokenRepo.Delete(ctx, token)
+}
+
+// sendFCM sends a simple notification via legacy FCM HTTP API using server key
+func sendFCM(tokens []string, title, body string, data map[string]string) {
+	serverKey := os.Getenv("FCM_SERVER_KEY")
+	if serverKey == "" {
+		return
+	}
+
+	payload := map[string]any{}
+	if len(tokens) == 1 {
+		payload["to"] = tokens[0]
+	} else {
+		payload["registration_ids"] = tokens
+	}
+	payload["notification"] = map[string]string{"title": title, "body": body}
+	if len(data) > 0 {
+		payload["data"] = data
+	}
+
+	b, _ := json.Marshal(payload)
+	req, _ := http.NewRequest("POST", "https://fcm.googleapis.com/fcm/send", bytes.NewBuffer(b))
+	req.Header.Set("Authorization", "key="+serverKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err == nil && resp.Body != nil {
+		resp.Body.Close()
+	}
+	_ = err
 }

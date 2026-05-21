@@ -312,6 +312,8 @@ func SetupRoutes(
 				notifications.GET("/unread-count", notificationHandler.GetUnreadCount)
 				notifications.PATCH("/:id/read", notificationHandler.MarkAsRead)
 				notifications.POST("/read-all", notificationHandler.MarkAllAsRead)
+				notifications.POST("/register-token", notificationHandler.RegisterDeviceToken)
+				notifications.POST("/unregister-token", notificationHandler.UnregisterDeviceToken)
 			}
 		}
 

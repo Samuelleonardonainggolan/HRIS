@@ -130,3 +130,45 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 		"message": "Semua notifikasi berhasil ditandai telah dibaca",
 	})
 }
+
+// RegisterDeviceToken - POST /api/v1/notifications/register-token
+func (h *NotificationHandler) RegisterDeviceToken(c *gin.Context) {
+	userID, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": "Unauthorized"})
+		return
+	}
+
+	var payload struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "token required"})
+		return
+	}
+
+	if err := h.service.RegisterDeviceToken(c.Request.Context(), userID.(string), payload.Token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "failed to register token: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "token registered"})
+}
+
+// UnregisterDeviceToken - POST /api/v1/notifications/unregister-token
+func (h *NotificationHandler) UnregisterDeviceToken(c *gin.Context) {
+	var payload struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "token required"})
+		return
+	}
+
+	if err := h.service.UnregisterDeviceToken(c.Request.Context(), payload.Token); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "failed to unregister token: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "token unregistered"})
+}

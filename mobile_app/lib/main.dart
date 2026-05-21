@@ -7,6 +7,7 @@ import 'package:mobile_app/main_navigation.dart';
 import 'package:mobile_app/pages/face_registration.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
