@@ -1,21 +1,23 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Download, ChevronRight, ArrowLeft, CalendarDays } from "lucide-react";
+import { Download, ChevronRight, ArrowLeft, CalendarDays, CheckCircle2, XCircle, Clock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-type PayrollStatus = "DRAFT" | "APPROVED" | "PENDING" | "PAID";
+import { payrollApi, PayrollStatus } from "@/lib/api/payroll";
+import { format } from "date-fns";
+import { id as localeID } from "date-fns/locale";
 
 function formatIDR(n: number) {
-  return `Rp ${n.toLocaleString("id-ID")}`;
+  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
 }
 
-function StatusBadge({ status }: { status: PayrollStatus }) {
-  switch (status) {
+function StatusBadge({ status }: { status: string }) {
+  const s = status?.toUpperCase();
+  switch (s) {
     case "PAID":
       return (
         <Badge className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -46,48 +48,108 @@ function StatusBadge({ status }: { status: PayrollStatus }) {
 export default function PayrollDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  // mock detail by id (nanti ganti fetch API by params.id)
-  const detail = useMemo(() => {
-    // contoh data mirip gambar
-    return {
-      id: params.id,
-      periodLabel: "01 Oktober 2023 - 31 Oktober 2023",
-
-      employee: {
-        name: "Budi Santoso",
-        title: "Senior Manager",
-        nik: "SL-2021-0045",
-        dept: "Sales & Marketing",
-        rekening: "BCA 8901234567",
-        bankName: "BCA",
-        avatarUrl: "", // optional
-      },
-
-      attendance: {
-        workDays: 21,
-        lateMinutes: 45,
-      },
-
-      earnings: [
-        { label: "Gaji Pokok", desc: "Base Salary - 160 Jam Kerja", amount: 12_000_000 },
-        { label: "Bonus 10% Revenue", desc: "Performance Q3 Achievement", amount: 3_500_000 },
-        { label: "Upah Lembur", desc: "Overtime: 12 Jam x Rp 150.000", amount: 1_800_000 },
-        { label: "Tunjangan Transportasi", desc: "Fixed Monthly Allowance", amount: 1_000_000 },
-      ],
-
-      deductions: [
-        { label: "Pajak Penghasilan (PPh 21)", desc: "Sesuai tarif progresif DJP", amount: 1_250_000 },
-        { label: "BPJS Ketenagakerjaan", desc: "JHT, JP (Potongan Karyawan 3%)", amount: 360_000 },
-        { label: "BPJS Kesehatan", desc: "Potongan Karyawan 1%", amount: 120_000 },
-        { label: "Potongan Keterlambatan", desc: "Total 45 Menit (3 kejadian)", amount: 150_000 },
-      ],
-
-      netSalary: 16_420_000,
-      transferDate: "28 Okt 2023",
-      status: "PAID" as PayrollStatus,
-    };
+  useEffect(() => {
+    if (params.id) {
+      payrollApi.getPayrollDetail(params.id)
+        .then(res => setData(res))
+        .finally(() => setLoading(false));
+    }
   }, [params.id]);
+
+  const detail = useMemo(() => {
+    if (!data) return null;
+    const { payroll, user } = data;
+
+    const monthNames = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+
+    return {
+      id: payroll.id,
+      periodLabel: `${monthNames[payroll.month - 1]} ${payroll.year}`,
+      employee: {
+        name: user.full_name,
+        title: user.position_name,
+        nik: user.nik || "-",
+        dept: user.department_name,
+        rekening: "-", // Mock for now
+        avatarUrl: user.avatar_url,
+      },
+      attendance: {
+        workDays: parseInt(payroll.total_days_present) || 0,
+        lateMinutes: payroll.late_minutes_total || 0,
+        absentDays: payroll.absent_days || 0,
+      },
+      earnings: [
+        { label: "Gaji Pokok", desc: `Basis: ${formatIDR(payroll.basic_salary_value / (payroll.workdays_divisor || 24))} / hari`, amount: payroll.basic_salary_value },
+        { label: "Bonus 10% Revenue", desc: "Performance Incentive", amount: parseInt(payroll.other_earnings) || 0 },
+        { label: "Upah Lembur", desc: `Total ${payroll.overtime_hours_paid} Jam`, amount: payroll.overtime_pay_value },
+      ],
+      deductions: [
+        { label: "Potongan Keterlambatan", desc: `Total ${payroll.late_minutes_total} Menit`, amount: payroll.late_deduction_value },
+        { label: "Potongan Mangkir", desc: `Total ${payroll.absent_days} Hari`, amount: payroll.absent_deduction_value },
+      ],
+      netSalary: payroll.net_salary_value,
+      status: payroll.status,
+      updatedAt: payroll.updated_at
+    };
+  }, [data]);
+
+  const attendanceDetails = useMemo(() => {
+    if (!data || !data.payroll) return [];
+    const { payroll, attendances, jam_kerja } = data;
+    const year = payroll.year;
+    const month = payroll.month;
+
+    // Get number of days in the month
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const result = [];
+
+    // Current date for comparison (2026-05-22 according to context)
+    const now = new Date(2026, 4, 22); // Month is 0-indexed in JS Date
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      const dayNameStr = format(date, "EEEE", { locale: localeID }); // Senin, Selasa...
+      
+      const isScheduled = jam_kerja?.day_of_week?.includes(dayNameStr);
+      const attendance = attendances?.find((a: any) => {
+        const d = new Date(a.date);
+        return d.getDate() === day && (d.getMonth() + 1) === month && d.getFullYear() === year;
+      });
+
+      let status = "Libur";
+      if (isScheduled) {
+        if (attendance) {
+          status = attendance.status === "late" ? "Terlambat" : "Hadir";
+        } else {
+          // Jika sudah lewat dan tidak ada attendance
+          if (date <= now) {
+            status = "Mangkir";
+          } else {
+            status = "Scheduled";
+          }
+        }
+      }
+
+      result.push({
+        date: format(date, "dd MMM yyyy", { locale: localeID }),
+        dayName: dayNameStr,
+        status,
+        clockIn: attendance?.clock_in_time ? format(new Date(attendance.clock_in_time), "HH:mm") : "-",
+        clockOut: attendance?.clock_out_time ? format(new Date(attendance.clock_out_time), "HH:mm") : "-",
+      });
+    }
+
+    return result;
+  }, [data]);
+
+  if (loading) return <div className="p-10 text-center">Loading Payroll Detail...</div>;
+  if (!detail) return <div className="p-10 text-center">Payroll not found</div>;
 
   const totalEarnings = detail.earnings.reduce((sum, x) => sum + x.amount, 0);
   const totalDeductions = detail.deductions.reduce((sum, x) => sum + x.amount, 0);
@@ -142,7 +204,7 @@ export default function PayrollDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* LEFT: Earnings + Deductions */}
+        {/* LEFT: Earnings + Deductions + Attendance Table */}
         <div className="lg:col-span-2 space-y-4">
           {/* Earnings */}
           <Card className="rounded-2xl">
@@ -205,6 +267,73 @@ export default function PayrollDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Attendance Breakdown Table */}
+          <Card className="rounded-2xl">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-semibold text-gray-900">
+                  <CalendarDays className="h-5 w-5 text-blue-600" />
+                  Rincian Kehadiran Harian
+                </div>
+                <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
+                  <div className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Hadir
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3 text-yellow-500" /> Telat
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <XCircle className="h-3 w-3 text-rose-500" /> Mangkir
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative overflow-x-auto rounded-xl border border-gray-100">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-gray-600 font-medium">
+                    <tr>
+                      <th className="px-4 py-3">Tanggal</th>
+                      <th className="px-4 py-3">Hari</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3 text-center">In</th>
+                      <th className="px-4 py-3 text-center">Out</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {attendanceDetails.map((day, idx) => (
+                      <tr key={idx} className={day.status === "Libur" ? "bg-gray-50/50" : ""}>
+                        <td className="px-4 py-3 text-gray-900">{day.date}</td>
+                        <td className="px-4 py-3 text-gray-500">{day.dayName}</td>
+                        <td className="px-4 py-3">
+                          {day.status === "Hadir" && (
+                            <Badge variant="outline" className="text-emerald-700 bg-emerald-50 border-emerald-100 gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Hadir
+                            </Badge>
+                          )}
+                          {day.status === "Terlambat" && (
+                            <Badge variant="outline" className="text-yellow-700 bg-yellow-50 border-yellow-100 gap-1">
+                              <Clock className="h-3 w-3" /> Telat
+                            </Badge>
+                          )}
+                          {day.status === "Mangkir" && (
+                            <Badge variant="outline" className="text-rose-700 bg-rose-50 border-rose-100 gap-1">
+                              <XCircle className="h-3 w-3" /> Mangkir
+                            </Badge>
+                          )}
+                          {day.status === "Libur" && (
+                            <span className="text-xs text-gray-400">Off</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-center text-gray-600 font-mono text-xs">{day.clockIn}</td>
+                        <td className="px-4 py-3 text-center text-gray-600 font-mono text-xs">{day.clockOut}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* RIGHT: Profile + attendance + net */}
@@ -213,12 +342,12 @@ export default function PayrollDetailPage() {
           <Card className="rounded-2xl">
             <CardContent className="p-6">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700">
-                  {detail.employee.name
-                    .split(" ")
-                    .slice(0, 2)
-                    .map((x) => x[0])
-                    .join("")}
+                <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold text-gray-700 overflow-hidden">
+                  {detail.employee.avatarUrl ? (
+                    <img src={detail.employee.avatarUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    detail.employee.name.split(" ").slice(0, 2).map((x: string) => x[0]).join("")
+                  )}
                 </div>
 
                 <div className="min-w-0">
@@ -237,8 +366,8 @@ export default function PayrollDetailPage() {
                   <span className="text-gray-900 font-medium">{detail.employee.dept}</span>
                 </div>
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>REKENING</span>
-                  <span className="text-gray-900 font-medium">{detail.employee.rekening}</span>
+                  <span>STATUS</span>
+                  <StatusBadge status={detail.status} />
                 </div>
               </div>
             </CardContent>
@@ -251,36 +380,44 @@ export default function PayrollDetailPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl border border-gray-100 p-4">
-                  <div className="text-xs text-gray-500">Hari Kerja</div>
+                  <div className="text-xs text-gray-500">Hadir</div>
                   <div className="text-lg font-bold text-gray-900 mt-1">
                     {detail.attendance.workDays} <span className="text-sm font-semibold">Hari</span>
                   </div>
                 </div>
 
                 <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-                  <div className="text-xs text-rose-700">Terlambat</div>
+                  <div className="text-xs text-rose-700">Mangkir</div>
                   <div className="text-lg font-bold text-rose-700 mt-1">
-                    {detail.attendance.lateMinutes} <span className="text-sm font-semibold">Menit</span>
+                    {detail.attendance.absentDays} <span className="text-sm font-semibold">Hari</span>
                   </div>
                 </div>
+              </div>
+              
+              <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+                <div className="text-xs text-gray-600">Total Terlambat</div>
+                <div className="text-sm font-bold text-gray-900">{detail.attendance.lateMinutes} Menit</div>
               </div>
             </CardContent>
           </Card>
 
           {/* Net salary */}
-          <Card className="rounded-2xl bg-blue-600 text-white border-0">
+          <Card className="rounded-2xl bg-blue-600 text-white border-0 shadow-lg shadow-blue-200">
             <CardContent className="p-6 space-y-2">
               <div className="text-sm font-semibold opacity-95">
                 Total Bersih Diterima (Net Salary)
               </div>
               <div className="text-3xl font-bold">{formatIDR(detail.netSalary)}</div>
 
-              <div className="flex items-center justify-between pt-2 text-xs opacity-95">
-                <span>Ditransfer pada: {detail.transferDate}</span>
-                <StatusBadge status={detail.status} />
+              <div className="pt-2 text-[10px] opacity-70 italic border-t border-white/20">
+                Terakhir diperbarui: {detail.updatedAt ? new Date(detail.updatedAt).toLocaleString("id-ID") : "-"}
               </div>
             </CardContent>
           </Card>
+
+          <Button className="w-full rounded-xl py-6 font-semibold" variant="outline">
+            Kirim Slip Gaji via WhatsApp
+          </Button>
         </div>
       </div>
     </div>

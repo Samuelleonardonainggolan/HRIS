@@ -42,7 +42,12 @@ export const payrollApi = {
   },
 
   getPayrollDetail: async (id: string) => {
-    const res = await apiClient.get<{ payroll: any; user: any }>(`/payrolls/${id}`);
+    const res = await apiClient.get<{ 
+      payroll: any; 
+      user: any; 
+      attendances: any[]; 
+      jam_kerja: any 
+    }>(`/payrolls/${id}`);
     return res.data;
   },
 

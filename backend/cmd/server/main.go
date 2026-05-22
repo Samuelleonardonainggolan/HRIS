@@ -161,6 +161,12 @@ func main() {
 	overtimeRequestService.SetWSHub(wsHub)
 	assignmentService.SetWSHub(wsHub)
 
+	// Inject NotificationService into services that send notifications
+	pengajuanService.SetNotificationService(notificationService)
+	pengajuanIzinCutiService.SetNotificationService(notificationService)
+	overtimeRequestService.SetNotificationService(notificationService)
+	assignmentService.SetNotificationService(notificationService)
+
 	// Start MongoDB change-stream watcher so DB mutations trigger realtime SSE events
 	dbWatcher := service.NewDBWatcher(mongodb.Database, wsHub)
 	dbWatcher.Start(context.Background())

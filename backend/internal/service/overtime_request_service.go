@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
@@ -33,12 +34,14 @@ type OvertimeRequestService interface {
 	ListForKepalaDepartemen(ctx context.Context, status string, search string, kepalaUserID string) ([]models.OvertimeRequestResponse, error)
 
 	SetWSHub(hub *WSHub)
+	SetNotificationService(service NotificationService)
 }
 
 type overtimeRequestService struct {
-	overtimeRepo repository.OvertimeRequestRepository
-	userRepo     repository.UserRepository
-	wsHub        *WSHub
+	overtimeRepo        repository.OvertimeRequestRepository
+	userRepo            repository.UserRepository
+	wsHub               *WSHub
+	notificationService NotificationService
 }
 
 func NewOvertimeRequestService(
@@ -54,6 +57,10 @@ func NewOvertimeRequestService(
 
 func (s *overtimeRequestService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *overtimeRequestService) SetNotificationService(service NotificationService) {
+	s.notificationService = service
 }
 
 func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, requestedByID string, req models.CreateOvertimeRequestRequest) (*models.OvertimeRequestResponse, error) {
@@ -104,13 +111,32 @@ func (s *overtimeRequestService) CreateOvertimeRequest(ctx context.Context, requ
 		return nil, err
 	}
 
-	// Broadcast to all participants
+	// Broadcast & Notifikasi ke para karyawan yang ditugaskan
 	if s.wsHub != nil {
 		for _, emp := range employees {
 			s.wsHub.BroadcastToUser(emp.UserID.Hex(), WSEventOvertimeUpdated, map[string]any{
 				"id":      created.ID.Hex(),
 				"type":    "new_request",
-				"message": "Ada pengajuan lembur baru untuk Anda",
+				"message": "Ada penugasan lembur baru untuk Anda",
+			})
+		}
+	}
+
+	if s.notificationService != nil {
+		reqUser, _ := s.userRepo.FindByID(ctx, requestedByID)
+		senderName := "Manager"
+		if reqUser != nil {
+			senderName = reqUser.FullName
+		}
+
+		for _, emp := range employees {
+			_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+				UserID:      emp.UserID.Hex(),
+				SenderID:    requestedByID,
+				Title:       "Penugasan Lembur Baru",
+				Message:     fmt.Sprintf("Anda mendapat penugasan lembur baru dari %s untuk tanggal %s.", senderName, date.Format("02-01-2006")),
+				Type:        "overtime_request",
+				ReferenceID: created.ID.Hex(),
 			})
 		}
 	}
@@ -208,16 +234,49 @@ func (s *overtimeRequestService) DeleteOvertimeRequest(ctx context.Context, id s
 
 func (s *overtimeRequestService) UpdateEmployeeStatus(ctx context.Context, overtimeID string, userID string, req models.UpdateEmployeeStatusRequest) error {
 	err := s.overtimeRepo.UpdateEmployeeStatus(ctx, overtimeID, userID, req.Status, req.RejectionNote)
-	if err == nil && s.wsHub != nil {
-		// Broadcast to requester (manager) that employee responded
+	if err == nil {
 		reqData, _ := s.overtimeRepo.FindByID(ctx, overtimeID)
 		if reqData != nil {
-			s.wsHub.BroadcastToUser(reqData.RequestedByID.Hex(), WSEventOvertimeUpdated, map[string]any{
-				"id":      overtimeID,
-				"user_id": userID,
-				"status":  req.Status,
-				"type":    "response",
-			})
+			// Broadcast to requester (manager) that employee responded
+			if s.wsHub != nil {
+				s.wsHub.BroadcastToUser(reqData.RequestedByID.Hex(), WSEventOvertimeUpdated, map[string]any{
+					"id":      overtimeID,
+					"user_id": userID,
+					"status":  req.Status,
+					"type":    "response",
+				})
+			}
+
+			// Simpan Notifikasi ke DB
+			if s.notificationService != nil {
+				u, _ := s.userRepo.FindByID(ctx, userID)
+				empName := "Karyawan"
+				if u != nil {
+					empName = u.FullName
+				}
+
+				statusText := "MENYETUJU"
+				if req.Status == "REJECTED" {
+					statusText = "MENOLAK"
+				} else {
+					statusText = "MENYETUJUI"
+				}
+
+				msg := fmt.Sprintf("%s telah %s penugasan lembur pada tanggal %s.",
+					empName, statusText, reqData.Date.Format("02-01-2006"))
+				if req.RejectionNote != "" {
+					msg += fmt.Sprintf(" Alasan: %s", req.RejectionNote)
+				}
+
+				_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+					UserID:      reqData.RequestedByID.Hex(),
+					SenderID:    userID,
+					Title:       "Respon Penugasan Lembur",
+					Message:     msg,
+					Type:        "overtime_response",
+					ReferenceID: overtimeID,
+				})
+			}
 		}
 	}
 	return err

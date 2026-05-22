@@ -111,9 +111,13 @@ func (h *PayrollHandler) GetPayrolls(c *gin.Context) {
 
 	// 2. Fetch existing payroll records for the month/year
 	filter := bson.M{}
-	if month > 0 { filter["month"] = month }
-	if year > 0 { filter["year"] = year }
-	
+	if month > 0 {
+		filter["month"] = month
+	}
+	if year > 0 {
+		filter["year"] = year
+	}
+
 	payrolls, _ := h.repo.FindAll(ctx, filter)
 	payrollMap := make(map[string]models.Payroll)
 	for _, p := range payrolls {
@@ -142,27 +146,27 @@ func (h *PayrollHandler) GetPayrolls(c *gin.Context) {
 		}
 
 		p, exists := payrollMap[u.ID.Hex()]
-		
+
 		initials := ""
 		if len(u.FullName) > 0 {
 			initials = string(u.FullName[0])
 		}
 
 		row := gin.H{
-			"id":               "",
-			"user_id":          u.ID.Hex(),
-			"name":             u.FullName,
-			"initials":         initials,
-			"position":         u.PositionName,
-			"department":       u.DepartmentName,
-			"basicSalary":      salaryDoc.BasicSalary,
-			"bonus10":          0,
-			"overtime":         0,
-			"deduction":        0,
-			"netTotal":         salaryDoc.BasicSalary,
-			"status":           "not_generated",
-			"month":            month,
-			"year":             year,
+			"id":          "",
+			"user_id":     u.ID.Hex(),
+			"name":        u.FullName,
+			"initials":    initials,
+			"position":    u.PositionName,
+			"department":  u.DepartmentName,
+			"basicSalary": salaryDoc.BasicSalary,
+			"bonus10":     0,
+			"overtime":    0,
+			"deduction":   0,
+			"netTotal":    salaryDoc.BasicSalary,
+			"status":      "not_generated",
+			"month":       month,
+			"year":        year,
 		}
 
 		if exists {
@@ -211,59 +215,58 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 		}
 
 		// 3. Check if already exists
-		existing, _ := h.repo.FindAll(ctx, bson.M{
+		existingList, _ := h.repo.FindAll(ctx, bson.M{
 			"user_id": u.ID,
 			"month":   req.Month,
 			"year":    req.Year,
 		})
-		if len(existing) > 0 {
-			continue // Skip or Update? Let's skip for now
+
+		var payroll *models.Payroll
+		shouldUpdate := false
+
+		if len(existingList) > 0 {
+			// Jika status bukan draft, jangan timpa (sudah final/paid)
+			if existingList[0].Status != "draft" {
+				continue
+			}
+			payroll = &existingList[0]
+			shouldUpdate = true
+		} else {
+			payroll = &models.Payroll{
+				UserID: u.ID,
+				Month:  req.Month,
+				Year:   req.Year,
+				Status: "draft",
+			}
 		}
 
 		// 4. Calculate Attendance (Lateness & Absence)
 		attendances, _ := h.attendanceRepo.FindByUserIDAndMonth(ctx, u.ID, req.Year, req.Month)
-		
 		daysPresent := len(attendances)
 		totalLateMinutes := 0
-		
+
 		// Fetch Jam Kerja for the user
 		jk, _ := h.jamKerjaRepo.FindByUserID(ctx, u.ID.Hex())
 
 		for _, att := range attendances {
 			if att.Status == models.StatusLate && att.ClockInTime != nil && jk != nil {
-				// Compare ClockInTime with jk.StartTime
-				// We only care about the time (HH:mm)
-				
-				// Standard start time for the day of the week
-				// For now, assume jk.StartTime is the standard for all workdays
-				// Convert both to minutes from midnight for comparison
-				
 				clockInMinutes := att.ClockInTime.Hour()*60 + att.ClockInTime.Minute()
 				startMinutes := jk.StartTime.Hour()*60 + jk.StartTime.Minute()
-				
+
 				if clockInMinutes > startMinutes {
 					totalLateMinutes += (clockInMinutes - startMinutes)
 				}
 			}
 		}
 
-		// Calculate how many workdays should have passed so far
-		now := time.Now()
-		daysInMonth := time.Date(req.Year, time.Month(req.Month+1), 0, 0, 0, 0, 0, time.UTC).Day()
-		
-		var referenceWorkdays int
-		if req.Year < now.Year() || (req.Year == now.Year() && req.Month < int(now.Month())) {
-			// Past month: assume full 26 workdays
-			referenceWorkdays = 26
-		} else if req.Year == now.Year() && req.Month == int(now.Month()) {
-			// Current month: pro-rate the 26 days based on days passed so far
-			referenceWorkdays = (now.Day() * 26) / daysInMonth
-		} else {
-			// Future month
-			referenceWorkdays = 0
-		}
-		
-		absentDays := referenceWorkdays - daysPresent
+		// Hitung hari mangkir:
+		// Sekarang disesuaikan dengan jadwal jam_kerja karyawan tersebut.
+		nowWIB := time.Now().In(wib)
+		passedWorkdays := countPassedWorkdaysForUser(req.Year, req.Month, nowWIB, jk)
+
+		// Perhitungan mangkir yang adil:
+		// Selisih antara jadwal yang sudah lewat dengan kehadiran nyata.
+		absentDays := passedWorkdays - daysPresent
 		if absentDays < 0 {
 			absentDays = 0
 		}
@@ -279,40 +282,54 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 		})
 
 		totalOvertimeHours := 0.0
+		payroll.OvertimePayValue = 0 // Reset for recalculation
 		for _, ot := range overtimes {
 			for _, emp := range ot.Employees {
 				if emp.UserID == u.ID && emp.Reward.RewardType == models.OvertimeRewardTypeMoney {
-					totalOvertimeHours += ot.GetDurationHours()
+					if emp.Reward.Status != models.OvertimeRewardStatusGranted && emp.Reward.Status != models.OvertimeRewardStatusUsed {
+						continue
+					}
+					hours := ot.GetDurationHours()
+					if hours <= 0 {
+						continue
+					}
+					totalOvertimeHours += hours
+					// Gunakan method model untuk hitung per sesi
+					payroll.OvertimePayValue += payroll.CalculateOvertimePay(hours)
 				}
 			}
 		}
 
-		// 6. Create Payroll Record
-		payroll := &models.Payroll{
-			UserID:                u.ID,
-			Month:                 req.Month,
-			Year:                  req.Year,
-			BasicSalaryValue:      salaryDoc.BasicSalary,
-			BasicSalary:           fmt.Sprintf("%d", salaryDoc.BasicSalary),
-			MonthlyHoursDivisor:   173,
-			WorkdaysDivisor:       26,
-			MinutesPerWorkday:     480,
-			Status:                "draft",
-		}
+		// 6. Update/Set Payroll Fields
+		payroll.BasicSalaryValue = salaryDoc.BasicSalary
+		payroll.BasicSalary = fmt.Sprintf("%d", salaryDoc.BasicSalary)
+		payroll.MonthlyHoursDivisor = 173
+		payroll.WorkdaysDivisor = 24 // Standar Hotel: 24 hari kerja
+		payroll.MinutesPerWorkday = 480
 
-		payroll.OvertimePayValue = payroll.CalculateOvertimePay(totalOvertimeHours)
+		payroll.OvertimeHoursPaid = totalOvertimeHours
 		payroll.OvertimePay = fmt.Sprintf("%d", payroll.OvertimePayValue)
-		
+
 		payroll.LateDeductionValue = payroll.CalculateLateDeduction(totalLateMinutes)
 		payroll.LateDeduction = fmt.Sprintf("%d", payroll.LateDeductionValue)
-		
+
 		payroll.AbsentDeductionValue = payroll.CalculateAbsentDeduction(absentDays)
 		payroll.AbsentDeduction = fmt.Sprintf("%d", payroll.AbsentDeductionValue)
+
+		// Set summary fields
+		payroll.TotalDaysPresent = fmt.Sprintf("%d", daysPresent)
+		payroll.LateMinutesTotal = totalLateMinutes
+		payroll.AbsentDays = absentDays
 
 		payroll.RecalculateNetSalary()
 		payroll.NetSalary = fmt.Sprintf("%d", payroll.NetSalaryValue)
 
-		err = h.repo.Create(ctx, payroll)
+		if shouldUpdate {
+			err = h.repo.Update(ctx, payroll.ID, payroll)
+		} else {
+			err = h.repo.Create(ctx, payroll)
+		}
+
 		if err == nil {
 			generatedCount++
 		}
@@ -333,18 +350,79 @@ func (h *PayrollHandler) GetPayrollDetail(c *gin.Context) {
 		return
 	}
 
-	payroll, err := h.repo.FindByID(c.Request.Context(), oid)
+	ctx := c.Request.Context()
+	payroll, err := h.repo.FindByID(ctx, oid)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "payroll not found"})
 		return
 	}
 
-	user, _ := h.userRepo.FindByID(c.Request.Context(), payroll.UserID.Hex())
-	
+	user, _ := h.userRepo.FindByID(ctx, payroll.UserID.Hex())
+
+	// Ambil detail kehadiran untuk bulan tersebut
+	attendances, _ := h.attendanceRepo.FindByUserIDAndMonth(ctx, payroll.UserID, payroll.Year, payroll.Month)
+
+	// Ambil jadwal kerja untuk perbandingan (jika ada)
+	jk, _ := h.jamKerjaRepo.FindByUserID(ctx, payroll.UserID.Hex())
+
 	resp := payroll.ToResponse()
-	// You might want to wrap this in a larger object with user details
 	c.JSON(http.StatusOK, gin.H{
-		"payroll": resp,
-		"user":    user,
+		"payroll":     resp,
+		"user":        user,
+		"attendances": attendances,
+		"jam_kerja":   jk,
 	})
+}
+
+func countPassedWorkdaysForUser(year, month int, now time.Time, jk *models.JamKerja) int {
+	if year > now.Year() || (year == now.Year() && month > int(now.Month())) {
+		return 0
+	}
+
+	lastDay := time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, wib).Day()
+	endDay := lastDay
+	if year == now.Year() && month == int(now.Month()) {
+		endDay = now.Day()
+	}
+
+	// Mappings untuk cek hari kerja dari model JamKerja
+	isWorkDay := func(d time.Time) bool {
+		if jk == nil || !jk.IsActive || len(jk.DayOfWeek) == 0 {
+			// Fallback jika tidak ada jadwal atau jadwal tidak aktif: asumsikan standar hotel 6 hari (Senin-Sabtu)
+			return d.Weekday() != time.Sunday
+		}
+
+		dayNames := map[time.Weekday]string{
+			time.Monday:    "Senin",
+			time.Tuesday:   "Selasa",
+			time.Wednesday: "Rabu",
+			time.Thursday:  "Kamis",
+			time.Friday:    "Jumat",
+			time.Saturday:  "Sabtu",
+			time.Sunday:    "Minggu",
+		}
+
+		currentDayName := dayNames[d.Weekday()]
+		for _, dw := range jk.DayOfWeek {
+			if dw == currentDayName {
+				return true
+			}
+		}
+		return false
+	}
+
+	passed := 0
+	for day := 1; day <= endDay; day++ {
+		d := time.Date(year, time.Month(month), day, 0, 0, 0, 0, wib)
+		if isWorkDay(d) {
+			passed++
+		}
+	}
+
+	return passed
+}
+
+func countPassedWorkdays(year, month int, now time.Time) int {
+	// Alias lama untuk kompatibilitas jika dipanggil di tempat lain tanpa JamKerja
+	return countPassedWorkdaysForUser(year, month, now, nil)
 }

@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Bell, LogOut, User, ChevronDown } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfileModal } from "@/components/profile-modal";
 import { useRouter } from "next/navigation";
 import { notificationsApi, NotificationResponse } from "@/lib/api/notifications";
-import { authService } from "@/lib/api/auth";
 import toast from "react-hot-toast";
 
 export function Header() {
@@ -19,6 +18,12 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const { user, logout } = useAuth();
   const router = useRouter();
+
+  // Refs untuk SSE agar bisa di-cleanup & reconnect
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isUnmountedRef = useRef(false);
 
   // Update waktu setiap detik
   useEffect(() => {
@@ -33,7 +38,7 @@ export function Header() {
     await logout();
   };
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const data = await notificationsApi.getNotifications(10);
       setNotifications(data);
@@ -42,7 +47,94 @@ export function Header() {
     } catch (err) {
       console.error("Gagal memuat notifikasi:", err);
     }
-  };
+  }, []);
+
+  // Ambil token langsung dari localStorage (bypass expired-check agar SSE tetap bisa konek)
+  // Token SSE akan divalidasi di server, bukan di client
+  const getRawToken = useCallback((): string | null => {
+    if (typeof window === "undefined") return null;
+    // Coba access token dulu, jika expired coba refresh token sebagai fallback
+    const token = localStorage.getItem("access_token");
+    return token || null;
+  }, []);
+
+  const connectSSE = useCallback(() => {
+    if (isUnmountedRef.current) return;
+
+    const token = getRawToken();
+    if (!token) {
+      console.warn("[SSE] Tidak ada token, SSE tidak diinisiasi");
+      return;
+    }
+
+    // Tutup koneksi lama jika ada
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+      const base = apiBase.startsWith("http")
+        ? apiBase
+        : `${window.location.origin}${apiBase === "/" ? "" : apiBase}`;
+
+      const url = `${base}/api/v1/realtime/connect?token=${encodeURIComponent(token)}`;
+      const es = new EventSource(url);
+      eventSourceRef.current = es;
+
+      es.onopen = () => {
+        console.log("[SSE] Koneksi terbuka");
+        reconnectAttemptsRef.current = 0; // reset backoff saat berhasil konek
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+
+          // Abaikan ping & connected event
+          if (data.type === "ping" || data.type === "attendance_updated" && data.payload?.status === "connected") {
+            return;
+          }
+
+          if (data.type === "notification_created") {
+            // Tampilkan toast notifikasi
+            toast.success(
+              <div className="flex flex-col gap-0.5">
+                <span className="font-semibold text-gray-900">{data.payload?.title || "Notifikasi Baru"}</span>
+                <span className="text-xs text-gray-600">{data.payload?.message || ""}</span>
+              </div>,
+              { duration: 5000, icon: "🔔" }
+            );
+            // Refresh daftar notifikasi secara real-time
+            fetchNotifications();
+          }
+        } catch (e) {
+          console.error("[SSE] Gagal parse payload:", e);
+        }
+      };
+
+      es.onerror = (err) => {
+        console.warn("[SSE] Koneksi error, akan reconnect...", err);
+        es.close();
+        eventSourceRef.current = null;
+
+        if (isUnmountedRef.current) return;
+
+        // Exponential backoff: 2s, 4s, 8s, 16s, max 30s
+        const attempts = reconnectAttemptsRef.current;
+        const delay = Math.min(2000 * Math.pow(2, attempts), 30000);
+        reconnectAttemptsRef.current = attempts + 1;
+
+        console.log(`[SSE] Reconnect dalam ${delay / 1000}s (percobaan ke-${attempts + 1})`);
+        reconnectTimerRef.current = setTimeout(() => {
+          if (!isUnmountedRef.current) connectSSE();
+        }, delay);
+      };
+    } catch (err) {
+      console.error("[SSE] Gagal membuat EventSource:", err);
+    }
+  }, [getRawToken, fetchNotifications]);
 
   const handleMarkAsRead = async (n: NotificationResponse) => {
     try {
@@ -97,52 +189,35 @@ export function Header() {
   useEffect(() => {
     if (!user) return;
 
+    isUnmountedRef.current = false;
+
+    // Fetch awal
     fetchNotifications();
 
-    let eventSource: EventSource | null = null;
-    
-    try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-      const base = apiBase.startsWith("http")
-        ? apiBase
-        : `${window.location.origin}${apiBase === "/" ? "" : apiBase}`;
-      const token = authService.getAccessToken();
-      
-      if (token) {
-        eventSource = new EventSource(`${base}/api/v1/realtime/connect?token=${token}`);
-        
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === "notification_created") {
-              toast.success(
-                <div className="flex flex-col gap-0.5">
-                  <span className="font-semibold text-gray-900">{data.payload?.title || "Notifikasi Baru"}</span>
-                  <span className="text-xs text-gray-600">{data.payload?.message || ""}</span>
-                </div>,
-                { duration: 5000, icon: "🔔" }
-              );
-              fetchNotifications();
-            }
-          } catch (e) {
-            console.error("Failed to parse SSE payload:", e);
-          }
-        };
+    // Hubungkan SSE
+    connectSSE();
 
-        eventSource.onerror = (err) => {
-          console.error("SSE connection error, attempting reconnect...", err);
-        };
-      }
-    } catch (err) {
-      console.error("Error setting up EventSource", err);
-    }
+    // Polling fallback setiap 30 detik (backup jika SSE putus)
+    const pollingInterval = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
+      isUnmountedRef.current = true;
+      // Tutup SSE
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
+      // Batalkan reconnect timer
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      // Hentikan polling
+      clearInterval(pollingInterval);
     };
-  }, [user]);
+  }, [user, connectSSE, fetchNotifications]);
 
   // Format tanggal: "Senin, 23 Okt"
   const currentDate = currentTime.toLocaleDateString("id-ID", {

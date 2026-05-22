@@ -254,10 +254,41 @@ func (p *Payroll) CalculateAbsentDeduction(absentDays int) int64 {
 
 // RecalculateNetSalary updates the NetSalaryValue based on basic salary, overtime, and deductions.
 func (p *Payroll) RecalculateNetSalary() {
-	p.NetSalaryValue = p.BasicSalaryValue + 
-		p.OvertimePayValue + 
-		p.OtherEarningsValue - 
-		p.LateDeductionValue - 
-		p.AbsentDeductionValue - 
+	p.NetSalaryValue = p.BasicSalaryValue +
+		p.OvertimePayValue +
+		p.OtherEarningsValue -
+		p.LateDeductionValue -
+		p.AbsentDeductionValue -
 		p.OtherDeductionsValue
+}
+
+// PayrollRecord adalah ringkasan payroll untuk daftar/tabel (digunakan oleh accountant).
+type PayrollRecord struct {
+	ID         string `json:"id"`
+	UserID     string `json:"user_id"`
+	Name       string `json:"name"`
+	Initials   string `json:"initials"`
+	Position   string `json:"position"`
+	Department string `json:"department"`
+
+	BasicSalary int64 `json:"basicSalary"`
+	Bonus10     int64 `json:"bonus10"`    // legacy, bisa 0
+	Overtime    int64 `json:"overtime"`
+	Deduction   int64 `json:"deduction"`
+	NetTotal    int64 `json:"netTotal"`
+
+	Status string `json:"status"`
+	Month  int    `json:"month"`
+	Year   int    `json:"year"`
+}
+
+// PayrollDetailResponse adalah detail payroll lengkap termasuk info karyawan.
+type PayrollDetailResponse struct {
+	PayrollResponse
+
+	// Info karyawan (di-join dari collection users)
+	EmployeeName     string `json:"employee_name"`
+	EmployeePosition string `json:"employee_position"`
+	EmployeeDept     string `json:"employee_department"`
+	PayrollNumber    string `json:"payroll_number"`
 }
