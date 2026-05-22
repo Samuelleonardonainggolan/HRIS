@@ -478,7 +478,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     _statItem('Payroll', _user?.nik ?? '-'),
                     _verticalDivider(),
-                    _statItem('Bergabung', _fmtDateShort(_user?.joinDate)),
+                    _statItem('Bergabung ke aplikasi', _fmtDateShort(_user?.joinDate)),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -685,7 +685,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _div(),
         _row(
           Icons.calendar_today_outlined,
-          'Bergabung',
+          'Bergabung ke aplikasi',
           _fmtDate(_user?.joinDate),
         ),
         _div(),
@@ -707,7 +707,7 @@ class _ProfilePageState extends State<ProfilePage> {
       Icons.work_outline,
       const Color(0xFF0EA5E9),
       [
-        _row(Icons.badge_outlined, 'NIK / Payroll', _user?.nik ?? '-'),
+        _row(Icons.badge_outlined, 'Payroll', _user?.nik ?? '-'),
         _div(),
         _row(Icons.assignment_ind_outlined, 'Jabatan', _user?.position ?? '-'),
         _div(),
