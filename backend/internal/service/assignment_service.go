@@ -77,9 +77,9 @@ func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID stri
 	// 1. Cek apakah karyawan sedang cuti/izin
 	dateStr := date.Format("2006-01-02")
 	leaveFilter := bson.M{
-		"user_id": userOID,
-		"final_status": "APPROVED",
-		"tanggal_mulai": bson.M{"$lte": dateStr},
+		"user_id":         userOID,
+		"final_status":    "APPROVED",
+		"tanggal_mulai":   bson.M{"$lte": dateStr},
 		"tanggal_selesai": bson.M{"$gte": dateStr},
 	}
 	leaves, _ := s.pengajuanRepo.Find(ctx, leaveFilter)
@@ -91,9 +91,9 @@ func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID stri
 	assignFilter := bson.M{
 		"employees": bson.M{
 			"$elemMatch": bson.M{
-				"user_id": userOID,
+				"user_id":                             userOID,
 				"day_off_reward.replacement_off_date": date,
-				"day_off_reward.status": models.DayOffRewardStatusUsed,
+				"day_off_reward.status":               models.DayOffRewardStatusUsed,
 			},
 		},
 	}
@@ -216,8 +216,9 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 		return nil, err
 	}
 
-	// Broadcast if published
-	if assignment.Status == models.AssignmentStatusPublished && s.wsHub != nil {
+	// Broadcast if published or submitted
+	isActive := assignment.Status == models.AssignmentStatusPublished || assignment.Status == models.AssignmentStatusSubmitted
+	if isActive && s.wsHub != nil {
 		for _, emp := range assignment.Employees {
 			s.wsHub.BroadcastToUser(emp.UserID.Hex(), WSEventAssignmentUpdated, map[string]any{
 				"id":   assignment.ID.Hex(),
@@ -226,7 +227,7 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 		}
 	}
 
-	if assignment.Status == models.AssignmentStatusPublished {
+	if isActive {
 		s.notifyAssignmentEmployees(ctx, assignment, requestedByID, "Penugasan Baru")
 	}
 
@@ -470,12 +471,12 @@ func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string,
 		if empUser != nil {
 			empName = empUser.FullName
 		}
-		
+
 		statusText := "MENYETUJUI"
 		if req.Status == models.AssignmentEmployeeStatusRejected {
 			statusText = "MENOLAK"
 		}
-		msg := fmt.Sprintf("%s %s penugasan pada tanggal %s.", empName, statusText, assignment.Date.Format("2006-01-02"))
+		msg := fmt.Sprintf("%s telah %s penugasan pada tanggal %s.", empName, statusText, assignment.Date.Format("02-01-2006"))
 		if req.RejectionNote != "" {
 			msg += fmt.Sprintf(" Alasan: %s", req.RejectionNote)
 		}
@@ -485,7 +486,7 @@ func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string,
 			SenderID:    userID,
 			Title:       "Respon Penugasan",
 			Message:     msg,
-			Type:        "assignment",
+			Type:        "assignment_response",
 			ReferenceID: assignment.ID.Hex(),
 		})
 	}
@@ -506,6 +507,8 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 			assignment.Date = parsedDate
 		}
 	}
+
+	oldStatus := assignment.Status
 
 	if req.Reason != nil {
 		assignment.Reason = *req.Reason
@@ -563,6 +566,14 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 		return nil, err
 	}
 
+	// Trigger notification if status CHANGED to published or submitted
+	isNowActive := (assignment.Status == models.AssignmentStatusPublished || assignment.Status == models.AssignmentStatusSubmitted)
+	wasActive := (oldStatus == models.AssignmentStatusPublished || oldStatus == models.AssignmentStatusSubmitted)
+
+	if isNowActive && !wasActive {
+		s.notifyAssignmentEmployees(ctx, assignment, assignment.RequestedByID.Hex(), "Penugasan Baru")
+	}
+
 	return s.GetByID(ctx, id)
 }
 
@@ -572,9 +583,9 @@ func (s *assignmentService) notifyAssignmentEmployees(ctx context.Context, assig
 	}
 
 	for _, emp := range assignment.Employees {
-		msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+		msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("02-01-2006"), assignment.Reason)
 		if assignment.Status == models.AssignmentStatusSubmitted {
-			msg = fmt.Sprintf("Anda menerima penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+			msg = fmt.Sprintf("Anda menerima penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("02-01-2006"), assignment.Reason)
 		}
 
 		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
@@ -680,4 +691,3 @@ func (s *assignmentService) GrantDayOffReward(ctx context.Context, assignmentID 
 
 	return s.GetByID(ctx, assignmentID)
 }
-

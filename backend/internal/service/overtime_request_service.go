@@ -15,7 +15,7 @@ import (
 // wib adalah timezone WIB (UTC+7).
 var overtimeSvcWIB = time.FixedZone("WIB", 7*60*60)
 
-type OvertimeRequestService interface {
+type OvertimeRequestService interface {	
 	// Management (Manager HR / Manager Dept)
 	ListOvertimeRequests(ctx context.Context, filter bson.M) ([]models.OvertimeRequestResponse, error)
 	GetOvertimeRequestByID(ctx context.Context, id string) (*models.OvertimeRequestResponse, error)
