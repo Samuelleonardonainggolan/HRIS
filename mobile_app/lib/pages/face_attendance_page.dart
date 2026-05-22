@@ -1005,23 +1005,23 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                                       : AppTheme.errorColor,
                                 ),
                               ),
-                              if (_currentPosition != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                                Text(
-                                  'Long: ${_currentPosition!.longitude.toStringAsFixed(6)}',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                              ],
+                              // if (_currentPosition != null) ...[
+                              //   const SizedBox(height: 4),
+                              //   Text(
+                              //     'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}',
+                              //     style: TextStyle(
+                              //       fontSize: 11,
+                              //       color: Colors.grey.shade600,
+                              //     ),
+                              //   ),
+                              //   Text(
+                              //     'Long: ${_currentPosition!.longitude.toStringAsFixed(6)}',
+                              //     style: TextStyle(
+                              //       fontSize: 11,
+                              //       color: Colors.grey.shade600,
+                              //     ),
+                              //   ),
+                              // ],
                             ],
                           ),
                         ),

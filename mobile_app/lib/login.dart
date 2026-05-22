@@ -80,7 +80,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
     super.dispose();
   }
 
-  // ================= HANDLE LOGIN (logika dari code pertama) =================
+  // ================= HANDLE LOGIN =================
   Future<void> _handleLogin() async {
     FocusScope.of(context).unfocus();
     setState(() {
@@ -109,11 +109,9 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
             response.requiresFaceRegistration ?? false;
 
         if (requiresFaceRegistration) {
-          // FIRST LOGIN - ARAHKAN KE HALAMAN REGISTRASI FACE
           print('➡️ First login, redirecting to face registration...');
           _showLoginSuccess(isFaceRegistration: true, userId: response.user.id);
         } else {
-          // SUDAH PERNAH LOGIN - LANGSUNG KE HOME
           print('➡️ User already registered, redirecting to home...');
           _showLoginSuccess(isFaceRegistration: false);
         }
@@ -193,151 +191,13 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
     });
   }
 
-  void _showForgotPasswordDialog() {
-    FocusScope.of(context).unfocus();
-    setState(() {
-      _isKeyboardVisible = false;
-    });
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(30),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Colors.white, Color(0xFFF8FAFF)],
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.email_outlined,
-                    color: AppTheme.primaryColor,
-                    size: 35,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  "Lupa Kata Sandi?",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Masukkan email Anda untuk mereset kata sandi",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.textSecondary),
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  decoration: InputDecoration(
-                    hintText: "email@perusahaan.com",
-                    prefixIcon: const Icon(
-                      Icons.email_outlined,
-                      color: AppTheme.primaryColor,
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: BorderSide.none,
-                    ),
-                    filled: true,
-                    fillColor: Colors.grey.shade50,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text(
-                          "Batal",
-                          style: TextStyle(color: AppTheme.textSecondary),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Row(
-                                children: [
-                                  Icon(Icons.check_circle, color: Colors.white),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      "Link reset telah dikirim ke email Anda",
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              backgroundColor: const Color(0xFF2ECC71),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          "Kirim",
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   // ================= BUILD =================
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        resizeToAvoidBottomInset: false,
+        resizeToAvoidBottomInset: true,
         body: Container(
           width: double.infinity,
           height: double.infinity,
@@ -368,16 +228,18 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                       padding: EdgeInsets.only(
                         left: 24,
                         right: 24,
-                        top: 20,
+                        top: _isKeyboardVisible ? 20 : 40,
                         bottom: _isKeyboardVisible ? 20 : 40,
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          _buildLogoSection(),
-                          const SizedBox(height: 5),
+                          // Logo dengan ukuran lebih kecil saat keyboard muncul
+                          _buildLogoSection(isKeyboardVisible: _isKeyboardVisible),
+                          SizedBox(height: _isKeyboardVisible ? 10 : 20),
                           _buildHeaderText(),
-                          const SizedBox(height: 20),
+                          SizedBox(height: _isKeyboardVisible ? 16 : 30),
                           Form(
                             key: _formKey,
                             child: Column(
@@ -385,13 +247,13 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                                 _buildEmailField(),
                                 const SizedBox(height: 16),
                                 _buildPasswordField(),
-                                const SizedBox(height: 24),
+                                SizedBox(height: _isKeyboardVisible ? 16 : 32),
                                 _buildLoginButton(),
-                                const SizedBox(height: 20),
-                                _buildForgotPassword(),
                               ],
                             ),
                           ),
+                          // Spacer untuk memberi ruang ekstra saat scroll
+                          SizedBox(height: _isKeyboardVisible ? 30 : 50),
                         ],
                       ),
                     ),
@@ -405,18 +267,21 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
     );
   }
 
-  // ================= LOGO SECTION =================
-  Widget _buildLogoSection() {
+  // ================= LOGO SECTION (Dengan ukuran dinamis) =================
+  Widget _buildLogoSection({required bool isKeyboardVisible}) {
+    final logoHeight = isKeyboardVisible ? 100.0 : 150.0;
+    
     return TweenAnimationBuilder(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 500),
       tween: Tween<double>(begin: 0, end: 1),
       curve: Curves.elasticOut,
       builder: (context, double value, child) {
         return Transform.scale(
           scale: value,
-          child: Container(
-            height: 180,
-            width:400,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            height: logoHeight,
+            width: 400,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(25),
               child: Image.asset(
@@ -456,7 +321,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 const Text(
                   "Selamat Datang!",
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
                     letterSpacing: -0.5,
                     color: Colors.white,
@@ -466,7 +331,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                 Text(
                   "Masuk untuk melanjutkan",
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
@@ -552,7 +417,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 16,
+                    vertical: 14,
                   ),
                 ),
                 validator: (value) {
@@ -665,7 +530,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                   ),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 16,
+                    vertical: 14,
                   ),
                 ),
                 validator: (value) {
@@ -693,21 +558,37 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
       curve: Curves.easeOutBack,
       builder: (context, double value, child) {
         return Transform.scale(
-          scale: 0.8 + (0.2 * value),
+          scale: 0.95 + (0.05 * value),
           child: Opacity(
             opacity: value.clamp(0.0, 1.0),
-            child: SizedBox(
+            child: Container(
               width: double.infinity,
-              height: 56,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF135BEC), Color(0xFF3B7BF6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF135BEC).withOpacity(0.4),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppTheme.primaryColor,
-                  elevation: 8,
-                  shadowColor: AppTheme.primaryColor.withOpacity(0.3),
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(50),
+                    borderRadius: BorderRadius.circular(30),
                   ),
+                  minimumSize: const Size(double.infinity, 52),
                 ),
                 onPressed: _isLoading ? null : _handleLogin,
                 child: _isLoading
@@ -717,7 +598,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            AppTheme.primaryColor,
+                            Colors.white,
                           ),
                         ),
                       )
@@ -725,11 +606,17 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            "Login",
+                            "Masuk",
                             style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
                             ),
+                          ),
+                          SizedBox(width: 8),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 18,
                           ),
                         ],
                       ),
@@ -738,30 +625,6 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
           ),
         );
       },
-    );
-  }
-
-  // ================= FORGOT PASSWORD =================
-  Widget _buildForgotPassword() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton(
-          onPressed: _showForgotPasswordDialog,
-          style: TextButton.styleFrom(
-            padding: EdgeInsets.zero,
-            minimumSize: const Size(50, 30),
-          ),
-          child: const Text(
-            "Forgot Password?",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

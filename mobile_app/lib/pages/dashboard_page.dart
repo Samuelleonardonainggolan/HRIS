@@ -511,15 +511,15 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
                                 children: [
                                   const SizedBox(height: 16),
                                   _buildMainClockSection(),
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 16),
                                   _buildQuickStats(),
                                   const SizedBox(height: 16),
                                   _buildSlipGajiShortcut(),
-                                  const SizedBox(height: 24),
+                                  const SizedBox(height: 16),
                                   _buildTodaysActivity(),
                                   const SizedBox(height: 16),
                                   _buildWorkScheduleCard(), // ✅ BARU
-                                  const SizedBox(height: 20),
+                                  const SizedBox(height: 16),
                                   _buildLiveLocationCard(),
                                   const SizedBox(height: 80),
                                 ],
@@ -950,7 +950,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
       ),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             begin: Alignment.topLeft,

@@ -77,9 +77,9 @@ func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID stri
 	// 1. Cek apakah karyawan sedang cuti/izin
 	dateStr := date.Format("2006-01-02")
 	leaveFilter := bson.M{
-		"user_id": userOID,
-		"final_status": "APPROVED",
-		"tanggal_mulai": bson.M{"$lte": dateStr},
+		"user_id":         userOID,
+		"final_status":    "APPROVED",
+		"tanggal_mulai":   bson.M{"$lte": dateStr},
 		"tanggal_selesai": bson.M{"$gte": dateStr},
 	}
 	leaves, _ := s.pengajuanRepo.Find(ctx, leaveFilter)
@@ -91,9 +91,9 @@ func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID stri
 	assignFilter := bson.M{
 		"employees": bson.M{
 			"$elemMatch": bson.M{
-				"user_id": userOID,
+				"user_id":                             userOID,
 				"day_off_reward.replacement_off_date": date,
-				"day_off_reward.status": models.DayOffRewardStatusUsed,
+				"day_off_reward.status":               models.DayOffRewardStatusUsed,
 			},
 		},
 	}
@@ -470,7 +470,7 @@ func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string,
 		if empUser != nil {
 			empName = empUser.FullName
 		}
-		
+
 		statusText := "MENYETUJUI"
 		if req.Status == models.AssignmentEmployeeStatusRejected {
 			statusText = "MENOLAK"
@@ -680,4 +680,3 @@ func (s *assignmentService) GrantDayOffReward(ctx context.Context, assignmentID 
 
 	return s.GetByID(ctx, assignmentID)
 }
-

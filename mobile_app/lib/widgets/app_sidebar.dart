@@ -288,7 +288,7 @@ class AppSidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'HRIS Mobile v1.4.0',
+                      'HRIS Labersa',
                       style: TextStyle(
                         fontSize: 11,
                         color: Colors.grey.shade400,

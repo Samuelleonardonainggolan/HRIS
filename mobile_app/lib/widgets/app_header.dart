@@ -178,6 +178,7 @@ class AppHeader extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(width: 10),
               // ── Profile Photo on the Right with Menu icon indicator ──
               Builder(
                 builder: (context) => GestureDetector(
