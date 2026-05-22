@@ -226,6 +226,10 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 		}
 	}
 
+	if assignment.Status == models.AssignmentStatusPublished {
+		s.notifyAssignmentEmployees(ctx, assignment, requestedByID, "Penugasan Baru")
+	}
+
 	return s.GetByID(ctx, assignment.ID.Hex())
 }
 
@@ -396,20 +400,7 @@ func (s *assignmentService) Submit(ctx context.Context, id string, requestedByID
 		})
 	}
 
-	// Kirim Notifikasi ke Karyawan yang ditugaskan
-	if s.notificationService != nil {
-		for _, emp := range assignment.Employees {
-			msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
-			_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
-				UserID:      emp.UserID.Hex(),
-				SenderID:    requestedByID,
-				Title:       "Penugasan Baru",
-				Message:     msg,
-				Type:        "assignment",
-				ReferenceID: assignment.ID.Hex(),
-			})
-		}
-	}
+	s.notifyAssignmentEmployees(ctx, assignment, requestedByID, "Penugasan Baru")
 
 	return s.GetByID(ctx, id)
 }
@@ -573,6 +564,28 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 	}
 
 	return s.GetByID(ctx, id)
+}
+
+func (s *assignmentService) notifyAssignmentEmployees(ctx context.Context, assignment *models.Assignment, senderID string, title string) {
+	if s.notificationService == nil || assignment == nil {
+		return
+	}
+
+	for _, emp := range assignment.Employees {
+		msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+		if assignment.Status == models.AssignmentStatusSubmitted {
+			msg = fmt.Sprintf("Anda menerima penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+		}
+
+		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+			UserID:      emp.UserID.Hex(),
+			SenderID:    senderID,
+			Title:       title,
+			Message:     msg,
+			Type:        "assignment",
+			ReferenceID: assignment.ID.Hex(),
+		})
+	}
 }
 
 func (s *assignmentService) Delete(ctx context.Context, id string) error {
