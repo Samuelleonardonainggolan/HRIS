@@ -468,21 +468,7 @@ class _RequestPageState extends State<RequestPage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: _kategoriColor(request.namaKategori)
-                      .withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  _kategoriIcon(request.namaKategori),
-                  color: _kategoriColor(request.namaKategori),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
+              const SizedBox.shrink(),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

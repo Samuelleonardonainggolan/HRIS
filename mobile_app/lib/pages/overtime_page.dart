@@ -624,21 +624,6 @@ class _OvertimeCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Icon kategori lembur
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF135BEC).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.work_history_rounded,
-                  color: Color(0xFF135BEC),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
               // Konten tengah
               Expanded(
                 child: Column(
@@ -706,25 +691,21 @@ class _OvertimeCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const SizedBox(height: 24),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusColor.withOpacity(0.3),
-                      ),
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      item.statusDisplay,
-                      style: TextStyle(
+                      'Lembur',
+                      style: const TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: statusColor,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF8B5CF6),
                       ),
                     ),
                   ),
@@ -1700,20 +1681,7 @@ class _AssignmentCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Icon kategori penugasan (berbeda dari lembur)
-              Container(
-                height: 44,
-                width: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.assignment_rounded,
-                  color: Color(0xFF8B5CF6),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
+              const SizedBox.shrink(),
               // Konten tengah
               Expanded(
                 child: Column(
@@ -1757,14 +1725,14 @@ class _AssignmentCard extends StatelessWidget {
                         const Icon(
                           Icons.access_time_filled_rounded,
                           size: 13,
-                          color: Color(0xFF8B5CF6),
+                          color: Color(0xFF135BEC),
                         ),
                         const SizedBox(width: 5),
                         Text(
                           '${item.startTime} - ${item.endTime}',
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF8B5CF6),
+                            color: Color(0xFF135BEC),
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -1781,28 +1749,6 @@ class _AssignmentCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusColor.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Text(
-                      item.statusDisplay,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -1822,24 +1768,6 @@ class _AssignmentCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (myEntry != null && myEntry.dayOffEligible && myEntry.dayOffStatus != 'used') ...[
-                    const SizedBox(height: 8),
-                    ElevatedButton(
-                      onPressed: onUseDayOff,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        'Klaim Libur',
-                        style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ],
