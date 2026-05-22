@@ -25,11 +25,13 @@ class _RequestPageState extends State<RequestPage> {
   bool _isLoading = true;
   User? _user;
   List<LeaveRequest> _requests = [];
-  StreamSubscription? _sseSubscription;
+  VoidCallback? _realtimeListener;
 
   @override
   void initState() {
     super.initState();
+    // Ensure SSE connection exists when this page is active.
+    SSEService().connect();
     ApiService.currentUser.addListener(_syncProfile);
     _setupSSE();
     _loadUser();
@@ -39,16 +41,19 @@ class _RequestPageState extends State<RequestPage> {
   @override
   void dispose() {
     ApiService.currentUser.removeListener(_syncProfile);
-    _sseSubscription?.cancel();
+    if (_realtimeListener != null) {
+      SSEService().refreshCounter.removeListener(_realtimeListener!);
+    }
     super.dispose();
   }
 
   void _setupSSE() {
-    _sseSubscription = SSEService().events.listen((event) {
-      if (!mounted || event.type == 'ping') return;
+    _realtimeListener = () {
+      if (!mounted) return;
       _loadUser();
       _loadRequests(silent: true);
-    });
+    };
+    SSEService().refreshCounter.addListener(_realtimeListener!);
   }
 
   void _syncProfile() {

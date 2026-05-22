@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ type PengajuanIzinCutiService interface {
 	RejectByKepalaDepartemen(ctx context.Context, id string, kepalaDepartemenUserID string, rejectionReason string) (*models.PengajuanIzinCutiApprovalResponse, error)
 	GetLeaveBalance(ctx context.Context, userID string) (*models.LeaveBalanceResponse, error)
 	SetWSHub(hub *WSHub) // inject WSHub untuk real-time broadcast
+	SetNotificationService(service NotificationService)
 }
 
 type pengajuanIzinCutiService struct {
@@ -31,6 +33,7 @@ type pengajuanIzinCutiService struct {
 	userRepo      repository.UserRepository
 	db            *mongo.Database
 	wsHub         *WSHub // untuk broadcast real-time events
+	notificationService NotificationService
 }
 
 func NewPengajuanIzinCutiService(pengajuanRepo repository.PengajuanIzinCutiRepository, userRepo repository.UserRepository, db *mongo.Database) PengajuanIzinCutiService {
@@ -40,6 +43,10 @@ func NewPengajuanIzinCutiService(pengajuanRepo repository.PengajuanIzinCutiRepos
 // SetWSHub mengatur WebSocket hub untuk broadcast real-time events.
 func (s *pengajuanIzinCutiService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *pengajuanIzinCutiService) SetNotificationService(service NotificationService) {
+	s.notificationService = service
 }
 
 func (s *pengajuanIzinCutiService) ListForManagerHR(ctx context.Context, status string, search string) ([]models.PengajuanIzinCutiApprovalResponse, error) {
@@ -237,6 +244,28 @@ func (s *pengajuanIzinCutiService) decideByKepalaDepartemen(ctx context.Context,
 		return nil, err
 	}
 
+	// Kirim Notifikasi ke Karyawan
+	if s.notificationService != nil {
+		statusText := "DISETUJUI"
+		if statusKepalaDepartemen == models.StatusRejected {
+			statusText = "DITOLAK"
+		}
+		
+		message := fmt.Sprintf("Pengajuan %s Anda telah %s oleh Kepala Departemen.", updated.TypeName, statusText)
+		if rejectionReason != "" {
+			message += fmt.Sprintf(" Alasan: %s", rejectionReason)
+		}
+		
+		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+			UserID:      updated.UserID.Hex(),
+			SenderID:    kepalaDepartemenUserID,
+			Title:       "Update Status Pengajuan",
+			Message:     message,
+			Type:        "leave_request",
+			ReferenceID: updated.ID.Hex(),
+		})
+	}
+
 	u, err := s.userRepo.FindByID(ctx, updated.UserID.Hex())
 	if err != nil {
 		resp := models.PengajuanIzinCutiApprovalResponse{Pengajuan: updated.ToResponse()}
@@ -285,6 +314,28 @@ func (s *pengajuanIzinCutiService) decideByManagerHR(ctx context.Context, id str
 	updated, err := s.pengajuanRepo.UpdateManagerHRDecision(ctx, id, managerOID, statusManagerHR, finalStatus, rejectionReason)
 	if err != nil {
 		return nil, err
+	}
+
+	// Kirim Notifikasi ke Karyawan
+	if s.notificationService != nil {
+		statusText := "DISETUJUI"
+		if statusManagerHR == models.StatusRejected {
+			statusText = "DITOLAK"
+		}
+		
+		message := fmt.Sprintf("Pengajuan %s Anda telah %s oleh Manager HR.", updated.TypeName, statusText)
+		if rejectionReason != "" {
+			message += fmt.Sprintf(" Alasan: %s", rejectionReason)
+		}
+		
+		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+			UserID:      updated.UserID.Hex(),
+			SenderID:    managerHRUserID,
+			Title:       "Update Status Pengajuan",
+			Message:     message,
+			Type:        "leave_request",
+			ReferenceID: updated.ID.Hex(),
+		})
 	}
 
 	if strings.ToUpper(updated.FinalStatus) == models.StatusApproved && !updated.UserID.IsZero() {

@@ -200,10 +200,9 @@ class _HistoryPageState extends State<HistoryPage> {
             (e) => e?.userId == ApiService.currentUser.value?.id,
             orElse: () => null,
           );
-          String? rewardText = myEntry?.reward?.rewardTypeDisplay;
-          if (myEntry?.reward?.rewardDate != null) {
-            final dStr = DateFormat('dd/MM', 'id').format(myEntry!.reward!.rewardDate!);
-            rewardText = '$rewardText ($dStr)';
+          String? rewardText;
+          if (myEntry?.reward?.rewardType == 'uang') {
+            rewardText = myEntry?.reward?.rewardTypeDisplay;
           }
 
           final rec = AttendanceRecord.fromOvertime(
@@ -213,10 +212,50 @@ class _HistoryPageState extends State<HistoryPage> {
             endTime: o.endTime,
             reason: o.reason,
             overtimeHours: o.getDurationHours(),
-            summary: null, // Removed approval summary as requested
+            summary: null,
             rewardInfo: rewardText,
           );
           merged.add(rec);
+
+          // Jika ada reward pengurangan jam kerja (time_off), inject info ke
+          // tanggal penggunaannya agar karyawan tahu mengapa jam kerja dipercepat
+          if (myEntry?.reward?.rewardType == 'time_off' &&
+              myEntry?.reward?.rewardDate != null) {
+            final rewardDate = myEntry!.reward!.rewardDate!;
+            if (rewardDate.month == _selectedMonth.month &&
+                rewardDate.year == _selectedMonth.year) {
+              final rewardKey = _key(rewardDate);
+              final hours = o.getDurationHours();
+              final optionLabel = myEntry.reward!.rewardOption == 'early_out'
+                  ? 'Pulang Cepat'
+                  : 'Masuk Terlambat';
+              final infoText =
+                  '$optionLabel ${hours.toStringAsFixed(1)} jam (Reward Lembur)';
+
+              // Cari record absensi yang sudah ada untuk tanggal itu dan inject
+              final idx = merged.indexWhere(
+                  (r) => !r.isLeaveRecord && _key(r.date) == rewardKey);
+              if (idx != -1) {
+                final existing = merged[idx];
+                // Buat ulang record dengan rewardInfo
+                merged[idx] = AttendanceRecord(
+                  id: existing.id,
+                  date: existing.date,
+                  clockIn: existing.clockIn,
+                  clockOut: existing.clockOut,
+                  status: existing.status,
+                  workHours: existing.workHours,
+                  overtimeHours: existing.overtimeHours,
+                  faceSimilarity: existing.faceSimilarity,
+                  shiftName: existing.shiftName,
+                  location: existing.location,
+                  breakStart: existing.breakStart,
+                  breakEnd: existing.breakEnd,
+                  rewardInfo: infoText,
+                );
+              }
+            }
+          }
         }
       }
 
@@ -1104,6 +1143,10 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
             ],
           ),
+          if (r.rewardInfo != null && r.rewardInfo!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildMiniInfo(Icons.stars_rounded, r.rewardInfo!, const Color(0xFFD97706)),
+          ],
         ],
       ),
     );
@@ -1336,50 +1379,83 @@ class _HistoryPageState extends State<HistoryPage> {
       }
       final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
 
+      final times = pw.Font.times();
+      final timesBold = pw.Font.timesBold();
+
+      // Load logo
+      final ByteData bytes = await rootBundle.load('assets/Picture1.jpg');
+      final Uint8List list = bytes.buffer.asUint8List();
+      final pw.MemoryImage logoImage = pw.MemoryImage(list);
+
       pdf.addPage(
         pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(32),
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(20),
           header: (context) => pw.Column(
             children: [
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              pw.Stack(
+                alignment: pw.Alignment.center,
                 children: [
+                  pw.Align(
+                    alignment: pw.Alignment.centerLeft,
+                    child: pw.Image(logoImage, width: 60, height: 60),
+                  ),
                   pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    crossAxisAlignment: pw.CrossAxisAlignment.center,
                     children: [
                       pw.Text(
-                        'LAPORAN AKTIVITAS KARYAWAN',
+                        'PT. Labersa Hutahaean',
                         style: pw.TextStyle(
-                          fontSize: 16,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.blue900,
+                          font: timesBold,
+                          fontSize: 18,
+                          color: PdfColor.fromInt(0xFF988300), // Golden
                         ),
                       ),
                       pw.SizedBox(height: 2),
-                      pw.Text('Periode: $monthName', style: const pw.TextStyle(fontSize: 10)),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(userName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10)),
-                      pw.Text('NIK: $payroll', style: const pw.TextStyle(fontSize: 9)),
+                      pw.Text(
+                        'HEAD OFFICE - WILAYAH TOBA',
+                        style: pw.TextStyle(
+                          font: timesBold,
+                          fontSize: 14,
+                          color: PdfColor.fromInt(0xFF006400), // Dark Green
+                        ),
+                      ),
                     ],
                   ),
                 ],
               ),
+              pw.SizedBox(height: 5),
+              pw.Divider(thickness: 0.5, color: PdfColors.black),
               pw.SizedBox(height: 10),
-              pw.Divider(thickness: 0.5, color: PdfColors.grey300),
-              pw.SizedBox(height: 10),
+              pw.Text(
+                'LAPORAN BULANAN',
+                style: pw.TextStyle(
+                  font: timesBold,
+                  fontSize: 14,
+                  color: PdfColors.black,
+                ),
+                textAlign: pw.TextAlign.center,
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                'Periode: $monthName',
+                style: pw.TextStyle(font: times, fontSize: 11),
+              ),
+              pw.SizedBox(height: 15),
             ],
           ),
-          footer: (context) => pw.Align(
-            alignment: pw.Alignment.centerRight,
-            child: pw.Text(
-              'Halaman ${context.pageNumber} dari ${context.pagesCount}',
-              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600),
-            ),
+          footer: (context) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Dicetak pada: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+                style: pw.TextStyle(font: times, fontSize: 8, color: PdfColors.grey600),
+              ),
+              pw.Text(
+                'Halaman ${context.pageNumber} dari ${context.pagesCount}',
+                style: pw.TextStyle(font: times, fontSize: 8, color: PdfColors.grey600),
+              ),
+            ],
           ),
           build: (context) => [
             for (final dateStr in sortedKeys) ...[
@@ -1392,7 +1468,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 ),
                 child: pw.Text(
                   DateFormat('EEEE, dd MMMM yyyy', 'id').format(DateTime.parse(dateStr)),
-                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.blue900),
+                  style: pw.TextStyle(font: timesBold, fontSize: 10, color: PdfColors.blue900),
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -1407,23 +1483,29 @@ class _HistoryPageState extends State<HistoryPage> {
                 border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
                 children: [
                   pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.blue50),
+                    decoration: const pw.BoxDecoration(color: PdfColors.grey100),
                     children: [
-                      _pdfCell('Jenis Aktivitas', isHeader: true),
-                      _pdfCell('Masuk', isHeader: true),
-                      _pdfCell('Pulang', isHeader: true),
-                      _pdfCell('Jam', isHeader: true),
-                      _pdfCell('Keterangan', isHeader: true),
+                      _pdfCell('Jenis Aktivitas', isHeader: true, font: timesBold),
+                      _pdfCell('Masuk', isHeader: true, font: timesBold),
+                      _pdfCell('Pulang', isHeader: true, font: timesBold),
+                      _pdfCell('Jam', isHeader: true, font: timesBold),
+                      _pdfCell('Keterangan', isHeader: true, font: timesBold),
                     ],
                   ),
                   for (final r in grouped[dateStr]!)
                     pw.TableRow(
                       children: [
-                        _pdfCell(r.status),
-                        _pdfCell(r.clockIn.isEmpty ? '-' : r.clockIn),
-                        _pdfCell(r.clockOut.isEmpty || r.clockOut == '--:--' ? '-' : r.clockOut),
-                        _pdfCell('${(r.status == 'Lembur' ? r.overtimeHours : r.workHours).toStringAsFixed(1)} h'),
-                        _pdfCell(r.leaveReason ?? r.rewardInfo ?? r.location ?? '-'),
+                        _pdfCell(r.status, font: times),
+                        _pdfCell(r.clockIn.isEmpty ? '-' : r.clockIn, font: times),
+                        _pdfCell(r.clockOut.isEmpty || r.clockOut == '--:--' ? '-' : r.clockOut, font: times),
+                        _pdfCell('${(r.status == 'Lembur' ? r.overtimeHours : r.workHours).toStringAsFixed(1)} h', font: times),
+                        _pdfCell(() {
+                          List<String> parts = [];
+                          if (r.leaveReason != null && r.leaveReason!.isNotEmpty) parts.add(r.leaveReason!);
+                          if (r.rewardInfo != null && r.rewardInfo!.isNotEmpty) parts.add(r.rewardInfo!);
+                          if (parts.isEmpty && r.location.isNotEmpty) parts.add(r.location);
+                          return parts.isEmpty ? '-' : parts.join(' • ');
+                        }(), font: times),
                       ],
                     ),
                 ],
@@ -1434,7 +1516,7 @@ class _HistoryPageState extends State<HistoryPage> {
             pw.SizedBox(height: 20),
             pw.Divider(thickness: 1, color: PdfColors.blue900),
             pw.SizedBox(height: 10),
-            pw.Text('RINGKASAN BULANAN', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11, color: PdfColors.blue900)),
+            pw.Text('RINGKASAN BULANAN', style: pw.TextStyle(font: timesBold, fontSize: 11, color: PdfColors.blue900)),
             pw.SizedBox(height: 8),
             pw.Table(
               columnWidths: const {
@@ -1448,49 +1530,24 @@ class _HistoryPageState extends State<HistoryPage> {
               border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.5),
               children: [
                 pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.blue900),
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                   children: [
-                    _pdfCell('Ontime', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
-                    _pdfCell('Telat', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
-                    _pdfCell('Izin', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
-                    _pdfCell('Cuti', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
-                    _pdfCell('Lembur', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
-                    _pdfCell('Tugas', isHeader: true, color: PdfColors.white, align: pw.Alignment.center),
+                    _pdfCell('Ontime', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell('Telat', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell('Izin', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell('Cuti', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell('Lembur', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell('Tugas', isHeader: true, font: timesBold, align: pw.Alignment.center),
                   ],
                 ),
                 pw.TableRow(
                   children: [
-                    _pdfCell('$_cntHadir', align: pw.Alignment.center),
-                    _pdfCell('$_cntLate', align: pw.Alignment.center),
-                    _pdfCell('$_cntIzin', align: pw.Alignment.center),
-                    _pdfCell('$_cntCuti', align: pw.Alignment.center),
-                    _pdfCell('$_cntLembur', align: pw.Alignment.center),
-                    _pdfCell('$_cntPenugasan', align: pw.Alignment.center),
-                  ],
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 30),
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Dicetak: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-                    pw.Text('Dokumen ini dihasilkan secara otomatis oleh Sistem HRIS.', style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600)),
-                  ],
-                ),
-                pw.Column(
-                  children: [
-                    pw.SizedBox(height: 40),
-                    pw.Container(
-                      width: 130,
-                      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 0.5))),
-                    ),
-                    pw.SizedBox(height: 4),
-                    pw.Text(userName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
-                    pw.Text('NIK: $payroll', style: const pw.TextStyle(fontSize: 7)),
+                    _pdfCell('$_cntHadir', font: times, align: pw.Alignment.center),
+                    _pdfCell('$_cntLate', font: times, align: pw.Alignment.center),
+                    _pdfCell('$_cntIzin', font: times, align: pw.Alignment.center),
+                    _pdfCell('$_cntCuti', font: times, align: pw.Alignment.center),
+                    _pdfCell('$_cntLembur', font: times, align: pw.Alignment.center),
+                    _pdfCell('$_cntPenugasan', font: times, align: pw.Alignment.center),
                   ],
                 ),
               ],
@@ -1508,13 +1565,14 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  pw.Widget _pdfCell(String text, {bool isHeader = false, PdfColor? color, pw.Alignment align = pw.Alignment.centerLeft}) {
+  pw.Widget _pdfCell(String text, {bool isHeader = false, PdfColor? color, pw.Alignment align = pw.Alignment.centerLeft, pw.Font? font}) {
     return pw.Container(
       alignment: align,
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       child: pw.Text(
         text,
         style: pw.TextStyle(
+          font: font,
           fontSize: 8,
           fontWeight: isHeader ? pw.FontWeight.bold : pw.FontWeight.normal,
           color: color ?? PdfColors.black,

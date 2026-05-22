@@ -10,6 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // DBWatcher listens to MongoDB Change Streams and broadcasts events in real-time.
@@ -47,7 +48,8 @@ func (w *DBWatcher) watchCollection(ctx context.Context, collectionName string, 
 		default:
 			// Open a change stream on the collection
 			pipeline := mongo.Pipeline{}
-			stream, err := collection.Watch(ctx, pipeline)
+			streamOpts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+			stream, err := collection.Watch(ctx, pipeline, streamOpts)
 			if err != nil {
 				log.Printf("[DB Watcher] Error starting change stream for %s: %v. Retrying in 5 seconds...", collectionName, err)
 				time.Sleep(5 * time.Second)
@@ -68,7 +70,7 @@ func (w *DBWatcher) watchCollection(ctx context.Context, collectionName string, 
 
 				// Extract full document if present
 				fullDoc, ok := changeDoc["fullDocument"].(bson.M)
-				
+
 				// 1. Silent reload event for ALL active connections
 				// This forces immediate, silent refresh in the Flutter UI for any user viewing the page.
 				w.wsHub.BroadcastToAll(eventType, map[string]any{
@@ -76,7 +78,7 @@ func (w *DBWatcher) watchCollection(ctx context.Context, collectionName string, 
 					"silent":    true,
 					"timestamp": time.Now().Unix(),
 				})
-				
+
 				// Also trigger stats refresh in the dashboard
 				w.wsHub.BroadcastToAll(WSEventStatsUpdated, map[string]any{
 					"reason": "db_change",

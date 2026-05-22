@@ -8,6 +8,7 @@ import (
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
 	"github.com/andikatampubolon10/hris-backend/pkg/models"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
@@ -30,14 +31,17 @@ type AssignmentService interface {
 	UseReplacementDayOff(ctx context.Context, assignmentID string, userID string, replacementDate time.Time) (*models.AssignmentResponse, error)
 	GrantDayOffReward(ctx context.Context, assignmentID string, userID string) (*models.AssignmentResponse, error)
 	SetWSHub(hub *WSHub)
+	SetNotificationService(service NotificationService)
 }
 
 type assignmentService struct {
-	assignmentRepo repository.AssignmentRepository
-	userRepo       repository.UserRepository
-	jamKerjaRepo   repository.JamKerjaRepository
-	departmentRepo repository.DepartmentRepository
-	wsHub          *WSHub
+	assignmentRepo      repository.AssignmentRepository
+	userRepo            repository.UserRepository
+	jamKerjaRepo        repository.JamKerjaRepository
+	departmentRepo      repository.DepartmentRepository
+	pengajuanRepo       repository.PengajuanIzinCutiRepository
+	wsHub               *WSHub
+	notificationService NotificationService
 }
 
 func NewAssignmentService(
@@ -45,12 +49,14 @@ func NewAssignmentService(
 	userRepo repository.UserRepository,
 	jamKerjaRepo repository.JamKerjaRepository,
 	departmentRepo repository.DepartmentRepository,
+	pengajuanRepo repository.PengajuanIzinCutiRepository,
 ) AssignmentService {
 	return &assignmentService{
 		assignmentRepo: assignmentRepo,
 		userRepo:       userRepo,
 		jamKerjaRepo:   jamKerjaRepo,
 		departmentRepo: departmentRepo,
+		pengajuanRepo:  pengajuanRepo,
 	}
 }
 
@@ -58,7 +64,44 @@ func (s *assignmentService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
 }
 
+func (s *assignmentService) SetNotificationService(service NotificationService) {
+	s.notificationService = service
+}
+
 func (s *assignmentService) GetOriginalSchedule(ctx context.Context, userID string, date time.Time) (models.AssignmentOriginalShift, error) {
+	userOID, err := primitive.ObjectIDFromHex(userID)
+	if err != nil {
+		return models.AssignmentOriginalShift{}, errors.New("user_id tidak valid")
+	}
+
+	// 1. Cek apakah karyawan sedang cuti/izin
+	dateStr := date.Format("2006-01-02")
+	leaveFilter := bson.M{
+		"user_id": userOID,
+		"final_status": "APPROVED",
+		"tanggal_mulai": bson.M{"$lte": dateStr},
+		"tanggal_selesai": bson.M{"$gte": dateStr},
+	}
+	leaves, _ := s.pengajuanRepo.Find(ctx, leaveFilter)
+	if len(leaves) > 0 {
+		return models.AssignmentOriginalShift{}, fmt.Errorf("Karyawan sedang cuti / izin pada tanggal tersebut")
+	}
+
+	// 2. Cek apakah karyawan sedang menggunakan reward (hari libur pengganti)
+	assignFilter := bson.M{
+		"employees": bson.M{
+			"$elemMatch": bson.M{
+				"user_id": userOID,
+				"day_off_reward.replacement_off_date": date,
+				"day_off_reward.status": models.DayOffRewardStatusUsed,
+			},
+		},
+	}
+	assignments, _ := s.assignmentRepo.Find(ctx, assignFilter)
+	if len(assignments) > 0 {
+		return models.AssignmentOriginalShift{}, fmt.Errorf("Karyawan sedang mengambil hari libur pengganti (reward) pada tanggal tersebut")
+	}
+
 	jk, err := s.jamKerjaRepo.FindByUserID(ctx, userID)
 	if err != nil {
 		return models.AssignmentOriginalShift{}, err
@@ -353,6 +396,21 @@ func (s *assignmentService) Submit(ctx context.Context, id string, requestedByID
 		})
 	}
 
+	// Kirim Notifikasi ke Karyawan yang ditugaskan
+	if s.notificationService != nil {
+		for _, emp := range assignment.Employees {
+			msg := fmt.Sprintf("Anda mendapatkan penugasan baru pada tanggal %s. Alasan: %s", assignment.Date.Format("2006-01-02"), assignment.Reason)
+			_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+				UserID:      emp.UserID.Hex(),
+				SenderID:    requestedByID,
+				Title:       "Penugasan Baru",
+				Message:     msg,
+				Type:        "assignment",
+				ReferenceID: assignment.ID.Hex(),
+			})
+		}
+	}
+
 	return s.GetByID(ctx, id)
 }
 
@@ -411,6 +469,33 @@ func (s *assignmentService) UpdateEmployeeStatus(ctx context.Context, id string,
 			"user_id": userID,
 			"status":  req.Status,
 			"type":    "response",
+		})
+	}
+
+	// Kirim Notifikasi ke Manager yang memberikan tugas
+	if s.notificationService != nil {
+		empUser, _ := s.userRepo.FindByID(ctx, userID)
+		empName := "Seorang Karyawan"
+		if empUser != nil {
+			empName = empUser.FullName
+		}
+		
+		statusText := "MENYETUJUI"
+		if req.Status == models.AssignmentEmployeeStatusRejected {
+			statusText = "MENOLAK"
+		}
+		msg := fmt.Sprintf("%s %s penugasan pada tanggal %s.", empName, statusText, assignment.Date.Format("2006-01-02"))
+		if req.RejectionNote != "" {
+			msg += fmt.Sprintf(" Alasan: %s", req.RejectionNote)
+		}
+
+		_, _ = s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+			UserID:      assignment.RequestedByID.Hex(),
+			SenderID:    userID,
+			Title:       "Respon Penugasan",
+			Message:     msg,
+			Type:        "assignment",
+			ReferenceID: assignment.ID.Hex(),
 		})
 	}
 

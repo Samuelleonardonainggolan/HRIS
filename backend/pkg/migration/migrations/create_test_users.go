@@ -175,7 +175,7 @@ func CreateTestUsers() (int, string, string, func(*mongo.Database) error, func(*
 					PositionName:     itStaffPosition.Name,
 					Phone:            "+6281234567892",
 					Address:          "Jl. Thamrin No. 78, Jakarta Pusat",
-					Role:             models.RoleAdminDepartemen,
+					Role:             models.RoleAccountant,
 					IsActive:         true,
 					CreatedAt:        time.Now(),
 					UpdatedAt:        time.Now(),

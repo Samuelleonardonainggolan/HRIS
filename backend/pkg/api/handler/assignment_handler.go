@@ -109,7 +109,8 @@ func (h *AssignmentHandler) PreviewOriginalSchedule(c *gin.Context) {
 
 	orig, err := h.service.GetOriginalSchedule(c.Request.Context(), userID, parsedDate)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse("Gagal mendapatkan jadwal asli", err.Error()))
+		// Pass the exact error message as `message` so the frontend can display it
+		c.JSON(http.StatusUnprocessableEntity, models.ErrorResponse(err.Error(), ""))
 		return
 	}
 

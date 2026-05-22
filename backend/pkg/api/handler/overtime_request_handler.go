@@ -126,7 +126,7 @@ func (h *OvertimeRequestHandler) ClaimReward(c *gin.Context) {
 		return
 	}
 
-	err := h.service.ClaimReward(c.Request.Context(), id, userID, req.RewardType, req.RewardDate)
+	err := h.service.ClaimReward(c.Request.Context(), id, userID, req.RewardType, req.RewardOption, req.RewardDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Gagal mengklaim reward", "error": err.Error()})
 		return

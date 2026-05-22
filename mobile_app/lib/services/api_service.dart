@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.73:8080/api/v1';
+  static const String baseUrl = 'http://10.20.72.104:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -161,6 +161,87 @@ class ApiService {
     } finally {
       await clearTokens();
       currentUser.value = null;
+    }
+  }
+
+  static Future<int> getUnreadNotificationCount() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/notifications/unread-count'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final unread = data['data']?['unread_count'];
+        if (unread is int) return unread;
+        if (unread is num) return unread.toInt();
+      }
+
+      return 0;
+    } catch (e) {
+      print('[API] getUnreadNotificationCount error: $e');
+      return 0;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>> getNotifications({int limit = 30}) async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/notifications?limit=$limit'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final items = data['data'];
+        if (items is List) {
+          return items.cast<Map<String, dynamic>>();
+        }
+      }
+
+      return [];
+    } catch (e) {
+      print('[API] getNotifications error: $e');
+      return [];
+    }
+  }
+
+  static Future<void> markNotificationAsRead(String id) async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      await http
+          .patch(Uri.parse('$baseUrl/notifications/$id/read'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+    } catch (e) {
+      print('[API] markNotificationAsRead error: $e');
+    }
+  }
+
+  static Future<void> markAllNotificationsAsRead() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      await http
+          .post(Uri.parse('$baseUrl/notifications/read-all'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+    } catch (e) {
+      print('[API] markAllNotificationsAsRead error: $e');
     }
   }
 
@@ -1024,6 +1105,32 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> getMyPayroll(int month, int year) async {
+    try {
+      if (await isTokenExpired()) await refreshToken();
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/my-payroll?month=$month&year=$year'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getMyPayroll status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return (data['data'] as Map<String, dynamic>?) ?? {};
+      } else {
+        throw Exception('Slip gaji tidak ditemukan');
+      }
+    } catch (e) {
+      print('[API] getMyPayroll error: $e');
+      rethrow;
+    }
+  }
+
   // ─── Face Registration ──────────────────────────────────────────────────────
 
   static Future<void> registerFace({
@@ -1810,8 +1917,17 @@ class ApiService {
   }) async {
     try {
       final all = await getAssignedAssignments();
+      final userId = currentUser.value?.id ?? await getUserId();
       final filtered = all.where((a) {
-        return a.date.month == month && a.date.year == year && a.isPublished;
+        final inMonth = a.date.month == month && a.date.year == year;
+        if (!inMonth) return false;
+
+        if (a.status != 'submitted' && a.status != 'published') return false;
+
+        if (userId == null || userId.isEmpty) return false;
+        final myEntry = a.employees.where((e) => e.userId == userId).toList();
+        if (myEntry.isEmpty) return false;
+        return myEntry.any((e) => e.employeeStatus == 'agreed');
       }).toList();
       return filtered;
     } catch (e) {

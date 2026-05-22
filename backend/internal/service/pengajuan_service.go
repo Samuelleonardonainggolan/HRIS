@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,7 @@ type PengajuanService interface {
 	CancelPengajuan(ctx context.Context, userID, pengajuanID string) error
 	UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error)
 	SetWSHub(hub *WSHub) // inject WSHub untuk real-time broadcast
+	SetNotificationService(service NotificationService)
 }
 
 // CreatePengajuanRequest adalah request untuk membuat pengajuan baru.
@@ -106,11 +108,16 @@ type pengajuanServiceImpl struct {
 	documentUploadDir string
 	supabaseUploader  *storage.SupabaseUploader
 	wsHub             *WSHub // untuk broadcast real-time events
+	notificationService NotificationService
 }
 
 // SetWSHub mengatur WebSocket hub untuk broadcast real-time events.
 func (s *pengajuanServiceImpl) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+func (s *pengajuanServiceImpl) SetNotificationService(service NotificationService) {
+	s.notificationService = service
 }
 
 func (s *pengajuanServiceImpl) UploadDocument(ctx context.Context, fileBytes []byte, originalFilename string) (string, error) {
@@ -301,6 +308,54 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 	}
 
 	resp := pengajuan.ToResponse()
+
+	// Kirim Notifikasi ke Kepala Departemen & Manager HR
+	if s.notificationService != nil {
+		message := fmt.Sprintf("%s mengajukan %s mulai %s hingga %s (%d hari).", 
+			requester.FullName, 
+			tipe.TypeName, 
+			req.TanggalMulai, 
+			req.TanggalSelesai, 
+			req.TotalHari,
+		)
+		
+		log.Printf("[Notification] Attempting to notify Dept Manager: %s", kepalaDepartemenID.Hex())
+		// 1. Notifikasi untuk Kepala Departemen
+		if !kepalaDepartemenID.IsZero() {
+			_, errNotif := s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+				UserID:      kepalaDepartemenID.Hex(),
+				SenderID:    requester.ID.Hex(),
+				Title:       "Pengajuan Cuti / Izin Baru",
+				Message:     message,
+				Type:        "leave_request",
+				ReferenceID: pengajuan.ID.Hex(),
+			})
+			if errNotif != nil {
+				log.Printf("[Notification Error] Failed to notify Kepala Departemen: %v\n", errNotif)
+			} else {
+				log.Printf("[Notification Success] Notified Kepala Departemen: %s\n", kepalaDepartemenID.Hex())
+			}
+		}
+		
+		// 2. Notifikasi untuk Manager HR (jika orangnya berbeda dengan Kepala Departemen)
+		if !managerHRID.IsZero() && managerHRID != kepalaDepartemenID {
+			_, errNotif := s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
+				UserID:      managerHRID.Hex(),
+				SenderID:    requester.ID.Hex(),
+				Title:       "Pengajuan Cuti / Izin Baru",
+				Message:     message,
+				Type:        "leave_request",
+				ReferenceID: pengajuan.ID.Hex(),
+			})
+			if errNotif != nil {
+				log.Printf("[Notification Error] Failed to notify Manager HR: %v\n", errNotif)
+			} else {
+				log.Printf("[Notification Success] Notified Manager HR: %s\n", managerHRID.Hex())
+			}
+		}
+	} else {
+		log.Println("[Notification Error] s.notificationService is nil in pengajuanService!")
+	}
 
 	// Broadcast real-time event
 	if s.wsHub != nil {

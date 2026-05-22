@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { generateLastMonths, Period } from "@/lib/utils/date-periods";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -8,6 +9,8 @@ import {
   Search,
   ChevronDown,
   CalendarDays,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,30 +23,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-type PayrollStatus = "DRAFT" | "APPROVED" | "PENDING" | "PAID";
+import { payrollApi, PayrollRecord, PayrollStatus } from "@/lib/api/payroll";
+import { toast } from "react-hot-toast";
 
 type Period = {
   label: string;
-  month: number;
-  year: number;
-};
-
-type Row = {
-  id: string;
-  initials: string;
-  name: string;
-  position: string;
-  department: string;
-
-  basicSalary: number;
-  bonus10: number;
-  overtime: number;
-  deduction: number;
-  netTotal: number;
-
-  status: PayrollStatus;
-
   month: number;
   year: number;
 };
@@ -52,8 +36,9 @@ function formatIDR(n: number) {
   return `Rp ${n.toLocaleString("id-ID")}`;
 }
 
-function StatusBadge({ status }: { status: PayrollStatus }) {
-  switch (status) {
+function StatusBadge({ status }: { status: string }) {
+  const s = status.toUpperCase();
+  switch (s) {
     case "DRAFT":
       return (
         <Badge className="rounded-full bg-gray-100 text-gray-800 border border-gray-200">
@@ -78,8 +63,14 @@ function StatusBadge({ status }: { status: PayrollStatus }) {
           PAID
         </Badge>
       );
+    case "NOT_GENERATED":
+      return (
+        <Badge className="rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+          BELUM DIGENERATE
+        </Badge>
+      );
     default:
-      return <Badge className="rounded-full">UNKNOWN</Badge>;
+      return <Badge className="rounded-full">{s}</Badge>;
   }
 }
 
@@ -88,13 +79,12 @@ export default function PayrollPage() {
 
   const [q, setQ] = useState("");
   const [dept, setDept] = useState<string>("Semua Departemen");
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [rows, setRows] = useState<PayrollRecord[]>([]);
 
-  const periods: Period[] = [
-    { label: "April 2024", month: 4, year: 2024 },
-    { label: "May 2024", month: 5, year: 2024 },
-    { label: "June 2024", month: 6, year: 2024 },
-  ];
-  const [period, setPeriod] = useState<Period>(periods[2]);
+  const periods = useMemo(() => generateLastMonths(12, true), []);
+  const [period, setPeriod] = useState<Period>(periods[1]);
 
   const departments = [
     "Semua Departemen",
@@ -105,59 +95,44 @@ export default function PayrollPage() {
     "HR",
   ];
 
-  const rows: Row[] = useMemo(
-    () => [
-      {
-        id: "1",
-        initials: "AS",
-        name: "Agus Saputra",
-        position: "IT Developer",
-        department: "IT",
-        basicSalary: 5_000_000,
-        bonus10: 1_000_000,
-        overtime: 350_000,
-        deduction: 100_000,
-        netTotal: 6_250_000,
-        status: "PENDING",
-        month: 6,
-        year: 2024,
-      },
-      {
-        id: "2",
-        initials: "DW",
-        name: "Dewi Wijaya",
-        position: "Sales Manager",
-        department: "Food & Beverage",
-        basicSalary: 7_500_000,
-        bonus10: 2_000_000,
-        overtime: 0,
-        deduction: 0,
-        netTotal: 9_500_000,
-        status: "APPROVED",
-        month: 6,
-        year: 2024,
-      },
-      {
-        id: "3",
-        initials: "BS",
-        name: "Bambang Susanto",
-        position: "HR Staff",
-        department: "HR",
-        basicSalary: 4_500_000,
-        bonus10: 0,
-        overtime: 150_000,
-        deduction: 50_000,
-        netTotal: 4_600_000,
-        status: "DRAFT",
-        month: 5,
-        year: 2024,
-      },
-    ],
-    []
-  );
+  const fetchPayrolls = async () => {
+    setLoading(true);
+    try {
+      const data = await payrollApi.getPayrolls({
+        month: period.month,
+        year: period.year,
+      });
+      setRows(data);
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal mengambil data payroll");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPayrolls();
+  }, [period]);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      await payrollApi.generatePayrolls(period.month, period.year);
+      toast.success("Payroll berhasil digenerate");
+      fetchPayrolls();
+    } catch (error) {
+      console.error(error);
+      toast.error("Gagal generate payroll");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
+
+    if (!rows) return [];
 
     return rows.filter((r) => {
       const matchQ =
@@ -168,11 +143,9 @@ export default function PayrollPage() {
 
       const matchDept = dept === "Semua Departemen" || r.department === dept;
 
-      const matchPeriod = r.month === period.month && r.year === period.year;
-
-      return matchQ && matchDept && matchPeriod;
+      return matchQ && matchDept;
     });
-  }, [rows, q, dept, period]);
+  }, [rows, q, dept]);
 
   return (
     <div className="p-6 space-y-6">
@@ -230,6 +203,20 @@ export default function PayrollPage() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <Button 
+                className="rounded-xl gap-2" 
+                variant="outline"
+                onClick={handleGenerate}
+                disabled={generating || period.value === "all"}
+              >
+                {generating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Generate Payroll
+              </Button>
 
               <Button className="rounded-xl gap-2" variant="outline">
                 <Download className="h-4 w-4" />
@@ -327,26 +314,37 @@ export default function PayrollPage() {
                     </td>
 
                     <td className="px-6 py-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-xl"
-                        onClick={() => router.push(`/dashboard/accountant/payroll/${r.id}`)}
-                        aria-label="Lihat detail gaji"
-                      >
-                        <Eye className="h-4 w-4 text-blue-600" />
-                      </Button>
+                      {r.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-xl"
+                          onClick={() => router.push(`/dashboard/accountant/payroll/${r.id}`)}
+                          aria-label="Lihat detail gaji"
+                        >
+                          <Eye className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
 
-                {filtered.length === 0 && (
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Memuat data...
+                      </div>
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
                       Tidak ada data payroll untuk periode <b>{period.label}</b>.
                     </td>
                   </tr>
-                )}
+                ) : null}
               </tbody>
             </table>
           </div>

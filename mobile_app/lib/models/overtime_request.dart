@@ -190,6 +190,7 @@ class OvertimeEmployee {
 
 class OvertimeReward {
   final String rewardType; // money|time_off
+  final String? rewardOption; // early_out|late_in
   final String status; // none|pending|granted|used
   final DateTime? rewardDate; // Tanggal klaim reward (terutama untuk time_off)
   final DateTime? grantedAt;
@@ -197,6 +198,7 @@ class OvertimeReward {
 
   OvertimeReward({
     required this.rewardType,
+    this.rewardOption,
     required this.status,
     this.rewardDate,
     this.grantedAt,
@@ -206,6 +208,7 @@ class OvertimeReward {
   factory OvertimeReward.fromJson(Map<String, dynamic> json) {
     return OvertimeReward(
       rewardType: json['reward_type']?.toString() ?? '',
+      rewardOption: json['reward_option']?.toString(),
       status: json['status']?.toString() ?? 'none',
       rewardDate: json['reward_date'] != null
           ? DateTime.tryParse(json['reward_date'].toString())

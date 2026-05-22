@@ -32,7 +32,7 @@ func main() {
 	}
 	defer mongodb.Disconnect()
 
-	log.Println("Database connected successfully")
+	log.Println("✅ Database connected successfully")
 
 	// ==================== Run Migrations ====================
 	migrationManager := migration.NewManager(mongodb.Database)
@@ -58,14 +58,13 @@ func main() {
 	migrationManager.Register(createMigration(migrations.CreatePengajuanIzinCuti()))
 	migrationManager.Register(createMigration(migrations.CreateAttendances()))
 	migrationManager.Register(createMigration(migrations.CreateJamKerja()))
-	migrationManager.Register(createMigration(migrations.CreateAssignments()))
 
 	// Run pending migrations
 	if err := migrationManager.Up(); err != nil {
-		log.Printf("Warning: Migration error (continuing anyway): %v", err)
+		log.Printf("⚠️  Warning: Migration error (continuing anyway): %v", err)
 	}
 
-	log.Println("Migrations completed")
+	log.Println("🚀 Migrations completed")
 
 	// ==================== Initialize Repositories ====================
 	userRepo := repository.NewUserRepository(mongodb.Database)
@@ -76,12 +75,15 @@ func main() {
 	breakTimeRepo := repository.NewBreakTimeRepository(mongodb.Database)
 	geofenceRepo := repository.NewGeofenceRepository(mongodb.Database)
 	pengajuanIzinCutiRepo := repository.NewPengajuanIzinCutiRepository(mongodb.Database)
-	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // -… Dari kode kedua
+	notificationRepo := repository.NewNotificationRepository(mongodb.Database)
+	deviceTokenRepo := repository.NewDeviceTokenRepository(mongodb.Database)
+	payrollRepo := repository.NewPayrollRepository(mongodb.Database)
+	jamKerjaRepo := repository.NewJamKerjaRepository(mongodb.Database) // ✅ Dari kode kedua
 	employeeBasicSalaryRepo := repository.NewEmployeeBasicSalaryRepository(mongodb.Database)
-	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // -… Dari kode kedua
+	overtimeRequestRepo := repository.NewOvertimeRequestRepository(mongodb.Database) // ✅ Dari kode kedua
 	assignmentRepo := repository.NewAssignmentRepository(mongodb.Database)
 
-	log.Println("ðŸ“¦ Repositories initialized")
+	log.Println("📦 Repositories initialized")
 
 	// ==================== Initialize External Clients ====================
 	timeout, err := time.ParseDuration(cfg.FaceHTTPTimeout)
@@ -90,9 +92,10 @@ func main() {
 	}
 	faceClient := faceclient.New(cfg.FaceServiceURL, cfg.FaceAPIKey, timeout)
 
-	log.Println("External clients initialized")
+	log.Println("🔌 External clients initialized")
 
 	// ==================== Initialize Services ====================
+	jwtExpiryStr := cfg.JWTExpiry
 	// Initialize Supabase uploader if configured
 	var supabaseUploader *storage.SupabaseUploader
 	storageKey := cfg.SupabaseServiceRoleKey
@@ -102,9 +105,9 @@ func main() {
 
 	if cfg.SupabaseURL != "" && storageKey != "" {
 		supabaseUploader = storage.NewSupabaseUploader(cfg.SupabaseURL, storageKey, cfg.SupabaseBucket)
-		log.Println("Supabase uploader initialized")
+		log.Println("☁️  Supabase uploader initialized")
 	} else {
-		log.Println("Supabase not configured, using local file storage")
+		log.Println("⚠️  Supabase not configured, using local file storage")
 	}
 
 	authService := service.NewAuthService(
@@ -114,7 +117,7 @@ func main() {
 		cfg.PublicBaseURL,
 		filepath.Join("uploads", "profile"),
 		cfg.JWTSecret,
-		cfg.JWTExpiry,
+		jwtExpiryStr,
 	)
 	userService := service.NewUserService(userRepo, departmentRepo, positionRepo)
 	departmentService := service.NewDepartmentService(departmentRepo, userRepo)
@@ -123,12 +126,12 @@ func main() {
 	// FaceService dengan parameter lengkap (dari kode kedua)
 	faceService := service.NewFaceService(userRepo, faceEmbeddingRepo, faceClient, cfg.PublicBaseURL, cfg.FaceImageDir, supabaseUploader)
 
-	// -… AttendanceService dengan jamKerjaRepo DAN mongodb.Database (gabungan kedua kode)
+	// ✅ AttendanceService dengan jamKerjaRepo DAN mongodb.Database (gabungan kedua kode)
 	// Kode pertama menggunakan mongodb.Database, kode kedua tidak
 	// Kita gunakan versi dengan mongodb.Database (lebih lengkap)
 	attendanceService := service.NewAttendanceService(mongodb.Database, attendanceRepo, breakTimeRepo, userRepo, faceEmbeddingRepo, jamKerjaRepo, geofenceRepo, overtimeRequestRepo, faceClient)
 
-	// PengajuanService dengan konfigurasi lengkap (dari kode kedua)
+	// PengajuanService dengan konfigurasi lengkap untuk flow pengajuan (dari kode kedua)
 	var pengajuanService service.PengajuanService
 	if supabaseUploader != nil {
 		pengajuanService = service.NewPengajuanServiceWithSupabase(mongodb.Database, supabaseUploader)
@@ -137,23 +140,32 @@ func main() {
 	}
 
 	geofenceService := service.NewGeofenceService(geofenceRepo, userRepo)
+	notificationService := service.NewNotificationService(notificationRepo, deviceTokenRepo)
 	pengajuanIzinCutiService := service.NewPengajuanIzinCutiService(pengajuanIzinCutiRepo, userRepo, mongodb.Database)
-	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // -… Dari kode kedua
+	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
-	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // -… Dari kode kedua
-	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo)
-	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
+	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // ✅ Dari kode kedua
+	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo, pengajuanIzinCutiRepo)
 
-	log.Println("Services initialized")
-
-	// ==================== Initialize WebSocket/SSE Hub ====================
+	// Real-time hub (SSE) - share hub across services so they can broadcast
 	wsHub := service.NewWSHub()
-	log.Println("WebSocket/SSE Hub initialized")
 
-	// ==================== Initialize DB Watcher ====================
+	// Inject WSHub into notification service so CreateNotification broadcasts events
+	notificationService.SetWSHub(wsHub)
+
+	// Inject hub into other services that broadcast real-time events
+	attendanceService.SetWSHub(wsHub)
+	pengajuanIzinCutiService.SetWSHub(wsHub)
+	pengajuanService.SetWSHub(wsHub)
+	overtimeRequestService.SetWSHub(wsHub)
+	assignmentService.SetWSHub(wsHub)
+
+	// Start MongoDB change-stream watcher so DB mutations trigger realtime SSE events
 	dbWatcher := service.NewDBWatcher(mongodb.Database, wsHub)
 	dbWatcher.Start(context.Background())
+
+	log.Println("⚙️  Services initialized")
 
 	// ==================== Initialize Handlers ====================
 	authHandler := handler.NewAuthHandler(authService)
@@ -166,23 +178,23 @@ func main() {
 	geofenceHandler := handler.NewGeofenceHandler(geofenceService)
 	pengajuanIzinCutiHandler := handler.NewPengajuanIzinCutiHandler(pengajuanIzinCutiService)
 	pengajuanHandler := handler.NewPengajuanHandler(pengajuanService)
-	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // -… Dari kode kedua
+	jamKerjaHandler := handler.NewJamKerjaHandler(jamKerjaService) // ✅ Dari kode kedua
 	employeeBasicSalaryHandler := handler.NewEmployeeBasicSalaryHandler(employeeBasicSalaryService)
 	faceEmbeddingApprovalHandler := handler.NewFaceEmbeddingApprovalHandler(faceEmbeddingApprovalService)
-	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // -… Dari kode kedua
+	overtimeRequestHandler := handler.NewOvertimeRequestHandler(overtimeRequestService) // ✅ Dari kode kedua
 	assignmentHandler := handler.NewAssignmentHandler(assignmentService)
+
+	log.Println("🎯 Handlers initialized")
+
+	// Additional handlers that require services/repos initialized above
+	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
 	reportHandler := handler.NewReportHandler(reportService)
-	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)                           // ✅ Real-time SSE                           // Real-time SSE                           // -… Real-time SSE
 
-	// ==================== Inject WSHub ke services ====================
-	// Agar services bisa broadcast event real-time setelah operasi berhasil
-	attendanceService.SetWSHub(wsHub)
-	pengajuanService.SetWSHub(wsHub)
-	pengajuanIzinCutiService.SetWSHub(wsHub)
-	overtimeRequestService.SetWSHub(wsHub)
-	assignmentService.SetWSHub(wsHub)
+	payrollHandler := handler.NewPayrollHandler(payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
 
-	log.Println("Handlers initialized")
+	// SSE / Notification handlers
+	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)
+	notificationHandler := handler.NewNotificationHandler(notificationService)
 
 	// ==================== Setup Gin ====================
 	if cfg.Environment == "production" {
@@ -205,26 +217,28 @@ func main() {
 		geofenceHandler,
 		pengajuanIzinCutiHandler,
 		pengajuanHandler,
-		jamKerjaHandler, 
+		jamKerjaHandler, // ✅ Dari kode kedua
 		employeeBasicSalaryHandler,
 		faceEmbeddingApprovalHandler,
-		overtimeRequestHandler, 
+		overtimeRequestHandler, // ✅ Dari kode kedua
 		assignmentHandler,
 		reportHandler,
-		sseHandler,             // ✅ Real-time SSE handler       
+		sseHandler,
+		payrollHandler,
+		notificationHandler,
 	)
 
-	log.Println("Routes configured")
+	log.Println("🛣️  Routes configured")
 
 	// ==================== Start Server ====================
 	port := cfg.ServerPort
 	log.Println("================================================")
-	log.Printf("Server running on port %s", port)
-	log.Printf("Environment: %s", cfg.Environment)
-	log.Printf("Health check: http://localhost:%s/health", port)
-	log.Printf("API Base URL: http://localhost:%s/api/v1", port)
+	log.Printf("🚀 Server running on port %s", port)
+	log.Printf("📍 Environment: %s", cfg.Environment)
+	log.Printf("🔗 Health check: http://localhost:%s/health", port)
+	log.Printf("🔗 API Base URL: http://localhost:%s/api/v1", port)
 	log.Println("================================================")
-	log.Println("Available endpoints:")
+	log.Println("📋 Available endpoints:")
 	log.Println("   Auth:")
 	log.Println("     POST   /api/v1/auth/login")
 	log.Println("     POST   /api/v1/auth/register")
@@ -237,9 +251,9 @@ func main() {
 	log.Println("   Attendance:")
 	log.Println("     POST   /api/v1/attendance/process")
 	log.Println("     GET    /api/v1/attendance/today")
-	log.Println("     GET    /api/v1/attendance/monthly")       // -… Dari kode pertama
-	log.Println("     GET    /api/v1/attendance/schedule-info") // -… Dari kode pertama (via routes)
-	log.Println("   Jam Kerja (Work Schedule):")                // -… Dari kode kedua
+	log.Println("     GET    /api/v1/attendance/monthly")       // ✅ Dari kode pertama
+	log.Println("     GET    /api/v1/attendance/schedule-info") // ✅ Dari kode pertama (via routes)
+	log.Println("   Jam Kerja (Work Schedule):")                // ✅ Dari kode kedua
 	log.Println("     GET    /api/v1/jam-kerja")
 	log.Println("     GET    /api/v1/jam-kerja/my-department")
 	log.Println("     GET    /api/v1/jam-kerja/user/:userId")
@@ -253,13 +267,15 @@ func main() {
 	log.Println("     GET    /api/v1/pengajuan")
 	log.Println("     GET    /api/v1/pengajuan/tipe")
 	log.Println("     POST   /api/v1/pengajuan")
-	log.Println("   Overtime Request:") // -… Dari kode kedua
+	log.Println("   Overtime Request:") // ✅ Dari kode kedua
 	log.Println("     POST   /api/v1/overtime/request")
 	log.Println("     GET    /api/v1/overtime/my-requests")
+	log.Println("   Dept Assignments:")
+	log.Println("     GET    /api/v1/dept-assignments")
+	log.Println("     POST   /api/v1/dept-assignments")
 	log.Println("================================================")
 
 	if err := router.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+		log.Fatal("❌ Failed to start server:", err)
 	}
 }
-

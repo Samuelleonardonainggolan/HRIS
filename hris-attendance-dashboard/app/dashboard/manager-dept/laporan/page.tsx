@@ -297,34 +297,47 @@ export default function DeptReportsPage() {
     exportCSV(filtered, filename);
   };
 
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
   const onExportPdf = async () => {
-    if (filtered.length === 0) return;
+    if (filtered.length === 0) {
+      toast.error("Tidak ada data untuk diekspor");
+      return;
+    }
+    try {
+      setIsExportingPdf(true);
+      const headers = ["Tanggal", "Karyawan", "NIK", "Jenis", "Detail", "Status"];
+      const body = filtered.map((r) => [
+        formatDateID(r.date),
+        r.employee.name,
+        r.employee.nik,
+        typeLabel(r.type),
+        buildDetail(r),
+        r.approvalStatus ?? "-",
+      ]);
 
-    const headers = ["Tanggal", "Karyawan", "NIK", "Jenis", "Detail", "Status"];
-    const body = filtered.map((r) => [
-      formatDateID(r.date),
-      r.employee.name,
-      r.employee.nik,
-      typeLabel(r.type),
-      buildDetail(r),
-      r.approvalStatus ?? "-",
-    ]);
+      const blob = await generateAttendanceReportPDF({
+        title: `Laporan Aktivitas Presensi - ${departmentName}`,
+        period: period.label,
+        headers,
+        body,
+      });
 
-    const blob = await generateAttendanceReportPDF({
-      title: `Laporan Aktivitas Presensi - ${departmentName}`,
-      period: period.label,
-      headers,
-      body,
-    });
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `laporan-presensi_${departmentName}_${period.value}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `laporan-presensi_${departmentName}_${period.value}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("PDF berhasil diunduh");
+    } catch (err) {
+      console.error("PDF export error:", err);
+      toast.error("Gagal mengekspor PDF. Silakan coba lagi.");
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   return (
