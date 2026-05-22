@@ -103,11 +103,11 @@ func NewPengajuanServiceWithSupabase(db *mongo.Database, supabaseUploader *stora
 // ── Implementasi konkret menggunakan MongoDB langsung ────────────────────────
 
 type pengajuanServiceImpl struct {
-	db                *mongo.Database
-	publicBaseURL     string
-	documentUploadDir string
-	supabaseUploader  *storage.SupabaseUploader
-	wsHub             *WSHub // untuk broadcast real-time events
+	db                  *mongo.Database
+	publicBaseURL       string
+	documentUploadDir   string
+	supabaseUploader    *storage.SupabaseUploader
+	wsHub               *WSHub // untuk broadcast real-time events
 	notificationService NotificationService
 }
 
@@ -311,14 +311,14 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 
 	// Kirim Notifikasi ke Kepala Departemen & Manager HR
 	if s.notificationService != nil {
-		message := fmt.Sprintf("%s mengajukan %s mulai %s hingga %s (%d hari).", 
-			requester.FullName, 
-			tipe.TypeName, 
-			req.TanggalMulai, 
-			req.TanggalSelesai, 
+		message := fmt.Sprintf("%s mengajukan %s mulai %s hingga %s (%d hari).",
+			requester.FullName,
+			tipe.TypeName,
+			req.TanggalMulai,
+			req.TanggalSelesai,
 			req.TotalHari,
 		)
-		
+
 		log.Printf("[Notification] Attempting to notify Dept Manager: %s", kepalaDepartemenID.Hex())
 		// 1. Notifikasi untuk Kepala Departemen
 		if !kepalaDepartemenID.IsZero() {
@@ -336,7 +336,7 @@ func (s *pengajuanServiceImpl) CreatePengajuan(ctx context.Context, req CreatePe
 				log.Printf("[Notification Success] Notified Kepala Departemen: %s\n", kepalaDepartemenID.Hex())
 			}
 		}
-		
+
 		// 2. Notifikasi untuk Manager HR (jika orangnya berbeda dengan Kepala Departemen)
 		if !managerHRID.IsZero() && managerHRID != kepalaDepartemenID {
 			_, errNotif := s.notificationService.CreateNotification(ctx, models.CreateNotificationRequest{
@@ -688,6 +688,15 @@ func dateOnlyUTC(t time.Time) time.Time {
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)
 }
 
+func activeLeaveStatuses() bson.A {
+	return bson.A{
+		models.StatusPending,
+		strings.ToLower(models.StatusPending),
+		models.StatusApproved,
+		strings.ToLower(models.StatusApproved),
+	}
+}
+
 func isSameCalendarDate(a, b time.Time) bool {
 	aLocal := a.In(time.FixedZone("WIB", 7*60*60))
 	bLocal := b.In(time.FixedZone("WIB", 7*60*60))
@@ -703,7 +712,7 @@ func (s *pengajuanServiceImpl) ensureNoDateConflict(
 ) error {
 	filter := bson.M{
 		"user_id":      userID,
-		"final_status": bson.M{"$nin": bson.A{models.StatusRejected, models.StatusCancelled}},
+		"final_status": bson.M{"$in": activeLeaveStatuses()},
 		"start_date":   bson.M{"$lte": endDate},
 		"end_date":     bson.M{"$gte": startDate},
 	}

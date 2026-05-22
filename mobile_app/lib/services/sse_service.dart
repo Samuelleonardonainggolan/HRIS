@@ -47,6 +47,8 @@ class SSEService {
   final hasNewOvertime = ValueNotifier<bool>(false);
   final hasNewAssignment = ValueNotifier<bool>(false);
   final hasNewLeaveRequest = ValueNotifier<bool>(false);
+  final hasNewNotification = ValueNotifier<bool>(false);
+  final hasNewLeaveDecisionNotification = ValueNotifier<bool>(false);
   final unreadNotifications = ValueNotifier<int>(0);
 
   Stream<SSEEvent> get events => _eventController.stream;
@@ -125,9 +127,19 @@ class SSEService {
     );
   }
 
+  bool _isLeaveDecisionNotification(Map<String, dynamic>? payload) {
+    final rawType = (payload?['type'] as String?)?.toLowerCase() ?? '';
+    if (!rawType.contains('leave')) return false;
+
+    final upperMessage = ((payload?['message'] as String?) ?? '').toUpperCase();
+    return upperMessage.contains('DISETUJUI') ||
+        upperMessage.contains('DITOLAK');
+  }
+
   Future<void> refreshUnreadNotificationCount() async {
     try {
       unreadNotifications.value = await ApiService.getUnreadNotificationCount();
+      hasNewNotification.value = unreadNotifications.value > 0;
     } catch (e) {
       print('[SSE] Failed to refresh unread notification count: $e');
     }
@@ -278,6 +290,10 @@ class SSEService {
                         }
                       }
                     } else if (event.type == 'notification_created') {
+                      hasNewNotification.value = true;
+                      if (_isLeaveDecisionNotification(payload)) {
+                        hasNewLeaveDecisionNotification.value = true;
+                      }
                       final presentation = _buildNotificationPresentation(
                         payload,
                       );
@@ -287,8 +303,11 @@ class SSEService {
                       if (title.isNotEmpty &&
                           message != null &&
                           message.isNotEmpty) {
-                        final rawType = (payload?['type'] as String?)?.toLowerCase();
-                        if (rawType == null || rawType.isEmpty || rawType.contains('leave')) {
+                        final rawType = (payload?['type'] as String?)
+                            ?.toLowerCase();
+                        if (rawType == null ||
+                            rawType.isEmpty ||
+                            rawType.contains('leave')) {
                           shouldRefreshRequestData = true;
                           hasNewLeaveRequest.value = true;
                         }
@@ -396,6 +415,8 @@ class SSEService {
     hasNewOvertime.value = false;
     hasNewAssignment.value = false;
     hasNewLeaveRequest.value = false;
+    hasNewNotification.value = false;
+    hasNewLeaveDecisionNotification.value = false;
     unreadNotifications.value = 0;
     print('[SSE] Manual disconnect completed. All notifier values cleaned.');
   }
@@ -405,8 +426,5 @@ class _NotificationPresentation {
   final String title;
   final InAppNotificationType type;
 
-  const _NotificationPresentation({
-    required this.title,
-    required this.type,
-  });
+  const _NotificationPresentation({required this.title, required this.type});
 }

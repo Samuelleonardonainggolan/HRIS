@@ -20,6 +20,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
+    SSEService().hasNewNotification.value = false;
+    SSEService().hasNewLeaveDecisionNotification.value = false;
     _future = _load();
     SSEService().refreshUnreadNotificationCount();
     _setupRealtime();
@@ -35,7 +37,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void _setupRealtime() {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
-      if (event.type == 'notification_created' || event.type == 'leave_updated') {
+      if (event.type == 'notification_created' ||
+          event.type == 'leave_updated') {
         _scheduleAutoReload();
       }
     });
@@ -95,9 +98,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Future<void> _markAsRead(String id) async {
     await ApiService.markNotificationAsRead(id);
     await SSEService().refreshUnreadNotificationCount();
-    if (mounted) setState(() {
-      _future = _load();
-    });
+    if (mounted)
+      setState(() {
+        _future = _load();
+      });
   }
 
   @override
@@ -132,12 +136,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
               return ListView(
                 children: const [
                   SizedBox(height: 120),
-                  Icon(Icons.notifications_off_rounded, size: 72, color: Color(0xFF94A3B8)),
+                  Icon(
+                    Icons.notifications_off_rounded,
+                    size: 72,
+                    color: Color(0xFF94A3B8),
+                  ),
                   SizedBox(height: 12),
                   Center(
                     child: Text(
                       'Belum ada notifikasi',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF334155),
+                      ),
                     ),
                   ),
                 ],
@@ -171,10 +183,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       type: type.toLowerCase().contains('overtime')
                           ? InAppNotificationType.overtime
                           : type.toLowerCase().contains('assignment')
-                              ? InAppNotificationType.assignment
-                              : type.toLowerCase().contains('attendance')
-                                  ? InAppNotificationType.attendance
-                                  : InAppNotificationType.leave,
+                          ? InAppNotificationType.assignment
+                          : type.toLowerCase().contains('attendance')
+                          ? InAppNotificationType.attendance
+                          : InAppNotificationType.leave,
                     );
                   },
                   child: Container(
@@ -183,7 +195,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       color: unread ? const Color(0xFFF8FAFC) : Colors.white,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
-                        color: unread ? color.withOpacity(0.16) : const Color(0xFFE2E8F0),
+                        color: unread
+                            ? color.withOpacity(0.16)
+                            : const Color(0xFFE2E8F0),
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -216,7 +230,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                       title,
                                       style: TextStyle(
                                         fontSize: 15,
-                                        fontWeight: unread ? FontWeight.w800 : FontWeight.w700,
+                                        fontWeight: unread
+                                            ? FontWeight.w800
+                                            : FontWeight.w700,
                                         color: const Color(0xFF0F172A),
                                       ),
                                     ),

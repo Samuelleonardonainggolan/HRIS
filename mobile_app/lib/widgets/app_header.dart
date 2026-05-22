@@ -33,7 +33,9 @@ class AppHeader extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+            borderRadius: const BorderRadius.vertical(
+              bottom: Radius.circular(28),
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.04),
@@ -75,54 +77,104 @@ class AppHeader extends StatelessWidget {
               ValueListenableBuilder<int>(
                 valueListenable: SSEService().unreadNotifications,
                 builder: (context, unreadCount, _) {
-                  return GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const NotificationsPage(),
-                        ),
+                  return ValueListenableBuilder<bool>(
+                    valueListenable: SSEService().hasNewNotification,
+                    builder: (context, hasNewNotification, __) {
+                      return ValueListenableBuilder<bool>(
+                        valueListenable:
+                            SSEService().hasNewLeaveDecisionNotification,
+                        builder: (context, hasLeaveDecision, ___) {
+                          final showBadge =
+                              unreadCount > 0 || hasNewNotification;
+
+                          return GestureDetector(
+                            onTap: () {
+                              SSEService().hasNewNotification.value = false;
+                              SSEService()
+                                      .hasNewLeaveDecisionNotification
+                                      .value =
+                                  false;
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const NotificationsPage(),
+                                ),
+                              );
+                            },
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  height: 48,
+                                  width: 48,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xFFF8FAFC),
+                                    border: Border.all(
+                                      color: const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.notifications_rounded,
+                                    color: Color(0xFF135BEC),
+                                    size: 24,
+                                  ),
+                                ),
+                                if (showBadge)
+                                  Positioned(
+                                    top: -2,
+                                    right: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 2,
+                                      ),
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFEF4444),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: unreadCount > 0
+                                          ? Text(
+                                              unreadCount > 99
+                                                  ? '99+'
+                                                  : unreadCount.toString(),
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            )
+                                          : const SizedBox(width: 6, height: 6),
+                                    ),
+                                  ),
+                                if (hasLeaveDecision)
+                                  Positioned(
+                                    bottom: -1,
+                                    left: -1,
+                                    child: Container(
+                                      width: 14,
+                                      height: 14,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF10B981),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: const Icon(
+                                        Icons.check,
+                                        size: 9,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
                       );
                     },
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          height: 48,
-                          width: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFFF8FAFC),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: const Icon(
-                            Icons.notifications_rounded,
-                            color: Color(0xFF135BEC),
-                            size: 24,
-                          ),
-                        ),
-                        if (unreadCount > 0)
-                          Positioned(
-                            top: -2,
-                            right: -2,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFEF4444),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                unreadCount > 99 ? '99+' : unreadCount.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
                   );
                 },
               ),
