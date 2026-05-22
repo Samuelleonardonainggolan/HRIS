@@ -17,7 +17,6 @@ import { id as idLocale } from "date-fns/locale";
 import { deptLeaveRequestsApi, type DeptLeaveRequestApprovalResponse } from "@/lib/api/dept-leave-requests";
 
 type RequestStatus = "Pending" | "Disetujui" | "Ditolak";
-type RequestType = "SAKIT" | "TAHUNAN" | "IZIN KHUSUS";
 
 interface LeaveApprovalItem {
   id: string;
@@ -26,7 +25,8 @@ interface LeaveApprovalItem {
   department: string;
   position: string;
 
-  type: RequestType;
+  /** Nama tipe pengajuan asli dari tabel request_type */
+  typeName: string;
   startAt: string;
   endAt: string;
   startDateLabel: string;
@@ -46,17 +46,12 @@ interface LeaveApprovalItem {
   avatarFallback: string;
 }
 
-function typeBadgeClass(t: RequestType) {
-  switch (t) {
-    case "SAKIT":
-      return "bg-red-100 text-red-700 border border-red-200";
-    case "TAHUNAN":
-      return "bg-gray-100 text-gray-800 border border-gray-200";
-    case "IZIN KHUSUS":
-      return "bg-blue-100 text-blue-700 border border-blue-200";
-    default:
-      return "bg-gray-100 text-gray-800 border border-gray-200";
-  }
+function typeBadgeClass(typeName: string) {
+  const t = (typeName || "").toUpperCase();
+  if (t.includes("SAKIT")) return "bg-red-100 text-red-700 border border-red-200";
+  if (t.includes("TAHUN")) return "bg-gray-100 text-gray-800 border border-gray-200";
+  if (t.includes("IZIN") || t.includes("KHUSUS")) return "bg-blue-100 text-blue-700 border border-blue-200";
+  return "bg-purple-100 text-purple-700 border border-purple-200";
 }
 
 function statusDotColor(s: RequestStatus) {
@@ -92,13 +87,6 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
   const [items, setItems] = useState<LeaveApprovalItem[]>([]);
 
   const mapApiToUi = useCallback((rows: DeptLeaveRequestApprovalResponse[]): LeaveApprovalItem[] => {
-    const toRequestType = (typeName: string): RequestType => {
-      const t = (typeName || "").toUpperCase();
-      if (t.includes("SAKIT")) return "SAKIT";
-      if (t.includes("TAHUN")) return "TAHUNAN";
-      if (t.includes("IZIN")) return "IZIN KHUSUS";
-      return "IZIN KHUSUS";
-    };
 
     const toStatus = (finalStatus: string, stageStatus: string): RequestStatus => {
       const f = (finalStatus || "").toUpperCase();
@@ -143,7 +131,7 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
         employeeId: empId,
         department: dept,
         position: pos,
-        type: toRequestType(r.pengajuan.type_name),
+        typeName: r.pengajuan.type_name || "—",
         startAt: isNaN(start.getTime()) ? "-" : format(start, "dd MMM yyyy, HH:mm", { locale: idLocale }),
         endAt: isNaN(end.getTime()) ? "-" : format(end, "dd MMM yyyy, HH:mm", { locale: idLocale }),
         startDateLabel,
@@ -408,8 +396,8 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            <Badge variant="secondary" className={typeBadgeClass(x.type)}>
-                              {x.type}
+                            <Badge variant="secondary" className={typeBadgeClass(x.typeName)}>
+                              {x.typeName}
                             </Badge>
                           </td>
 
