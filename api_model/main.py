@@ -8,14 +8,15 @@ import cv2
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from fastapi import FastAPI, File, UploadFile, Form, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from PIL import Image
-from torchvision import transforms
+from torchvision import transforms, models
 from contextlib import asynccontextmanager
-from facenet_pytorch import MTCNN, InceptionResnetV1
+from facenet_pytorch import InceptionResnetV1, MTCNN
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("face-service")
@@ -23,17 +24,30 @@ logger = logging.getLogger("face-service")
 # =============================================================================
 # KONFIGURASI
 # =============================================================================
-MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\Training code\output_cpu\facenet_labersa_cpu.pt")
+MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
+FINAL_SCORE_THRESHOLD = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.80"))
 ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
+ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\antispoof_model_final_improved.pth")
+ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", "0.85"))
 SPOOF_SCORE_THRESHOLD = float(os.getenv("SPOOF_SCORE_THRESHOLD", "0.65"))
 FACE_DET_MIN_PROB = float(os.getenv("FACE_DET_MIN_PROB", "0.90"))
+DEVICE = os.getenv("DEVICE", "cpu")
+FACE_CROP_MARGIN = float(os.getenv("FACE_CROP_MARGIN", "0.15"))
+ANTI_SPOOF_IMGSZ = int(os.getenv("ANTI_SPOOF_IMGSZ", "224"))
 LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "1") == "1"
 LIVENESS_MIN_FRAMES = int(os.getenv("LIVENESS_MIN_FRAMES", "3"))
 LIVENESS_STD_MEAN_THR = float(os.getenv("LIVENESS_STD_MEAN_THR", "0.008"))
 LIVENESS_YAW_RANGE_THR = float(os.getenv("LIVENESS_YAW_RANGE_THR", "0.08"))
 LIVENESS_MAX_FRAMES = int(os.getenv("LIVENESS_MAX_FRAMES", "6"))
+SCREEN_SPOOF_ENABLED = os.getenv("SCREEN_SPOOF_ENABLED", "1") == "1"
+SCREEN_RECT_MIN_AREA_RATIO = float(os.getenv("SCREEN_RECT_MIN_AREA_RATIO", "0.25"))
+SCREEN_RECT_MAX_AREA_RATIO = float(os.getenv("SCREEN_RECT_MAX_AREA_RATIO", "0.95"))
+SCREEN_RECT_ASPECT_MIN = float(os.getenv("SCREEN_RECT_ASPECT_MIN", "0.35"))
+SCREEN_RECT_ASPECT_MAX = float(os.getenv("SCREEN_RECT_ASPECT_MAX", "0.85"))
+SCREEN_BORDER_DARK_MAX = float(os.getenv("SCREEN_BORDER_DARK_MAX", "85"))
+SCREEN_BORDER_DARK_DIFF = float(os.getenv("SCREEN_BORDER_DARK_DIFF", "25"))
 API_KEY = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
 
 # =============================================================================
@@ -63,6 +77,26 @@ class LightClassifier(nn.Module):
         return self.net(x)
 
 
+class AntiSpoofNet(nn.Module):
+    def __init__(self, dropout: float = 0.5, num_classes: int = 2):
+        super().__init__()
+        try:
+            self.backbone = models.resnet18(weights=None)
+        except TypeError:
+            self.backbone = models.resnet18(pretrained=False)
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(p=dropout),
+            nn.Linear(512, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
+
+
 # =============================================================================
 # FACE SERVICE (stateless) - DENGAN DETEKSI AKSESORIS YANG LEBIH KUAT
 # =============================================================================
@@ -72,9 +106,17 @@ class FaceService:
         self.classifier = None
         self.class_names = []
         self.loaded = False
-        self.mtcnn = None
+        self.face_det = None
+        self.anti_spoof = None
+        self.anti_spoof_labels = []
+        self.anti_spoof_real_index = 0
         self.transform = transforms.Compose([
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.5]*3, [0.5]*3),
+        ])
+        self.anti_spoof_transform = transforms.Compose([
+            transforms.Resize((ANTI_SPOOF_IMGSZ, ANTI_SPOOF_IMGSZ)),
             transforms.ToTensor(),
             transforms.Normalize([0.5]*3, [0.5]*3),
         ])
@@ -94,9 +136,11 @@ class FaceService:
 
     def load(self):
         try:
-            # Inisialisasi MTCNN untuk deteksi wajah yang lebih stabil pada selfie
-            self.mtcnn = MTCNN(keep_all=True, device="cpu")
-            logger.info("MTCNN loaded successfully")
+            self.face_det = MTCNN(
+                keep_all=True,
+                device=DEVICE,
+            )
+            logger.info("MTCNN face detector loaded successfully")
 
             # Inisialisasi extractor
             self.extractor = FaceNetExtractor().eval()
@@ -111,6 +155,19 @@ class FaceService:
             else:
                 logger.warning(f"Model tidak ditemukan di {MODEL_PATH}, pakai pretrained VGGFace2")
 
+            if ANTI_SPOOFING_ENABLED:
+                if not os.path.exists(ANTI_SPOOF_MODEL_PATH):
+                    raise FileNotFoundError(f"Anti-spoof model tidak ditemukan: {ANTI_SPOOF_MODEL_PATH}")
+                ckpt = torch.load(ANTI_SPOOF_MODEL_PATH, map_location="cpu")
+                dropout = float(ckpt.get("dropout_rate", 0.5))
+                labels = ckpt.get("class_names", ["real", "spoof"])
+                self.anti_spoof = AntiSpoofNet(dropout=dropout, num_classes=len(labels))
+                self.anti_spoof.load_state_dict(ckpt["model_state_dict"])
+                self.anti_spoof.eval()
+                self.anti_spoof_labels = labels
+                self.anti_spoof_real_index = labels.index("real") if "real" in labels else 0
+                logger.info(f"Anti-spoof model loaded successfully with labels: {labels}")
+
             self.loaded = True
         except Exception as e:
             logger.error(f"Gagal load model: {e}")
@@ -122,18 +179,19 @@ class FaceService:
         Returns: (has_face, face_count, boxes)
         """
         try:
-            if self.mtcnn is None:
-                self.mtcnn = MTCNN(keep_all=True, device="cpu")
+            if self.face_det is None:
+                raise ValueError("Face detector belum diinisialisasi")
 
-            img = Image.fromarray(self._decode_image(image_bytes))
-            boxes, _ = self.mtcnn.detect(img)
-
-            if boxes is None or len(boxes) == 0:
+            img = self._decode_image(image_bytes)
+            boxes, probs = self.face_det.detect(img)
+            if boxes is None or probs is None:
                 return False, 0, []
 
             valid_boxes = []
-            for box in boxes:
-                x1, y1, x2, y2 = [float(v) for v in box]
+            for box, prob in zip(boxes, probs):
+                if prob is None or float(prob) < FACE_DET_MIN_PROB:
+                    continue
+                x1, y1, x2, y2 = [float(v) for v in box.tolist()]
                 if (x2 - x1) >= 50 and (y2 - y1) >= 50:
                     valid_boxes.append([x1, y1, x2, y2])
 
@@ -142,65 +200,182 @@ class FaceService:
             logger.error(f"Error detecting faces: {e}")
             return False, 0, []
 
-    def detect_faces_with_landmarks(self, image_bytes: bytes) -> List[Tuple[np.ndarray, np.ndarray, float]]:
-        if self.mtcnn is None:
-            self.mtcnn = MTCNN(keep_all=True, device="cpu")
-        img = Image.fromarray(self._decode_image(image_bytes))
-        boxes, probs, landmarks = self.mtcnn.detect(img, landmarks=True)
-        if boxes is None or probs is None or landmarks is None:
-            return []
-
-        out: List[Tuple[np.ndarray, np.ndarray, float]] = []
-        for box, prob, lm in zip(boxes, probs, landmarks):
-            if prob is None:
+    def detect_faces_with_scores(self, image_bytes: bytes) -> List[Tuple[np.ndarray, float]]:
+        if self.face_det is None:
+            raise ValueError("Face detector belum diinisialisasi")
+        img = self._decode_image(image_bytes)
+        boxes, probs = self.face_det.detect(img)
+        out: List[Tuple[np.ndarray, float]] = []
+        if boxes is None or probs is None:
+            return out
+        for box, prob in zip(boxes, probs):
+            if prob is None or float(prob) < FACE_DET_MIN_PROB:
                 continue
-            p = float(prob)
-            if p < FACE_DET_MIN_PROB:
-                continue
-            x1, y1, x2, y2 = [float(v) for v in box]
+            x1, y1, x2, y2 = [float(v) for v in box.tolist()]
             if (x2 - x1) < 50 or (y2 - y1) < 50:
                 continue
-            out.append((np.array([x1, y1, x2, y2], dtype=np.float32), lm.astype(np.float32), p))
+            out.append((np.array([x1, y1, x2, y2], dtype=np.float32), float(prob)))
         return out
 
-    def motion_liveness(self, landmarks_seq: List[np.ndarray]) -> Tuple[bool, Dict[str, Any]]:
+    def _crop_largest_face_rgb(self, image_bytes: bytes, boxes: list) -> Tuple[np.ndarray, List[float]]:
+        img = self._decode_image(image_bytes)
+        if not boxes:
+            raise ValueError("Tidak ada wajah terdeteksi dalam foto")
+        largest_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        x1, y1, x2, y2 = [int(round(float(v))) for v in largest_box]
+        height, width = img.shape[:2]
+        margin_x = int(round((x2 - x1) * FACE_CROP_MARGIN))
+        margin_y = int(round((y2 - y1) * FACE_CROP_MARGIN))
+        x1 = max(0, x1 - margin_x)
+        y1 = max(0, y1 - margin_y)
+        x2 = min(width, x2 + margin_x)
+        y2 = min(height, y2 + margin_y)
+        face = img[y1:y2, x1:x2]
+        return face, [float(x1), float(y1), float(x2), float(y2)]
+
+    @torch.no_grad()
+    def detect_spoof(self, face_crop_rgb: np.ndarray) -> Tuple[bool, float]:
+        if not ANTI_SPOOFING_ENABLED:
+            return True, 1.0
+        if self.anti_spoof is None:
+            raise ValueError("Anti-spoof model belum diinisialisasi")
+        img = Image.fromarray(face_crop_rgb.astype(np.uint8))
+        tensor = self.anti_spoof_transform(img).unsqueeze(0)
+        logits = self.anti_spoof(tensor)
+        probs = torch.softmax(logits, dim=1)
+        score = float(probs[0, self.anti_spoof_real_index].item())
+        return bool(score >= ANTI_SPOOF_REAL_THRESHOLD), score
+
+    @torch.no_grad()
+    def extract_embedding_from_crop(self, face_crop_rgb: np.ndarray) -> list[float]:
+        if self.extractor is None:
+            raise ValueError("Extractor belum diinisialisasi")
+        img = Image.fromarray(face_crop_rgb.astype(np.uint8))
+        tensor = self.transform(img).unsqueeze(0)
+        emb = self.extractor(tensor)[0].detach().cpu()
+        return emb.tolist()
+
+    def motion_liveness(self, boxes_seq: List[np.ndarray]) -> Tuple[bool, Dict[str, Any]]:
         if not LIVENESS_ENABLED:
             return True, {"enabled": False}
-        if len(landmarks_seq) < LIVENESS_MIN_FRAMES:
+        if len(boxes_seq) < LIVENESS_MIN_FRAMES:
             return False, {
                 "enabled": True,
                 "reason": "not_enough_frames",
                 "min_frames": LIVENESS_MIN_FRAMES,
-                "frames": len(landmarks_seq),
+                "frames": len(boxes_seq),
             }
         feats = []
-        yaws = []
-        for lm in landmarks_seq:
-            le, re, nose, ml, mr = lm
-            eye_d = float(np.linalg.norm(le - re) + 1e-9)
-            f = np.array([
-                np.linalg.norm(nose - le) / eye_d,
-                np.linalg.norm(nose - re) / eye_d,
-                np.linalg.norm(ml - mr) / eye_d,
-                np.linalg.norm(nose - (ml + mr) / 2.0) / eye_d,
-            ], dtype=np.float32)
-            feats.append(f)
-            mid_eye_x = float((le[0] + re[0]) * 0.5)
-            yaws.append(float((nose[0] - mid_eye_x) / eye_d))
+        cx_seq = []
+        for b in boxes_seq:
+            x1, y1, x2, y2 = [float(v) for v in b.tolist()]
+            bw = max(1.0, x2 - x1)
+            bh = max(1.0, y2 - y1)
+            s = float(np.sqrt(bw * bh) + 1e-9)
+            cx = float((x1 + x2) * 0.5) / s
+            cy = float((y1 + y2) * 0.5) / s
+            ar = float(bw / (bh + 1e-9))
+            feats.append(np.array([cx, cy, ar], dtype=np.float32))
+            cx_seq.append(cx)
         feats = np.stack(feats, axis=0)
         std = feats.std(axis=0)
-        yaw_range = float(np.max(yaws) - np.min(yaws))
+        cx_range = float(np.max(cx_seq) - np.min(cx_seq))
         std_mean = float(std.mean())
-        live = bool((std_mean >= LIVENESS_STD_MEAN_THR) and (yaw_range >= LIVENESS_YAW_RANGE_THR))
+        live = bool((std_mean >= LIVENESS_STD_MEAN_THR) and (cx_range >= LIVENESS_YAW_RANGE_THR))
         return live, {
             "enabled": True,
             "reason": "ok" if live else "liveness_fail",
             "feat_std_mean": std_mean,
-            "yaw_range": yaw_range,
+            "cx_range": cx_range,
             "thr_feat_std_mean": LIVENESS_STD_MEAN_THR,
-            "thr_yaw_range": LIVENESS_YAW_RANGE_THR,
-            "frames": len(landmarks_seq),
+            "thr_cx_range": LIVENESS_YAW_RANGE_THR,
+            "frames": len(boxes_seq),
         }
+
+    def screen_spoof_check(self, img_rgb: np.ndarray, face_box_xyxy: List[float]) -> Tuple[bool, Dict[str, Any]]:
+        if not SCREEN_SPOOF_ENABLED:
+            return False, {"enabled": False}
+
+        h, w = img_rgb.shape[:2]
+        gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+        edges = cv2.Canny(gray, 60, 180)
+        edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
+        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return False, {"enabled": True, "reason": "no_contours"}
+
+        fx1, fy1, fx2, fy2 = [float(v) for v in face_box_xyxy]
+        cx = float((fx1 + fx2) * 0.5)
+        cy = float((fy1 + fy2) * 0.5)
+
+        img_area = float(h * w + 1e-9)
+        best = None
+        best_area = 0.0
+
+        for cnt in contours:
+            area = float(cv2.contourArea(cnt))
+            if area < img_area * 0.05:
+                continue
+            peri = float(cv2.arcLength(cnt, True))
+            if peri <= 0:
+                continue
+            approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+            if len(approx) != 4 or not cv2.isContourConvex(approx):
+                continue
+
+            rect = cv2.minAreaRect(approx)
+            (rw, rh) = rect[1]
+            rw = float(rw)
+            rh = float(rh)
+            if rw <= 1 or rh <= 1:
+                continue
+            aspect = min(rw, rh) / max(rw, rh)
+            area_ratio = float((rw * rh) / img_area)
+            if not (SCREEN_RECT_MIN_AREA_RATIO <= area_ratio <= SCREEN_RECT_MAX_AREA_RATIO):
+                continue
+            if not (SCREEN_RECT_ASPECT_MIN <= aspect <= SCREEN_RECT_ASPECT_MAX):
+                continue
+
+            box = cv2.boxPoints(rect)
+            inside = cv2.pointPolygonTest(box.astype(np.float32), (cx, cy), False)
+            if inside < 0:
+                continue
+
+            if area > best_area:
+                best_area = area
+                best = (box, area_ratio, aspect)
+
+        if best is None:
+            return False, {"enabled": True, "reason": "no_rect_candidate"}
+
+        box, area_ratio, aspect = best
+        poly = box.astype(np.int32)
+        mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillConvexPoly(mask, poly, 255)
+        band = max(2, int(round(0.012 * min(h, w))))
+        k = 2 * band + 1
+        kernel = np.ones((k, k), dtype=np.uint8)
+        inner = cv2.erode(mask, kernel, iterations=1)
+        border = cv2.subtract(mask, inner)
+        border_px = gray[border > 0]
+        if border_px.size == 0:
+            return False, {"enabled": True, "reason": "no_border_pixels", "area_ratio": round(area_ratio, 4), "aspect": round(aspect, 4)}
+
+        border_mean = float(border_px.mean())
+        overall_mean = float(gray.mean())
+        dark = bool((border_mean <= SCREEN_BORDER_DARK_MAX) and ((overall_mean - border_mean) >= SCREEN_BORDER_DARK_DIFF))
+
+        detail = {
+            "enabled": True,
+            "reason": "screen_like_rect" if dark else "rect_not_dark",
+            "area_ratio": round(area_ratio, 4),
+            "aspect": round(aspect, 4),
+            "border_mean": round(border_mean, 2),
+            "overall_mean": round(overall_mean, 2),
+            "thr_border_max": SCREEN_BORDER_DARK_MAX,
+            "thr_border_diff": SCREEN_BORDER_DARK_DIFF,
+        }
+        return dark, detail
 
     def _lbp_hist(self, gray_u8: np.ndarray) -> np.ndarray:
         g = gray_u8.astype(np.uint8)
@@ -255,6 +430,13 @@ class FaceService:
 
         img = self._decode_image(image_bytes)
         largest_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
+        screen_is_spoof, screen_detail = self.screen_spoof_check(img, [float(v) for v in largest_box])
+        if screen_is_spoof:
+            return False, "Terdeteksi tampilan layar/HP di depan kamera. Harap ambil selfie langsung dari kamera.", {
+                "enabled": True,
+                "reason": "screen_spoof",
+                "screen": screen_detail,
+            }
         h, w = img.shape[:2]
         x1, y1, x2, y2 = [int(round(v)) for v in largest_box]
         x1 = max(0, min(w - 1, x1))
@@ -284,6 +466,7 @@ class FaceService:
             "lbp_entropy": round(ent, 4),
             "fft_peak_ratio": round(peak, 4),
             "threshold": SPOOF_SCORE_THRESHOLD,
+            "screen": screen_detail,
         }
 
         if score >= SPOOF_SCORE_THRESHOLD:
@@ -764,30 +947,22 @@ class FaceService:
         if face_count > 1:
             raise ValueError(f"Terdeteksi {face_count} wajah. Hanya satu wajah yang diperbolehkan")
 
-        ok, msg, _ = self.anti_spoof_check(image_bytes, boxes)
-        if not ok:
-            raise ValueError(msg)
-        
-        # Periksa aksesoris
         is_valid, message = self.check_accessories(image_bytes, boxes)
         if not is_valid:
             raise ValueError(message)
 
-        full_image = self._decode_image(image_bytes)
-        largest_box = max(boxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
-        x1, y1, x2, y2 = [max(0, int(v)) for v in largest_box]
-        face_crop = full_image[y1:y2, x1:x2]
-        if face_crop.size == 0:
-            raise ValueError("Region wajah tidak valid")
+        face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
 
-        img = Image.fromarray(face_crop)
-        tensor = self.transform(img).unsqueeze(0)
+        if SCREEN_SPOOF_ENABLED:
+            screen_is_spoof, _ = self.screen_spoof_check(self._decode_image(image_bytes), box_xyxy)
+            if screen_is_spoof:
+                raise ValueError("Spoofing detected")
 
-        if self.extractor is None:
-            raise ValueError("Extractor belum diinisialisasi")
+        is_real, spoof_score = self.detect_spoof(face_crop)
+        if not is_real:
+            raise ValueError("Spoofing detected")
 
-        emb = self.extractor(tensor)
-        return emb[0].detach().cpu().tolist()
+        return self.extract_embedding_from_crop(face_crop)
 
     def cosine_similarity(self, emb1: list, emb2: list) -> float:
         a = np.array(emb1, dtype=np.float32)
@@ -809,47 +984,74 @@ class FaceService:
         thr = threshold or SIMILARITY_THRESHOLD
 
         try:
-            live_emb = self.extract_embedding(image_bytes)
+            has_face, face_count, boxes = self.detect_faces(image_bytes)
+            if not has_face:
+                raise ValueError("Tidak ada wajah terdeteksi dalam foto")
+            if face_count > 1:
+                raise ValueError(f"Terdeteksi {face_count} wajah. Hanya satu wajah yang diperbolehkan")
+
+            is_valid, message = self.check_accessories(image_bytes, boxes)
+            if not is_valid:
+                raise ValueError(message)
+
+            face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
+
+            if SCREEN_SPOOF_ENABLED:
+                screen_is_spoof, _ = self.screen_spoof_check(self._decode_image(image_bytes), box_xyxy)
+                if screen_is_spoof:
+                    return {
+                        "matched": False,
+                        "similarity": 0.0,
+                        "spoof_score": 0.0,
+                        "final_score": 0.0,
+                        "confidence": 0.0,
+                        "threshold": thr,
+                        "message": "Spoofing detected",
+                    }
+
+            is_real, spoof_score = self.detect_spoof(face_crop)
+            if not is_real:
+                return {
+                    "matched": False,
+                    "similarity": 0.0,
+                    "spoof_score": round(float(spoof_score), 4),
+                    "final_score": round(0.3 * float(spoof_score), 4),
+                    "confidence": round(0.3 * float(spoof_score), 4),
+                    "threshold": thr,
+                    "message": "Spoofing detected",
+                }
+
+            live_emb = torch.tensor(self.extract_embedding_from_crop(face_crop), dtype=torch.float32)
+            stored = torch.tensor(stored_embedding, dtype=torch.float32)
+            similarity = float(F.cosine_similarity(live_emb, stored, dim=0).item())
+            final_score = float((0.7 * similarity) + (0.3 * float(spoof_score)))
+
+            matched = bool(
+                (similarity >= float(thr))
+                and (float(spoof_score) >= float(ANTI_SPOOF_REAL_THRESHOLD))
+                and (final_score >= float(FINAL_SCORE_THRESHOLD))
+            )
+
+            msg = "Wajah cocok" if matched else "Wajah tidak valid"
+            return {
+                "matched": matched,
+                "similarity": round(similarity, 4),
+                "spoof_score": round(float(spoof_score), 4),
+                "final_score": round(final_score, 4),
+                "confidence": round(final_score, 4),
+                "threshold": float(thr),
+                "message": msg,
+            }
         except ValueError as e:
             return {
                 "matched": False,
                 "similarity": 0.0,
+                "spoof_score": 0.0,
+                "final_score": 0.0,
                 "confidence": 0.0,
-                "threshold": thr,
+                "threshold": float(thr),
                 "message": str(e),
             }
-        similarity = self.cosine_similarity(live_emb, stored_embedding)
-        matched = similarity >= thr
-
-        # Confidence dari classifier jika tersedia
-        confidence = similarity
-        if self.classifier and self.class_names:
-            full_image = self._decode_image(image_bytes)
-            has_face, _, boxes = self.detect_faces(image_bytes)
-            if has_face and boxes:
-                largest_box = max(boxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
-                x1, y1, x2, y2 = [max(0, int(v)) for v in largest_box]
-                face_crop = full_image[y1:y2, x1:x2]
-                img = Image.fromarray(face_crop if face_crop.size > 0 else full_image)
-            else:
-                img = Image.fromarray(full_image)
-            tensor = self.transform(img).unsqueeze(0)
-            emb_t = self.extractor(tensor)
-            logits = self.classifier(emb_t)
-            probs = torch.softmax(logits, dim=1)[0]
-            confidence = float(probs.max().item())
-
-        return {
-            "matched": matched,
-            "similarity": round(similarity, 4),
-            "confidence": round(confidence, 4),
-            "threshold": thr,
-            "message": (
-                f"Wajah cocok (similarity={similarity:.1%})"
-                if matched else
-                f"Wajah tidak cocok (similarity={similarity:.1%}, min={thr:.0%})"
-            ),
-        }
 
 
 # Inisialisasi face_svc
@@ -1013,64 +1215,6 @@ async def verify_face(
         if not face_svc.loaded:
             face_svc.load()
 
-        # Deteksi wajah sebelum verifikasi
-        has_face, face_count, boxes = face_svc.detect_faces(image_bytes)
-        
-        if not has_face:
-            elapsed = round((time.time() - t0) * 1000, 1)
-            logger.warning(f"[VERIFY] No face detected for employee={req.employee_id}")
-            return {
-                "matched": False,
-                "similarity": 0.0,
-                "confidence": 0.0,
-                "threshold": req.threshold or SIMILARITY_THRESHOLD,
-                "employee_id": req.employee_id,
-                "elapsed_ms": elapsed,
-                "message": "Tidak ada wajah terdeteksi dalam foto"
-            }
-        
-        if face_count > 1:
-            elapsed = round((time.time() - t0) * 1000, 1)
-            logger.warning(f"[VERIFY] Multiple faces ({face_count}) detected for employee={req.employee_id}")
-            return {
-                "matched": False,
-                "similarity": 0.0,
-                "confidence": 0.0,
-                "threshold": req.threshold or SIMILARITY_THRESHOLD,
-                "employee_id": req.employee_id,
-                "elapsed_ms": elapsed,
-                "message": f"Terdeteksi {face_count} wajah. Hanya satu wajah yang diperbolehkan"
-            }
-        
-        # Periksa aksesoris
-        is_valid, accessory_msg = face_svc.check_accessories(image_bytes, boxes)
-        if not is_valid:
-            elapsed = round((time.time() - t0) * 1000, 1)
-            logger.warning(f"[VERIFY] Accessory detected for employee={req.employee_id}: {accessory_msg}")
-            return {
-                "matched": False,
-                "similarity": 0.0,
-                "confidence": 0.0,
-                "threshold": req.threshold or SIMILARITY_THRESHOLD,
-                "employee_id": req.employee_id,
-                "elapsed_ms": elapsed,
-                "message": accessory_msg
-            }
-
-        ok, msg, detail = face_svc.anti_spoof_check(image_bytes, boxes)
-        if not ok:
-            elapsed = round((time.time() - t0) * 1000, 1)
-            logger.warning(f"[VERIFY] Anti-spoof rejected employee={req.employee_id} detail={detail}")
-            return {
-                "matched": False,
-                "similarity": 0.0,
-                "confidence": 0.0,
-                "threshold": req.threshold or SIMILARITY_THRESHOLD,
-                "employee_id": req.employee_id,
-                "elapsed_ms": elapsed,
-                "message": msg,
-            }
-
         result = face_svc.verify(image_bytes, req.stored_embedding, req.threshold)
         elapsed = round((time.time() - t0) * 1000, 1)
 
@@ -1129,14 +1273,14 @@ async def verify_face_burst(
             face_svc.load()
 
         frames = [await p.read() for p in photos]
-        landmarks_seq: List[np.ndarray] = []
+        boxes_seq: List[np.ndarray] = []
         frame_details = []
 
         best_idx = 0
         best_quality = -1.0
 
         for i, frame_bytes in enumerate(frames):
-            dets = face_svc.detect_faces_with_landmarks(frame_bytes)
+            dets = face_svc.detect_faces_with_scores(frame_bytes)
             if len(dets) == 0:
                 elapsed = round((time.time() - t0) * 1000, 1)
                 return {
@@ -1160,7 +1304,7 @@ async def verify_face_burst(
                     "message": f"Frame #{i+1}: terdeteksi lebih dari satu wajah",
                 }
 
-            box, lm, prob = dets[0]
+            box, prob = dets[0]
             box_list = [[float(box[0]), float(box[1]), float(box[2]), float(box[3])]]
 
             is_valid, accessory_msg = face_svc.check_accessories(frame_bytes, box_list)
@@ -1176,20 +1320,6 @@ async def verify_face_burst(
                     "message": f"Frame #{i+1}: {accessory_msg}",
                 }
 
-            ok, msg, detail = face_svc.anti_spoof_check(frame_bytes, box_list)
-            if not ok:
-                elapsed = round((time.time() - t0) * 1000, 1)
-                return {
-                    "matched": False,
-                    "similarity": 0.0,
-                    "confidence": 0.0,
-                    "threshold": req.threshold or SIMILARITY_THRESHOLD,
-                    "employee_id": req.employee_id,
-                    "elapsed_ms": elapsed,
-                    "message": f"Frame #{i+1}: {msg}",
-                    "anti_spoof": detail,
-                }
-
             img = face_svc._decode_image(frame_bytes)
             h, w = img.shape[:2]
             x1, y1, x2, y2 = [int(round(v)) for v in box.tolist()]
@@ -1200,22 +1330,39 @@ async def verify_face_burst(
             face = img[y1:y2, x1:x2]
             if face.size == 0:
                 quality = 0.0
+                spoof_score = 0.0
             else:
                 gray = (0.299 * face[..., 0] + 0.587 * face[..., 1] + 0.114 * face[..., 2]).astype(np.uint8)
                 quality = face_svc._laplacian_var(gray)
+                if ANTI_SPOOFING_ENABLED:
+                    is_real, spoof_score = face_svc.detect_spoof(face)
+                    if not is_real:
+                        elapsed = round((time.time() - t0) * 1000, 1)
+                        return {
+                            "matched": False,
+                            "similarity": 0.0,
+                            "confidence": 0.0,
+                            "threshold": req.threshold or SIMILARITY_THRESHOLD,
+                            "employee_id": req.employee_id,
+                            "elapsed_ms": elapsed,
+                            "message": "Spoofing detected",
+                            "spoof_score": round(float(spoof_score), 4),
+                        }
+                else:
+                    spoof_score = 1.0
             if quality > best_quality:
                 best_quality = float(quality)
                 best_idx = i
 
-            landmarks_seq.append(lm)
+            boxes_seq.append(box)
             frame_details.append({
                 "frame": i + 1,
                 "face_prob": round(float(prob), 4),
                 "quality_lap_var": round(float(quality), 4),
-                "anti_spoof": detail,
+                "spoof_score": round(float(spoof_score), 4),
             })
 
-        live, live_detail = face_svc.motion_liveness(landmarks_seq)
+        live, live_detail = face_svc.motion_liveness(boxes_seq)
         if not live:
             elapsed = round((time.time() - t0) * 1000, 1)
             return {
