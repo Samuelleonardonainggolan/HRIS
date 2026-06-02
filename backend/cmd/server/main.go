@@ -145,7 +145,7 @@ func main() {
 	jamKerjaService := service.NewJamKerjaService(jamKerjaRepo, userRepo) // ✅ Dari kode kedua
 	employeeBasicSalaryService := service.NewEmployeeBasicSalaryService(employeeBasicSalaryRepo, userRepo)
 	faceEmbeddingApprovalService := service.NewFaceEmbeddingApprovalService(faceEmbeddingRepo, userRepo)
-	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo) // ✅ Dari kode kedua
+	overtimeRequestService := service.NewOvertimeRequestService(overtimeRequestRepo, userRepo, employeeBasicSalaryRepo)
 	assignmentService := service.NewAssignmentService(assignmentRepo, userRepo, jamKerjaRepo, departmentRepo, pengajuanIzinCutiRepo)
 
 	// Real-time hub (SSE) - share hub across services so they can broadcast

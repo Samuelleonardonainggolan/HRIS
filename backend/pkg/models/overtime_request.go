@@ -8,12 +8,13 @@ import (
 // ==========================================
 // Subdocument for reward info
 type OvertimeReward struct {
-	RewardType   string     `json:"reward_type" bson:"reward_type"`                     // money|time_off
-	RewardOption string     `json:"reward_option,omitempty" bson:"reward_option,omitempty"` // early_out|late_in
-	RewardDate   *time.Time `json:"reward_date,omitempty" bson:"reward_date,omitempty"`   // Tanggal klaim reward (terutama untuk time_off)
-	Status       string     `json:"status" bson:"status"`                               // none|pending|granted|used
-	GrantedAt    *time.Time `json:"granted_at,omitempty" bson:"granted_at,omitempty"`
-	UsedAt       *time.Time `json:"used_at,omitempty" bson:"used_at,omitempty"`
+	RewardType    string     `json:"reward_type" bson:"reward_type"`                     // money|time_off
+	RewardOption  string     `json:"reward_option,omitempty" bson:"reward_option,omitempty"` // early_out|late_in
+	RewardDate    *time.Time `json:"reward_date,omitempty" bson:"reward_date,omitempty"`   // Tanggal klaim reward (terutama untuk time_off)
+	RewardNominal float64    `json:"reward_nominal,omitempty" bson:"reward_nominal,omitempty"` // Nominal uang lembur
+	Status        string     `json:"status" bson:"status"`                               // none|pending|granted|used
+	GrantedAt     *time.Time `json:"granted_at,omitempty" bson:"granted_at,omitempty"`
+	UsedAt        *time.Time `json:"used_at,omitempty" bson:"used_at,omitempty"`
 }
 
 // ==========================================

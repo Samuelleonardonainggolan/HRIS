@@ -273,6 +273,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 final title = (item['title'] ?? 'Notifikasi').toString();
                 final message = (item['message'] ?? '').toString();
                 final type = (item['type'] ?? '').toString();
+                final referenceId = (item['reference_id'] ?? '').toString();
                 final unread = item['is_read'] != true;
                 final color = _typeColor(type);
                 
@@ -288,17 +289,22 @@ class _NotificationsPageState extends State<NotificationsPage> {
                       await _markAsRead(id);
                     }
                     if (!context.mounted) return;
-                    InAppNotification.show(
-                      title: title,
-                      message: message,
-                      type: type.toLowerCase().contains('overtime')
-                          ? InAppNotificationType.overtime
-                          : type.toLowerCase().contains('assignment')
-                          ? InAppNotificationType.assignment
-                          : type.toLowerCase().contains('attendance')
-                          ? InAppNotificationType.attendance
-                          : InAppNotificationType.leave,
-                    );
+                    if (referenceId.isNotEmpty) {
+                      SSEService().openDetailStream.add({'type': type, 'id': referenceId});
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                    } else {
+                      InAppNotification.show(
+                        title: title,
+                        message: message,
+                        type: type.toLowerCase().contains('overtime')
+                            ? InAppNotificationType.overtime
+                            : type.toLowerCase().contains('assignment')
+                            ? InAppNotificationType.assignment
+                            : type.toLowerCase().contains('attendance')
+                            ? InAppNotificationType.attendance
+                            : InAppNotificationType.leave,
+                      );
+                    }
                   },
                   child: Tooltip(
                     message: fullDate.isNotEmpty ? fullDate : relativeTime,

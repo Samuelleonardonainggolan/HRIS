@@ -17,6 +17,7 @@ import 'package:printing/printing.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_app/widgets/app_sidebar.dart';
 import 'package:mobile_app/widgets/app_header.dart';
+import 'package:mobile_app/utils/overtime_reward_calculator.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key});
@@ -137,6 +138,10 @@ class _HistoryPageState extends State<HistoryPage> {
       final pengajuan = results[1] as List<LeaveRequest>;
       final overtime = results[2] as List<OvertimeRequest>;
       final assignments = results[3] as List<Assignment>;
+      final userId = await ApiService.getUserId();
+      final salaryResp = await ApiService.getActiveSalary(userId!);
+      final basicSalary =
+          int.tryParse(salaryResp['basic_salary']?.toString() ?? '0') ?? 0;
 
       print('[History] attendance records: ${summary.records.length}');
       print('[History] approved pengajuan for this month: ${pengajuan.length}');
@@ -168,9 +173,11 @@ class _HistoryPageState extends State<HistoryPage> {
               cur.year == _selectedMonth.year) {
             final k = _key(cur);
             // Hapus penanda "Absent/Unknown" jika ada pengajuan yang disetujui untuk hari ini
-            merged.removeWhere((r) =>
-                _key(r.date) == k &&
-                (r.status == 'Absent' || r.status == 'Unknown'));
+            merged.removeWhere(
+              (r) =>
+                  _key(r.date) == k &&
+                  (r.status == 'Absent' || r.status == 'Unknown'),
+            );
 
             final rec = AttendanceRecord.fromLeave(
               pengajuanId: p.id,
@@ -190,19 +197,28 @@ class _HistoryPageState extends State<HistoryPage> {
 
       // Merge Overtime Requests
       for (final o in overtime) {
-        if (o.date.month == _selectedMonth.month && o.date.year == _selectedMonth.year) {
+        if (o.date.month == _selectedMonth.month &&
+            o.date.year == _selectedMonth.year) {
           final k = _key(o.date);
-          merged.removeWhere((r) =>
-              _key(r.date) == k &&
-              (r.status == 'Absent' || r.status == 'Unknown'));
+          merged.removeWhere(
+            (r) =>
+                _key(r.date) == k &&
+                (r.status == 'Absent' || r.status == 'Unknown'),
+          );
 
           final myEntry = o.employees.cast<OvertimeEmployee?>().firstWhere(
             (e) => e?.userId == ApiService.currentUser.value?.id,
             orElse: () => null,
           );
           String? rewardText;
-          if (myEntry?.reward?.rewardType == 'uang') {
-            rewardText = myEntry?.reward?.rewardTypeDisplay;
+          if (myEntry?.reward?.rewardType == 'money') {
+            final rewardAmount = calculateOvertimeMoneyReward(
+              basicSalary,
+              o.getDurationHours(),
+            );
+            rewardText = rewardAmount > 0
+                ? '${myEntry?.reward?.rewardTypeDisplay} (${formatMoney(rewardAmount)})'
+                : myEntry?.reward?.rewardTypeDisplay;
           }
 
           final rec = AttendanceRecord.fromOvertime(
@@ -234,7 +250,8 @@ class _HistoryPageState extends State<HistoryPage> {
 
               // Cari record absensi yang sudah ada untuk tanggal itu dan inject
               final idx = merged.indexWhere(
-                  (r) => !r.isLeaveRecord && _key(r.date) == rewardKey);
+                (r) => !r.isLeaveRecord && _key(r.date) == rewardKey,
+              );
               if (idx != -1) {
                 final existing = merged[idx];
                 // Buat ulang record dengan rewardInfo
@@ -261,15 +278,20 @@ class _HistoryPageState extends State<HistoryPage> {
 
       // Merge Assignments
       for (final a in assignments) {
-        if (a.date.month == _selectedMonth.month && a.date.year == _selectedMonth.year) {
+        if (a.date.month == _selectedMonth.month &&
+            a.date.year == _selectedMonth.year) {
           final k = _key(a.date);
-          merged.removeWhere((r) =>
-              _key(r.date) == k &&
-              (r.status == 'Absent' || r.status == 'Unknown'));
+          merged.removeWhere(
+            (r) =>
+                _key(r.date) == k &&
+                (r.status == 'Absent' || r.status == 'Unknown'),
+          );
 
           final myEntry = a.employees.firstWhere(
             (e) => e.userId == ApiService.currentUser.value?.id,
-            orElse: () => a.employees.first, // Fallback (should not happen if filtered correctly)
+            orElse: () => a
+                .employees
+                .first, // Fallback (should not happen if filtered correctly)
           );
 
           final rec = AttendanceRecord.fromAssignment(
@@ -278,7 +300,8 @@ class _HistoryPageState extends State<HistoryPage> {
             startTime: myEntry.assignedStartTime,
             endTime: myEntry.assignedEndTime,
             reason: a.reason,
-            rewardInfo: null, // Assignments use replacement day off which is separate
+            rewardInfo:
+                null, // Assignments use replacement day off which is separate
           );
           merged.add(rec);
         }
@@ -342,8 +365,7 @@ class _HistoryPageState extends State<HistoryPage> {
         sOk = r.status == statusFilter;
       }
       return mOk && dOk && sOk;
-    }).toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
+    }).toList()..sort((a, b) => b.date.compareTo(a.date));
 
     // Grouping by date for daily summary cards
     final Map<String, List<AttendanceRecord>> dailyMap = {};
@@ -567,10 +589,6 @@ class _HistoryPageState extends State<HistoryPage> {
   String _fmt(DateTime dt, String p) =>
       _localeReady ? DateFormat(p, 'id').format(dt) : '';
 
-
-
-
-
   // ═════════════════════════════════════════════════════════════════════════
   // BUILD
   // ═════════════════════════════════════════════════════════════════════════
@@ -615,8 +633,6 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
     );
   }
-
-
 
   // ── Month banner ──────────────────────────────────────────────────────────
   Widget _buildMonthBanner() {
@@ -738,15 +754,27 @@ class _HistoryPageState extends State<HistoryPage> {
             children: [
               Expanded(child: _stat('ONTIME', '$_cntHadir', Colors.white)),
               _vDiv(),
-              Expanded(child: _stat('TELAT', '$_cntLate', const Color(0xFFFCD34D))),
+              Expanded(
+                child: _stat('TELAT', '$_cntLate', const Color(0xFFFCD34D)),
+              ),
               _vDiv(),
               Expanded(child: _stat('IZIN', '$_cntIzin', Colors.white)),
               _vDiv(),
-              Expanded(child: _stat('CUTI', '$_cntCuti', const Color(0xFFD8B4FE))),
+              Expanded(
+                child: _stat('CUTI', '$_cntCuti', const Color(0xFFD8B4FE)),
+              ),
               _vDiv(),
-              Expanded(child: _stat('LEMBUR', '$_cntLembur', const Color(0xFFFBBF24))),
+              Expanded(
+                child: _stat('LEMBUR', '$_cntLembur', const Color(0xFFFBBF24)),
+              ),
               _vDiv(),
-              Expanded(child: _stat('TUGAS', '$_cntPenugasan', const Color(0xFF0EA5E9))),
+              Expanded(
+                child: _stat(
+                  'TUGAS',
+                  '$_cntPenugasan',
+                  const Color(0xFF0EA5E9),
+                ),
+              ),
             ],
           ),
         ],
@@ -1018,7 +1046,8 @@ class _HistoryPageState extends State<HistoryPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
         itemCount: _filtered.length,
         itemBuilder: (_, i) {
-          final group = _filtered[i] as MapEntry<String, List<AttendanceRecord>>;
+          final group =
+              _filtered[i] as MapEntry<String, List<AttendanceRecord>>;
           return _buildDailySummaryCard(group.value);
         },
       ),
@@ -1051,7 +1080,9 @@ class _HistoryPageState extends State<HistoryPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: const Color(0xFF135BEC).withOpacity(0.03),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
             ),
             child: Row(
               children: [
@@ -1091,7 +1122,9 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _buildAttendanceItem(AttendanceRecord r) {
     final sc = _statusColor(r.status);
     final sl = _statusLabel(r.status);
-    final hasBreak = (r.breakStart?.isNotEmpty ?? false) || (r.breakEnd?.isNotEmpty ?? false);
+    final hasBreak =
+        (r.breakStart?.isNotEmpty ?? false) ||
+        (r.breakEnd?.isNotEmpty ?? false);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1114,23 +1147,47 @@ class _HistoryPageState extends State<HistoryPage> {
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _timeSmall('Masuk', r.clockIn, const Color(0xFF2ECC71))),
-              Expanded(child: _timeSmall('Pulang', r.clockOut, const Color(0xFFEF4444))),
+              Expanded(
+                child: _timeSmall('Masuk', r.clockIn, const Color(0xFF2ECC71)),
+              ),
+              Expanded(
+                child: _timeSmall(
+                  'Pulang',
+                  r.clockOut,
+                  const Color(0xFFEF4444),
+                ),
+              ),
             ],
           ),
           if (hasBreak) ...[
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: _timeSmall('Istirahat In', r.breakStart ?? '-', const Color(0xFFF59E0B))),
-                Expanded(child: _timeSmall('Istirahat Out', r.breakEnd ?? '-', const Color(0xFF059669))),
+                Expanded(
+                  child: _timeSmall(
+                    'Istirahat In',
+                    r.breakStart ?? '-',
+                    const Color(0xFFF59E0B),
+                  ),
+                ),
+                Expanded(
+                  child: _timeSmall(
+                    'Istirahat Out',
+                    r.breakEnd ?? '-',
+                    const Color(0xFF059669),
+                  ),
+                ),
               ],
             ),
           ],
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.location_on_outlined, size: 11, color: Colors.grey.shade400),
+              Icon(
+                Icons.location_on_outlined,
+                size: 11,
+                color: Colors.grey.shade400,
+              ),
               const SizedBox(width: 4),
               Text(
                 r.location.isNotEmpty ? r.location : 'Area Hotel',
@@ -1139,13 +1196,21 @@ class _HistoryPageState extends State<HistoryPage> {
               const Spacer(),
               Text(
                 '${r.workHours.toStringAsFixed(1)} jam kerja',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF135BEC)),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF135BEC),
+                ),
               ),
             ],
           ),
           if (r.rewardInfo != null && r.rewardInfo!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            _buildMiniInfo(Icons.stars_rounded, r.rewardInfo!, const Color(0xFFD97706)),
+            _buildMiniInfo(
+              Icons.stars_rounded,
+              r.rewardInfo!,
+              const Color(0xFFD97706),
+            ),
           ],
         ],
       ),
@@ -1178,7 +1243,11 @@ class _HistoryPageState extends State<HistoryPage> {
           const SizedBox(height: 10),
           Text(
             r.leaveType ?? r.status,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
           ),
           if (r.leaveReason != null && r.leaveReason!.isNotEmpty) ...[
             const SizedBox(height: 4),
@@ -1193,16 +1262,28 @@ class _HistoryPageState extends State<HistoryPage> {
             const SizedBox(height: 8),
             Row(
               children: [
-                _buildMiniInfo(Icons.access_time_rounded, '${r.clockIn} - ${r.clockOut}', const Color(0xFF1E293B)),
+                _buildMiniInfo(
+                  Icons.access_time_rounded,
+                  '${r.clockIn} - ${r.clockOut}',
+                  const Color(0xFF1E293B),
+                ),
                 if (r.overtimeHours > 0) ...[
                   const SizedBox(width: 12),
-                  _buildMiniInfo(Icons.timer_outlined, '${r.overtimeHours.toStringAsFixed(1)} jam', const Color(0xFF1E293B)),
+                  _buildMiniInfo(
+                    Icons.timer_outlined,
+                    '${r.overtimeHours.toStringAsFixed(1)} jam',
+                    const Color(0xFF1E293B),
+                  ),
                 ],
               ],
             ),
             if (r.rewardInfo != null) ...[
               const SizedBox(height: 6),
-              _buildMiniInfo(Icons.stars_rounded, r.rewardInfo!, const Color(0xFFD97706)),
+              _buildMiniInfo(
+                Icons.stars_rounded,
+                r.rewardInfo!,
+                const Color(0xFFD97706),
+              ),
             ],
           ],
         ],
@@ -1213,13 +1294,24 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _typeBadge(IconData icon, String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 10, color: color),
           const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: color, letterSpacing: 0.5)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              color: color,
+              letterSpacing: 0.5,
+            ),
+          ),
         ],
       ),
     );
@@ -1228,8 +1320,19 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _statusChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.1))),
-      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.1)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -1237,9 +1340,23 @@ class _HistoryPageState extends State<HistoryPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label.toUpperCase(), style: TextStyle(fontSize: 8, color: Colors.grey.shade400, fontWeight: FontWeight.w700)),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 8,
+            color: Colors.grey.shade400,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 2),
-        Text(value.isEmpty || value == '--:--' ? '-' : value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+        Text(
+          value.isEmpty || value == '--:--' ? '-' : value,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
+        ),
       ],
     );
   }
@@ -1449,11 +1566,19 @@ class _HistoryPageState extends State<HistoryPage> {
             children: [
               pw.Text(
                 'Dicetak pada: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
-                style: pw.TextStyle(font: times, fontSize: 8, color: PdfColors.grey600),
+                style: pw.TextStyle(
+                  font: times,
+                  fontSize: 8,
+                  color: PdfColors.grey600,
+                ),
               ),
               pw.Text(
                 'Halaman ${context.pageNumber} dari ${context.pagesCount}',
-                style: pw.TextStyle(font: times, fontSize: 8, color: PdfColors.grey600),
+                style: pw.TextStyle(
+                  font: times,
+                  fontSize: 8,
+                  color: PdfColors.grey600,
+                ),
               ),
             ],
           ),
@@ -1461,14 +1586,24 @@ class _HistoryPageState extends State<HistoryPage> {
             for (final dateStr in sortedKeys) ...[
               pw.Container(
                 width: double.infinity,
-                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
                 decoration: const pw.BoxDecoration(
                   color: PdfColors.grey200,
                   borderRadius: pw.BorderRadius.all(pw.Radius.circular(4)),
                 ),
                 child: pw.Text(
-                  DateFormat('EEEE, dd MMMM yyyy', 'id').format(DateTime.parse(dateStr)),
-                  style: pw.TextStyle(font: timesBold, fontSize: 10, color: PdfColors.blue900),
+                  DateFormat(
+                    'EEEE, dd MMMM yyyy',
+                    'id',
+                  ).format(DateTime.parse(dateStr)),
+                  style: pw.TextStyle(
+                    font: timesBold,
+                    fontSize: 10,
+                    color: PdfColors.blue900,
+                  ),
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -1480,12 +1615,21 @@ class _HistoryPageState extends State<HistoryPage> {
                   3: const pw.FlexColumnWidth(1),
                   4: const pw.FlexColumnWidth(3),
                 },
-                border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                border: pw.TableBorder.all(
+                  color: PdfColors.grey300,
+                  width: 0.5,
+                ),
                 children: [
                   pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                    decoration: const pw.BoxDecoration(
+                      color: PdfColors.grey100,
+                    ),
                     children: [
-                      _pdfCell('Jenis Aktivitas', isHeader: true, font: timesBold),
+                      _pdfCell(
+                        'Jenis Aktivitas',
+                        isHeader: true,
+                        font: timesBold,
+                      ),
                       _pdfCell('Masuk', isHeader: true, font: timesBold),
                       _pdfCell('Pulang', isHeader: true, font: timesBold),
                       _pdfCell('Jam', isHeader: true, font: timesBold),
@@ -1496,14 +1640,29 @@ class _HistoryPageState extends State<HistoryPage> {
                     pw.TableRow(
                       children: [
                         _pdfCell(r.status, font: times),
-                        _pdfCell(r.clockIn.isEmpty ? '-' : r.clockIn, font: times),
-                        _pdfCell(r.clockOut.isEmpty || r.clockOut == '--:--' ? '-' : r.clockOut, font: times),
-                        _pdfCell('${(r.status == 'Lembur' ? r.overtimeHours : r.workHours).toStringAsFixed(1)} h', font: times),
+                        _pdfCell(
+                          r.clockIn.isEmpty ? '-' : r.clockIn,
+                          font: times,
+                        ),
+                        _pdfCell(
+                          r.clockOut.isEmpty || r.clockOut == '--:--'
+                              ? '-'
+                              : r.clockOut,
+                          font: times,
+                        ),
+                        _pdfCell(
+                          '${(r.status == 'Lembur' ? r.overtimeHours : r.workHours).toStringAsFixed(1)} h',
+                          font: times,
+                        ),
                         _pdfCell(() {
                           List<String> parts = [];
-                          if (r.leaveReason != null && r.leaveReason!.isNotEmpty) parts.add(r.leaveReason!);
-                          if (r.rewardInfo != null && r.rewardInfo!.isNotEmpty) parts.add(r.rewardInfo!);
-                          if (parts.isEmpty && r.location.isNotEmpty) parts.add(r.location);
+                          if (r.leaveReason != null &&
+                              r.leaveReason!.isNotEmpty)
+                            parts.add(r.leaveReason!);
+                          if (r.rewardInfo != null && r.rewardInfo!.isNotEmpty)
+                            parts.add(r.rewardInfo!);
+                          if (parts.isEmpty && r.location.isNotEmpty)
+                            parts.add(r.location);
                           return parts.isEmpty ? '-' : parts.join(' • ');
                         }(), font: times),
                       ],
@@ -1512,11 +1671,18 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
               pw.SizedBox(height: 12),
             ],
-            
+
             pw.SizedBox(height: 20),
             pw.Divider(thickness: 1, color: PdfColors.blue900),
             pw.SizedBox(height: 10),
-            pw.Text('RINGKASAN BULANAN', style: pw.TextStyle(font: timesBold, fontSize: 11, color: PdfColors.blue900)),
+            pw.Text(
+              'RINGKASAN BULANAN',
+              style: pw.TextStyle(
+                font: timesBold,
+                fontSize: 11,
+                color: PdfColors.blue900,
+              ),
+            ),
             pw.SizedBox(height: 8),
             pw.Table(
               columnWidths: const {
@@ -1532,22 +1698,76 @@ class _HistoryPageState extends State<HistoryPage> {
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                   children: [
-                    _pdfCell('Ontime', isHeader: true, font: timesBold, align: pw.Alignment.center),
-                    _pdfCell('Telat', isHeader: true, font: timesBold, align: pw.Alignment.center),
-                    _pdfCell('Izin', isHeader: true, font: timesBold, align: pw.Alignment.center),
-                    _pdfCell('Cuti', isHeader: true, font: timesBold, align: pw.Alignment.center),
-                    _pdfCell('Lembur', isHeader: true, font: timesBold, align: pw.Alignment.center),
-                    _pdfCell('Tugas', isHeader: true, font: timesBold, align: pw.Alignment.center),
+                    _pdfCell(
+                      'Ontime',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      'Telat',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      'Izin',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      'Cuti',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      'Lembur',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      'Tugas',
+                      isHeader: true,
+                      font: timesBold,
+                      align: pw.Alignment.center,
+                    ),
                   ],
                 ),
                 pw.TableRow(
                   children: [
-                    _pdfCell('$_cntHadir', font: times, align: pw.Alignment.center),
-                    _pdfCell('$_cntLate', font: times, align: pw.Alignment.center),
-                    _pdfCell('$_cntIzin', font: times, align: pw.Alignment.center),
-                    _pdfCell('$_cntCuti', font: times, align: pw.Alignment.center),
-                    _pdfCell('$_cntLembur', font: times, align: pw.Alignment.center),
-                    _pdfCell('$_cntPenugasan', font: times, align: pw.Alignment.center),
+                    _pdfCell(
+                      '$_cntHadir',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      '$_cntLate',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      '$_cntIzin',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      '$_cntCuti',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      '$_cntLembur',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
+                    _pdfCell(
+                      '$_cntPenugasan',
+                      font: times,
+                      align: pw.Alignment.center,
+                    ),
                   ],
                 ),
               ],
@@ -1561,11 +1781,19 @@ class _HistoryPageState extends State<HistoryPage> {
         name: 'Laporan_${userName}_${monthName.replaceAll(' ', '_')}.pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
     }
   }
 
-  pw.Widget _pdfCell(String text, {bool isHeader = false, PdfColor? color, pw.Alignment align = pw.Alignment.centerLeft, pw.Font? font}) {
+  pw.Widget _pdfCell(
+    String text, {
+    bool isHeader = false,
+    PdfColor? color,
+    pw.Alignment align = pw.Alignment.centerLeft,
+    pw.Font? font,
+  }) {
     return pw.Container(
       alignment: align,
       padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 6),

@@ -132,7 +132,23 @@ func (h *OvertimeRequestHandler) ClaimReward(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Reward berhasil diklaim"})
+	// Fetch updated overtime and return the employee reward object so client
+	// immediately knows the stored reward nominal.
+	updated, err := h.service.GetOvertimeRequestByID(c.Request.Context(), id)
+	if err != nil || updated == nil {
+		c.JSON(http.StatusOK, gin.H{"message": "Reward berhasil diklaim"})
+		return
+	}
+
+	var empReward interface{} = nil
+	for _, e := range updated.Employees {
+		if e.UserID == userID {
+			empReward = e.Reward
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Reward berhasil diklaim", "data": empReward})
 }
 
 func (h *OvertimeRequestHandler) GetMine(c *gin.Context) {

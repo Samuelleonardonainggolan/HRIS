@@ -68,6 +68,19 @@ class _SlipGajiPageState extends State<SlipGajiPage>
   static const _red = Color(0xFFEF4444);
   static const _gray = Color(0xFF8E94A3);
 
+  int _parseMoney(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is num) return value.round();
+
+    final normalized = value
+        .toString()
+        .replaceAll(RegExp(r'[^0-9\-]'), '');
+    if (normalized.isEmpty || normalized == '-') return 0;
+
+    return int.tryParse(normalized) ?? 0;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -112,14 +125,13 @@ class _SlipGajiPageState extends State<SlipGajiPage>
       // Ambil data payroll dari backend
       final payrollResp = await ApiService.getMyPayroll(now.month, now.year);
       
-      final gajiPokokStr = payrollResp['basic_salary'] ?? '0';
-      final netSalaryStr = payrollResp['net_salary'] ?? '0';
-      final totalLeaveStr = payrollResp['total_leave'] ?? '0';
-      
-      // Parse string ke int
-      final gajiPokok = int.tryParse(gajiPokokStr) ?? 0;
-      final netSalary = int.tryParse(netSalaryStr) ?? 0;
-      final cutiHari = int.tryParse(totalLeaveStr) ?? 0;
+      final gajiPokok = _parseMoney(
+        payrollResp['basic_salary_value'] ?? payrollResp['basic_salary'],
+      );
+      final netSalary = _parseMoney(
+        payrollResp['net_salary_value'] ?? payrollResp['net_salary'],
+      );
+      final cutiHari = _parseMoney(payrollResp['total_leave']);
 
       final periode = DateFormat('MMMM yyyy', 'id_ID').format(now);
 
@@ -133,7 +145,7 @@ class _SlipGajiPageState extends State<SlipGajiPage>
             tunjanganCuti: 0,
             potongan: 0,
             bonus: 0,
-            status: payrollResp['payment_status'] ?? 'Belum Terbayar',
+            status: payrollResp['status'] ?? payrollResp['payment_status'] ?? 'Belum Terbayar',
             overtimeHours: 0,
             cutiHari: cutiHari,
             customTotalBersih: netSalary,

@@ -20,6 +20,7 @@ class _MainNavigationPageState extends State<MainNavigationPage>
     with TickerProviderStateMixin {
   int _selectedIndex = 0;
   StreamSubscription? _sseSubscription;
+  StreamSubscription? _openDetailSub;
 
   @override
   void initState() {
@@ -42,11 +43,28 @@ class _MainNavigationPageState extends State<MainNavigationPage>
         }
       }
     });
+
+    _openDetailSub = SSEService().openDetailStream.stream.listen((data) {
+      if (!mounted) return;
+      final type = data['type']?.toLowerCase() ?? '';
+      int targetIndex = _selectedIndex;
+      
+      if (type.contains('leave')) {
+        targetIndex = 2; // Pengajuan
+      } else if (type.contains('overtime') || type.contains('assignment')) {
+        targetIndex = 3; // Lembur & Tugas
+      }
+      
+      if (_selectedIndex != targetIndex) {
+        setState(() => _selectedIndex = targetIndex);
+      }
+    });
   }
 
   @override
   void dispose() {
     _sseSubscription?.cancel();
+    _openDetailSub?.cancel();
     // Disconnect when exiting main app (e.g. logout)
     SSEService().disconnect();
     super.dispose();

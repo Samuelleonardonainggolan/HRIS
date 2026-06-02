@@ -132,6 +132,7 @@ func SetupRoutes(
 			protected.GET("/employees/my-department", middleware.ManagerDepartemenOnly(), userHandler.GetEmployeesMyDepartment)
 			protected.GET("/employees/search", userHandler.SearchEmployees)
 			protected.GET("/payroll/next-number", middleware.ManagerHROnly(), userHandler.GetNextPayrollNumber)
+			protected.GET("/my-payroll", payrollHandler.GetMyPayroll)
 
 			// EMPLOYEES (Admin Only)
 			employees := protected.Group("/employees")

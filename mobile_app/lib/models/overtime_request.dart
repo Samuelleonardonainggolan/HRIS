@@ -193,6 +193,7 @@ class OvertimeReward {
   final String? rewardOption; // early_out|late_in
   final String status; // none|pending|granted|used
   final DateTime? rewardDate; // Tanggal klaim reward (terutama untuk time_off)
+  final double? rewardNominal; // Nominal reward uang lembur
   final DateTime? grantedAt;
   final DateTime? usedAt;
 
@@ -201,17 +202,21 @@ class OvertimeReward {
     this.rewardOption,
     required this.status,
     this.rewardDate,
+    this.rewardNominal,
     this.grantedAt,
     this.usedAt,
   });
 
   factory OvertimeReward.fromJson(Map<String, dynamic> json) {
     return OvertimeReward(
-      rewardType: json['reward_type']?.toString() ?? '',
+      rewardType: _normalizeRewardType(json['reward_type']),
       rewardOption: json['reward_option']?.toString(),
-      status: json['status']?.toString() ?? 'none',
+      status: _normalizeRewardStatus(json['status']),
       rewardDate: json['reward_date'] != null
           ? DateTime.tryParse(json['reward_date'].toString())
+          : null,
+      rewardNominal: json['reward_nominal'] != null
+          ? double.tryParse(json['reward_nominal'].toString())
           : null,
       grantedAt: json['granted_at'] != null
           ? DateTime.tryParse(json['granted_at'].toString())
@@ -222,9 +227,22 @@ class OvertimeReward {
     );
   }
 
+  static String _normalizeRewardType(dynamic value) {
+    final rewardType = (value ?? '').toString().toLowerCase();
+    if (rewardType == 'uang') return 'money';
+    return rewardType;
+  }
+
+  static String _normalizeRewardStatus(dynamic value) {
+    final rewardStatus = (value ?? 'none').toString().toLowerCase();
+    if (rewardStatus.isEmpty) return 'none';
+    return rewardStatus;
+  }
+
   String get rewardTypeDisplay {
     switch (rewardType) {
       case 'money':
+      case 'uang':
         return 'Uang Lembur';
       case 'time_off':
         return 'Jam Kerja Dipercepat';

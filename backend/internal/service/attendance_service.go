@@ -958,12 +958,12 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 	// Cari semua overtime reward time_off di bulan ini
 	startOfMonthWIB := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, wib)
 	endOfMonthWIB := startOfMonthWIB.AddDate(0, 1, 0)
-	
+
 	rewardFilter := bson.M{
 		"employees": bson.M{
 			"$elemMatch": bson.M{
-				"user_id":              userObjID,
-				"reward.reward_type":   models.OvertimeRewardTypeTimeOff,
+				"user_id":            userObjID,
+				"reward.reward_type": models.OvertimeRewardTypeTimeOff,
 				"reward.reward_date": bson.M{
 					"$gte": startOfMonthWIB,
 					"$lt":  endOfMonthWIB,
@@ -972,7 +972,7 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 			},
 		},
 	}
-	
+
 	rewardsInfoByDate := make(map[string]string)
 	if s.overtimeRepo != nil {
 		requests, _ := s.overtimeRepo.Find(ctx, rewardFilter)
@@ -987,11 +987,11 @@ func (s *attendanceService) GetMonthlyAttendance(ctx context.Context, userID str
 					} else {
 						label = fmt.Sprintf("Masuk Siang %.1f jam (Reward Lembur)", hours)
 					}
-					
+
 					if existing, ok := rewardsInfoByDate[rd]; ok {
-					    rewardsInfoByDate[rd] = existing + ", " + label
+						rewardsInfoByDate[rd] = existing + ", " + label
 					} else {
-					    rewardsInfoByDate[rd] = label
+						rewardsInfoByDate[rd] = label
 					}
 				}
 			}

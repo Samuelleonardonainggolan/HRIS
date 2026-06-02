@@ -26,6 +26,7 @@ class _RequestPageState extends State<RequestPage> {
   User? _user;
   List<LeaveRequest> _requests = [];
   VoidCallback? _realtimeListener;
+  StreamSubscription? _openDetailSub;
 
   @override
   void initState() {
@@ -44,6 +45,7 @@ class _RequestPageState extends State<RequestPage> {
     if (_realtimeListener != null) {
       SSEService().refreshCounter.removeListener(_realtimeListener!);
     }
+    _openDetailSub?.cancel();
     super.dispose();
   }
 
@@ -54,6 +56,22 @@ class _RequestPageState extends State<RequestPage> {
       _loadRequests(silent: true);
     };
     SSEService().refreshCounter.addListener(_realtimeListener!);
+
+    _openDetailSub = SSEService().openDetailStream.stream.listen((data) {
+      if (!mounted) return;
+      final type = data['type']?.toLowerCase() ?? '';
+      final id = data['id'] ?? '';
+      if (type.contains('leave')) {
+        // Wait briefly for data to load
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          final req = _requests.where((e) => e.id == id).firstOrNull;
+          if (req != null) {
+            _showRequestDetail(req);
+          }
+        });
+      }
+    });
   }
 
   void _syncProfile() {

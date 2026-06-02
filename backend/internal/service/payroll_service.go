@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/andikatampubolon10/hris-backend/pkg/database/repository"
@@ -483,9 +484,26 @@ func (s *payrollService) calcOvertimePay(
 				continue
 			}
 
-			// Hitung faktor perkalian sesuai aturan
-			factor := overtimeFactor(hours)
-			sessionPay := int64(basis * factor)
+			sessionPay := int64(0)
+			{
+				rv := reflect.ValueOf(emp.Reward)
+				if rv.IsValid() {
+					if rv.Kind() == reflect.Ptr {
+						rv = rv.Elem()
+					}
+					if rv.Kind() == reflect.Struct {
+						f := rv.FieldByName("RewardAmount")
+						if f.IsValid() && f.CanInt() {
+							sessionPay = f.Int()
+						}
+					}
+				}
+			}
+			if sessionPay <= 0 {
+				// Fallback untuk data lama yang belum menyimpan nominal reward
+				factor := overtimeFactor(hours)
+				sessionPay = int64(basis * factor)
+			}
 
 			totalPay += sessionPay
 			totalHours += hours

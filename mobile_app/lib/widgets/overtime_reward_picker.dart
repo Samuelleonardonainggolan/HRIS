@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/overtime_request.dart';
 import '../services/api_service.dart';
+import '../utils/overtime_reward_calculator.dart';
 
 class OvertimeRewardPicker extends StatefulWidget {
   final ScrollController scrollController;
@@ -14,6 +15,7 @@ class OvertimeRewardPicker extends StatefulWidget {
 class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
   bool _isLoading = true;
   List<OvertimeRequest> _overtimeRequests = [];
+  int _basicSalary = 0;
   String? _errorMessage;
 
   @override
@@ -32,11 +34,16 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
     try {
       final allOvertime = await ApiService.getMyOvertime();
       final userId = await ApiService.getUserId();
+      final salaryResp = await ApiService.getActiveSalary(userId!);
+      final basicSalary =
+          int.tryParse(salaryResp['basic_salary']?.toString() ?? '0') ?? 0;
 
       if (mounted) {
         setState(() {
+          _basicSalary = basicSalary;
           _overtimeRequests = allOvertime.where((o) {
-            if (o.status != 'submitted' && o.status != 'published') return false;
+            if (o.status != 'submitted' && o.status != 'published')
+              return false;
             return o.employees.any((e) => e.userId == userId && e.isAgreed);
           }).toList();
           _isLoading = false;
@@ -52,9 +59,19 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
     }
   }
 
-  Future<void> _claimReward(String id, String rewardType, {String? rewardDate, String? rewardOption}) async {
+  Future<void> _claimReward(
+    String id,
+    String rewardType, {
+    String? rewardDate,
+    String? rewardOption,
+  }) async {
     try {
-      await ApiService.claimOvertimeReward(id, rewardType, rewardDate: rewardDate, rewardOption: rewardOption);
+      await ApiService.claimOvertimeReward(
+        id,
+        rewardType,
+        rewardDate: rewardDate,
+        rewardOption: rewardOption,
+      );
       if (mounted) {
         String typeLabel = rewardType == 'money' ? 'Uang' : 'Potong Jam Kerja';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -106,7 +123,11 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
                   color: const Color(0xFF8B5CF6).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.stars_rounded, color: Color(0xFF8B5CF6), size: 24),
+                child: const Icon(
+                  Icons.stars_rounded,
+                  color: Color(0xFF8B5CF6),
+                  size: 24,
+                ),
               ),
               const SizedBox(width: 16),
               const Text(
@@ -133,17 +154,17 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _errorMessage != null
-                  ? _buildError()
-                  : _overtimeRequests.isEmpty
-                      ? _buildEmpty()
-                      : ListView.builder(
-                          controller: widget.scrollController,
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                          itemCount: _overtimeRequests.length,
-                          itemBuilder: (context, index) {
-                            return _buildRewardCard(_overtimeRequests[index]);
-                          },
-                        ),
+              ? _buildError()
+              : _overtimeRequests.isEmpty
+              ? _buildEmpty()
+              : ListView.builder(
+                  controller: widget.scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  itemCount: _overtimeRequests.length,
+                  itemBuilder: (context, index) {
+                    return _buildRewardCard(_overtimeRequests[index]);
+                  },
+                ),
         ),
       ],
     );
@@ -158,7 +179,10 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
           const SizedBox(height: 16),
           Text(
             'Tidak ada lembur pending reward',
-            style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: Colors.grey.shade500,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -176,7 +200,10 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
             const SizedBox(height: 16),
             Text(
               'Gagal memuat data lembur',
-              style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Colors.grey.shade800,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -185,10 +212,7 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
             const SizedBox(height: 16),
-            TextButton(
-              onPressed: _loadData,
-              child: const Text('Coba Lagi'),
-            ),
+            TextButton(onPressed: _loadData, child: const Text('Coba Lagi')),
           ],
         ),
       ),
@@ -198,7 +222,13 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
   Widget _buildRewardCard(OvertimeRequest request) {
     final userId = ApiService.currentUser.value?.id;
     final myEntry = request.employees.firstWhere((e) => e.userId == userId);
-    final hasReward = myEntry.reward != null && myEntry.reward!.rewardType.isNotEmpty && myEntry.reward!.rewardType != 'none';
+    final hasReward =
+        myEntry.reward != null &&
+        myEntry.reward!.rewardType.isNotEmpty &&
+        myEntry.reward!.rewardType != 'none';
+    final double rewardAmount = myEntry.reward?.rewardNominal ?? (myEntry.reward?.rewardType == 'money'
+        ? calculateOvertimeMoneyReward(_basicSalary, request.getDurationHours()).toDouble()
+        : 0.0);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -226,7 +256,10 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      DateFormat('EEEE, dd MMM yyyy', 'id').format(request.date),
+                      DateFormat(
+                        'EEEE, dd MMM yyyy',
+                        'id',
+                      ).format(request.date),
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -234,7 +267,10 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF8B5CF6).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -270,7 +306,9 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
                     child: Row(
                       children: [
                         Icon(
-                          myEntry.reward!.rewardType == 'money' ? Icons.payments_rounded : Icons.timer_rounded,
+                          myEntry.reward!.rewardType == 'money'
+                              ? Icons.payments_rounded
+                              : Icons.timer_rounded,
                           color: const Color(0xFF8B5CF6),
                           size: 20,
                         ),
@@ -286,6 +324,16 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
                                 color: Color(0xFF1E293B),
                               ),
                             ),
+                            if (myEntry.reward!.rewardType == 'money')
+                              Text(
+                                rewardAmount > 0
+                                    ? 'Nominal: ${formatMoney(rewardAmount.toInt())}'
+                                    : 'Nominal belum tersedia',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 11,
+                                ),
+                              ),
                             Text(
                               'Status: ${myEntry.reward!.statusDisplay}',
                               style: TextStyle(
@@ -369,10 +417,14 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'pending': return Colors.orange;
-      case 'granted': return Colors.green;
-      case 'used': return Colors.blue;
-      default: return Colors.grey;
+      case 'pending':
+        return Colors.orange;
+      case 'granted':
+        return Colors.green;
+      case 'used':
+        return Colors.blue;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -395,18 +447,33 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
     _showFinalConfirmation(request, 'money', null, null);
   }
 
-  void _showFinalConfirmation(OvertimeRequest request, String type, String? dateStr, String? option) {
+  void _showFinalConfirmation(
+    OvertimeRequest request,
+    String type,
+    String? dateStr,
+    String? option,
+  ) {
     String rewardName = type == 'money' ? 'Uang Lembur' : 'Potong Jam Kerja';
     if (option == 'early_out') rewardName += ' (Pulang Cepat)';
     if (option == 'late_in') rewardName += ' (Masuk Terlambat)';
 
-    final dateInfo = dateStr != null ? '\nTanggal: ${DateFormat('dd MMM yyyy', 'id').format(DateTime.parse(dateStr))}' : '';
+    final dateInfo = dateStr != null
+        ? '\nTanggal: ${DateFormat('dd MMM yyyy', 'id').format(DateTime.parse(dateStr))}'
+        : '';
+    final double rewardAmount = type == 'money'
+        ? calculateOvertimeMoneyReward(_basicSalary, request.getDurationHours()).toDouble()
+        : 0.0;
+    final amountInfo = type == 'money' && rewardAmount > 0
+        ? '\nNominal estimasi: ${formatMoney(rewardAmount.toInt())}'
+        : '';
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Konfirmasi Reward'),
-        content: Text('Anda akan mengklaim:\n\n$rewardName\nUntuk lembur tanggal ${DateFormat('dd MMM yyyy', 'id').format(request.date)}.$dateInfo\n\nLanjutkan?'),
+        content: Text(
+          'Anda akan mengklaim:\n\n$rewardName$amountInfo\nUntuk lembur tanggal ${DateFormat('dd MMM yyyy', 'id').format(request.date)}.$dateInfo\n\nLanjutkan?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -415,7 +482,12 @@ class _OvertimeRewardPickerState extends State<OvertimeRewardPicker> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              _claimReward(request.id, type, rewardDate: dateStr, rewardOption: option);
+              _claimReward(
+                request.id,
+                type,
+                rewardDate: dateStr,
+                rewardOption: option,
+              );
             },
             child: const Text('Klaim'),
           ),

@@ -40,6 +40,7 @@ type OvertimeRequestService interface {
 type overtimeRequestService struct {
 	overtimeRepo        repository.OvertimeRequestRepository
 	userRepo            repository.UserRepository
+	basicSalaryRepo     repository.EmployeeBasicSalaryRepository
 	wsHub               *WSHub
 	notificationService NotificationService
 }
@@ -47,11 +48,13 @@ type overtimeRequestService struct {
 func NewOvertimeRequestService(
 	overtimeRepo repository.OvertimeRequestRepository,
 	userRepo repository.UserRepository,
+	basicSalaryRepo repository.EmployeeBasicSalaryRepository,
 ) OvertimeRequestService {
 	return &overtimeRequestService{
-		overtimeRepo: overtimeRepo,
-		userRepo:     userRepo,
-		wsHub:        nil,
+		overtimeRepo:    overtimeRepo,
+		userRepo:        userRepo,
+		basicSalaryRepo: basicSalaryRepo,
+		wsHub:           nil,
 	}
 }
 
@@ -299,6 +302,26 @@ func (s *overtimeRequestService) ClaimReward(ctx context.Context, overtimeID str
 		// Parse tanggal sebagai WIB midnight agar konsisten dengan penyimpanan attendance record
 		if d, err := time.ParseInLocation("2006-01-02", rewardDate, overtimeSvcWIB); err == nil {
 			reward.RewardDate = &d
+		}
+	}
+
+	if rewardType == models.OvertimeRewardTypeMoney {
+		reqData, err := s.overtimeRepo.FindByID(ctx, overtimeID)
+		if err == nil && reqData != nil {
+			salary, err := s.basicSalaryRepo.FindActiveByUserID(ctx, userID)
+			if err == nil && salary != nil {
+				base := float64(salary.BasicSalary) / 173.0
+				hours := reqData.GetDurationHours()
+				if hours > 0 {
+					var total float64
+					if hours <= 1 {
+						total = 1.5 * base * hours
+					} else {
+						total = (1.5 * base) + (2.0 * base * (hours - 1.0))
+					}
+					reward.RewardNominal = total
+				}
+			}
 		}
 	}
 

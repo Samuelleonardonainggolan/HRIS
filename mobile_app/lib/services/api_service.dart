@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.20.72.108:8080/api/v1';
+  static const String baseUrl = 'http://10.188.208.156:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -696,7 +696,7 @@ class ApiService {
     }
   }
 
-  static Future<void> claimOvertimeReward(String id, String rewardType, {String? rewardDate, String? rewardOption}) async {
+  static Future<Map<String, dynamic>?> claimOvertimeReward(String id, String rewardType, {String? rewardDate, String? rewardOption}) async {
     try {
       if (await isTokenExpired()) await refreshToken();
 
@@ -715,10 +715,11 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 30));
 
+      final responseBody = jsonDecode(response.body);
       if (response.statusCode != 200) {
-        final err = jsonDecode(response.body);
-        throw Exception(err['message'] ?? 'Gagal mengklaim reward lembur');
+        throw Exception(responseBody['message'] ?? 'Gagal mengklaim reward lembur');
       }
+      return responseBody['data'] as Map<String, dynamic>?;
     } catch (e) {
       print('[API] claimOvertimeReward error: $e');
       rethrow;

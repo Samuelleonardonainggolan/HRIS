@@ -2,9 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/in_app_notification.dart';
 import 'api_service.dart';
+import 'package:mobile_app/main.dart';
 
 enum SSEConnectionState { disconnected, connecting, connected, error }
 
@@ -30,6 +32,7 @@ class SSEService {
   HttpClient? _ioClient;
   StreamSubscription? _streamSubscription;
   final _eventController = StreamController<SSEEvent>.broadcast();
+  final openDetailStream = StreamController<Map<String, String>>.broadcast();
   Timer? _unreadRefreshTimer;
 
   // ValueNotifier for real-time tracking of connection state
@@ -316,6 +319,19 @@ class SSEService {
                           title: title,
                           message: message,
                           type: type,
+                          onTap: (payload?['reference_id'] != null && rawType != null)
+                              ? () {
+                                  final refId = payload!['reference_id'].toString();
+                                  if (refId.isNotEmpty) {
+                                    SSEService().openDetailStream.add({'type': rawType, 'id': refId});
+                                    // Make sure to pop any modals/pages to get back to main navigation
+                                    final ctx = MyApp.navigatorKey.currentContext;
+                                    if (ctx != null) {
+                                      Navigator.of(ctx).popUntil((route) => route.isFirst);
+                                    }
+                                  }
+                                }
+                              : null,
                         );
                         unreadNotifications.value += 1;
                       }

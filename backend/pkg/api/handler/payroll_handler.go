@@ -4,6 +4,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -294,8 +295,26 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 						continue
 					}
 					totalOvertimeHours += hours
-					// Gunakan method model untuk hitung per sesi
-					payroll.OvertimePayValue += payroll.CalculateOvertimePay(hours)
+					sessionPay := int64(0)
+					{
+						rv := reflect.ValueOf(emp.Reward)
+						if rv.IsValid() {
+							if rv.Kind() == reflect.Ptr {
+								rv = rv.Elem()
+							}
+							if rv.Kind() == reflect.Struct {
+								f := rv.FieldByName("RewardAmount")
+								if f.IsValid() && f.CanInt() {
+									sessionPay = f.Int()
+								}
+							}
+						}
+					}
+					if sessionPay <= 0 {
+						// Fallback untuk data lama yang belum menyimpan nominal reward
+						sessionPay = payroll.CalculateOvertimePay(hours)
+					}
+					payroll.OvertimePayValue += sessionPay
 				}
 			}
 		}

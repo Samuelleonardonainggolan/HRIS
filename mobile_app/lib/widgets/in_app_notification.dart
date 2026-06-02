@@ -14,6 +14,7 @@ class InAppNotification extends StatefulWidget {
   final String message;
   final InAppNotificationType type;
   final VoidCallback onDismiss;
+  final VoidCallback? onTap;
 
   const InAppNotification({
     super.key,
@@ -21,6 +22,7 @@ class InAppNotification extends StatefulWidget {
     required this.message,
     required this.type,
     required this.onDismiss,
+    this.onTap,
   });
 
   /// Displays the custom animated sliding card at the top of the viewport globally.
@@ -28,6 +30,7 @@ class InAppNotification extends StatefulWidget {
     required String title,
     required String message,
     required InAppNotificationType type,
+    VoidCallback? onTap,
   }) {
     final context = MyApp.navigatorKey.currentContext;
     if (context == null) {
@@ -43,6 +46,7 @@ class InAppNotification extends StatefulWidget {
         title: title,
         message: message,
         type: type,
+        onTap: onTap,
         onDismiss: () {
           try {
             overlayEntry.remove();
@@ -160,8 +164,13 @@ class _InAppNotificationState extends State<InAppNotification>
                 onDismissed: (_) => widget.onDismiss(),
                 child: Material(
                   color: Colors.transparent,
-                  child: Container(
-                    width: double.infinity,
+                  child: GestureDetector(
+                    onTap: () {
+                      _dismiss();
+                      widget.onTap?.call();
+                    },
+                    child: Container(
+                      width: double.infinity,
                     constraints: const BoxConstraints(maxWidth: 480),
                     decoration: BoxDecoration(
                       color: bgColor,
@@ -252,6 +261,7 @@ class _InAppNotificationState extends State<InAppNotification>
                     ),
                   ),
                 ),
+              ),
               ),
             ),
           ),

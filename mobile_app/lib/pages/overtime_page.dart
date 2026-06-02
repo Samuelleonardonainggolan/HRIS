@@ -13,6 +13,7 @@ import 'package:mobile_app/widgets/app_header.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:mobile_app/utils/overtime_reward_calculator.dart';
 
 class OvertimePage extends StatefulWidget {
   const OvertimePage({super.key});
@@ -24,11 +25,13 @@ class OvertimePage extends StatefulWidget {
 class _OvertimePageState extends State<OvertimePage> {
   bool _isLoading = true;
   User? _user;
+  int _basicSalary = 0;
   List<OvertimeRequest> _items = [];
   List<Assignment> _assignments = [];
   List<dynamic> _combinedItems = []; // gabungan lembur + penugasan
   String _filterType = 'semua'; // semua | lembur | penugasan
   StreamSubscription? _sseSubscription;
+  StreamSubscription? _openDetailSub;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _OvertimePageState extends State<OvertimePage> {
   void dispose() {
     ApiService.currentUser.removeListener(_syncProfile);
     _sseSubscription?.cancel();
+    _openDetailSub?.cancel();
     super.dispose();
   }
 
@@ -49,6 +53,30 @@ class _OvertimePageState extends State<OvertimePage> {
     _sseSubscription = SSEService().events.listen((event) {
       if (!mounted || event.type == 'ping') return;
       _loadData(silent: true);
+    });
+
+    _openDetailSub = SSEService().openDetailStream.stream.listen((data) {
+      if (!mounted) return;
+      final type = data['type']?.toLowerCase() ?? '';
+      final id = data['id'] ?? '';
+      if (type.contains('overtime') || type.contains('assignment')) {
+        // Wait briefly for data to load if it was just pushed via SSE
+        Future.delayed(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          if (type.contains('overtime')) {
+            final req = _items.where((e) => e.id == id).firstOrNull;
+            if (req != null) {
+               // Ensure no other bottom sheet is open? Just show.
+               _showDetail(req);
+            }
+          } else if (type.contains('assignment')) {
+            final a = _assignments.where((e) => e.id == id).firstOrNull;
+            if (a != null) {
+               _showDetailAssignment(a);
+            }
+          }
+        });
+      }
     });
   }
 
@@ -88,6 +116,9 @@ class _OvertimePageState extends State<OvertimePage> {
     try {
       final user =
           ApiService.currentUser.value ?? await ApiService.getProfile();
+      final salaryResp = await ApiService.getActiveSalary(user.id);
+      final basicSalary =
+          int.tryParse(salaryResp['basic_salary']?.toString() ?? '0') ?? 0;
 
       // Load overtime requests
       List<OvertimeRequest> overtimeData =
@@ -99,10 +130,13 @@ class _OvertimePageState extends State<OvertimePage> {
           for (final item in overtimeData) item.id: item,
           for (final item in myOvertime) item.id: item,
         };
-        overtimeData = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
+        overtimeData = merged.values.toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
       }
 
-      overtimeData = overtimeData.where((item) => _canUserSeeRequest(user, item)).toList();
+      overtimeData = overtimeData
+          .where((item) => _canUserSeeRequest(user, item))
+          .toList();
 
       // Load assignments
       List<Assignment> assignmentData =
@@ -113,22 +147,30 @@ class _OvertimePageState extends State<OvertimePage> {
           for (final item in assignmentData) item.id: item,
           for (final item in myAssignments) item.id: item,
         };
-        assignmentData = merged.values.toList()..sort((a, b) => b.date.compareTo(a.date));
+        assignmentData = merged.values.toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
       }
 
-      assignmentData = assignmentData.where((item) => _canUserSeeAssignment(user, item)).toList();
+      assignmentData = assignmentData
+          .where((item) => _canUserSeeAssignment(user, item))
+          .toList();
 
       // Combine & sort
       final combined = <dynamic>[...overtimeData, ...assignmentData]
         ..sort((a, b) {
-          final dateA = (a is OvertimeRequest ? a.date : (a as Assignment).date);
-          final dateB = (b is OvertimeRequest ? b.date : (b as Assignment).date);
+          final dateA = (a is OvertimeRequest
+              ? a.date
+              : (a as Assignment).date);
+          final dateB = (b is OvertimeRequest
+              ? b.date
+              : (b as Assignment).date);
           return dateB.compareTo(dateA);
         });
 
       if (!mounted) return;
       setState(() {
         _user = user;
+        _basicSalary = basicSalary;
         _items = overtimeData;
         _assignments = assignmentData;
         _combinedItems = combined;
@@ -251,8 +293,6 @@ class _OvertimePageState extends State<OvertimePage> {
     );
   }
 
-
-
   void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -285,7 +325,9 @@ class _OvertimePageState extends State<OvertimePage> {
                   : RefreshIndicator(
                       onRefresh: _loadData,
                       color: const Color(0xFF135BEC),
-                      child: _getFilteredItems().isEmpty ? _buildEmptyState() : _buildList(),
+                      child: _getFilteredItems().isEmpty
+                          ? _buildEmptyState()
+                          : _buildList(),
                     ),
             ),
           ],
@@ -310,17 +352,11 @@ class _OvertimePageState extends State<OvertimePage> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
         children: [
-          Expanded(
-            child: _filterChip('Semua', 'semua'),
-          ),
+          Expanded(child: _filterChip('Semua', 'semua')),
           const SizedBox(width: 8),
-          Expanded(
-            child: _filterChip('Lembur', 'lembur'),
-          ),
+          Expanded(child: _filterChip('Lembur', 'lembur')),
           const SizedBox(width: 8),
-          Expanded(
-            child: _filterChip('Penugasan', 'penugasan'),
-          ),
+          Expanded(child: _filterChip('Penugasan', 'penugasan')),
         ],
       ),
     );
@@ -344,7 +380,9 @@ class _OvertimePageState extends State<OvertimePage> {
           color: isSelected ? const Color(0xFF135BEC) : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xFF135BEC) : const Color(0xFFE2E8F0),
+            color: isSelected
+                ? const Color(0xFF135BEC)
+                : const Color(0xFFE2E8F0),
           ),
         ),
         child: Row(
@@ -363,9 +401,9 @@ class _OvertimePageState extends State<OvertimePage> {
             // Show dot if new data
             if (value == 'lembur' || value == 'penugasan')
               ValueListenableBuilder<bool>(
-                valueListenable: value == 'lembur' 
-                  ? SSEService().hasNewOvertime 
-                  : SSEService().hasNewAssignment,
+                valueListenable: value == 'lembur'
+                    ? SSEService().hasNewOvertime
+                    : SSEService().hasNewAssignment,
                 builder: (context, hasNew, _) {
                   if (!hasNew) return const SizedBox.shrink();
                   return Container(
@@ -373,7 +411,9 @@ class _OvertimePageState extends State<OvertimePage> {
                     width: 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : const Color(0xFFEF4444),
+                      color: isSelected
+                          ? Colors.white
+                          : const Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
                   );
@@ -492,10 +532,20 @@ class _OvertimePageState extends State<OvertimePage> {
     );
   }
 
-  Future<void> _claimOvertimeReward(OvertimeRequest r, String rewardType, String? rewardDate, String? rewardOption) async {
+  Future<void> _claimOvertimeReward(
+    OvertimeRequest r,
+    String rewardType,
+    String? rewardDate,
+    String? rewardOption,
+  ) async {
     setState(() => _isLoading = true);
     try {
-      await ApiService.claimOvertimeReward(r.id, rewardType, rewardDate: rewardDate, rewardOption: rewardOption);
+      await ApiService.claimOvertimeReward(
+        r.id,
+        rewardType,
+        rewardDate: rewardDate,
+        rewardOption: rewardOption,
+      );
       String typeLabel = rewardType == 'money' ? 'Uang' : 'Potong Jam Kerja';
       _showSnackBar('Reward $typeLabel berhasil dipilih');
       await _loadData();
@@ -514,6 +564,7 @@ class _OvertimePageState extends State<OvertimePage> {
       builder: (context) => _OvertimeDetailSheet(
         request: r,
         user: _user!,
+        basicSalary: _basicSalary,
         onAgree: () {
           Navigator.pop(context);
           _agree(r);
@@ -826,13 +877,20 @@ class _OvertimeCard extends StatelessWidget {
 class _OvertimeDetailSheet extends StatelessWidget {
   final OvertimeRequest request;
   final User user;
+  final int basicSalary;
   final VoidCallback onAgree;
   final VoidCallback onReject;
-  final void Function(String rewardType, String? rewardDate, String? rewardOption) onClaimReward;
+  final void Function(
+    String rewardType,
+    String? rewardDate,
+    String? rewardOption,
+  )
+  onClaimReward;
 
   const _OvertimeDetailSheet({
     required this.request,
     required this.user,
+    required this.basicSalary,
     required this.onAgree,
     required this.onReject,
     required this.onClaimReward,
@@ -1295,10 +1353,18 @@ class _OvertimeDetailSheet extends StatelessWidget {
     if (myEntry == null) return const SizedBox.shrink();
 
     final reward = myEntry.reward;
-    final hasReward = reward != null && reward.rewardType.isNotEmpty && reward.rewardType != 'none';
+    final hasReward =
+      reward != null &&
+      reward.rewardType.isNotEmpty &&
+      reward.rewardType != 'none';
+    final double rewardAmount = reward?.rewardNominal ?? (reward?.rewardType == 'money'
+      ? calculateOvertimeMoneyReward(basicSalary, request.getDurationHours()).toDouble()
+      : 0.0);
 
     if (!hasReward) {
-      final canChoose = (request.status == 'submitted' || request.status == 'published') && myEntry.isAgreed;
+      final canChoose =
+          (request.status == 'submitted' || request.status == 'published') &&
+          myEntry.isAgreed;
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1351,7 +1417,9 @@ class _OvertimeDetailSheet extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            canChoose ? 'Silakan pilih jenis reward di bawah' : 'Belum dapat memilih reward',
+                            canChoose
+                                ? 'Silakan pilih jenis reward di bawah'
+                                : 'Belum dapat memilih reward',
                             style: TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
@@ -1471,7 +1539,9 @@ class _OvertimeDetailSheet extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      reward.rewardType == 'money' ? Icons.payments_rounded : Icons.timer_rounded,
+                      reward.rewardType == 'money'
+                          ? Icons.payments_rounded
+                          : Icons.timer_rounded,
                       color: statusColor,
                       size: 20,
                     ),
@@ -1497,6 +1567,16 @@ class _OvertimeDetailSheet extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (reward.rewardType == 'money')
+                          Text(
+                            rewardAmount > 0
+                                ? 'Nominal: ${formatMoney(rewardAmount.toInt())}'
+                                : 'Nominal belum tersedia',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -1514,7 +1594,10 @@ class _OvertimeDetailSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                     Text(
-                      DateFormat('EEEE, dd MMM yyyy', 'id').format(reward.rewardDate!),
+                      DateFormat(
+                        'EEEE, dd MMM yyyy',
+                        'id',
+                      ).format(reward.rewardDate!),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -1550,7 +1633,9 @@ class _OvertimeDetailSheet extends StatelessWidget {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Pilih Opsi Pengurangan'),
-            content: const Text('Pilih bagaimana Anda ingin menggunakan pengurangan jam kerja ini:'),
+            content: const Text(
+              'Pilih bagaimana Anda ingin menggunakan pengurangan jam kerja ini:',
+            ),
             actions: [
               TextButton(
                 onPressed: () {
@@ -1580,18 +1665,33 @@ class _OvertimeDetailSheet extends StatelessWidget {
     _showFinalConfirmation(context, 'money', null, null);
   }
 
-  void _showFinalConfirmation(BuildContext context, String type, String? dateStr, String? option) {
+  void _showFinalConfirmation(
+    BuildContext context,
+    String type,
+    String? dateStr,
+    String? option,
+  ) {
     String rewardName = type == 'money' ? 'Uang Lembur' : 'Potong Jam Kerja';
     if (option == 'early_out') rewardName += ' (Pulang Cepat)';
     if (option == 'late_in') rewardName += ' (Masuk Terlambat)';
 
-    final dateInfo = dateStr != null ? '\nTanggal Klaim: ${DateFormat('dd MMM yyyy', 'id').format(DateTime.parse(dateStr))}' : '';
+    final dateInfo = dateStr != null
+        ? '\nTanggal Klaim: ${DateFormat('dd MMM yyyy', 'id').format(DateTime.parse(dateStr))}'
+        : '';
+    final double rewardAmount = type == 'money'
+      ? calculateOvertimeMoneyReward(basicSalary, request.getDurationHours()).toDouble()
+      : 0.0;
+    final amountInfo = type == 'money' && rewardAmount > 0
+        ? '\nNominal estimasi: ${formatMoney(rewardAmount.toInt())}'
+        : '';
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Konfirmasi Reward'),
-        content: Text('Anda akan mengklaim:\n\n$rewardName\nUntuk lembur tanggal ${DateFormat('dd MMM yyyy', 'id').format(request.date)}.$dateInfo\n\nLanjutkan?'),
+        content: Text(
+          'Anda akan mengklaim:\n\n$rewardName$amountInfo\nUntuk lembur tanggal ${DateFormat('dd MMM yyyy', 'id').format(request.date)}.$dateInfo\n\nLanjutkan?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1624,9 +1724,9 @@ class _OvertimeDetailSheet extends StatelessWidget {
     } catch (e) {
       debugPrint('Error launching URL: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal membuka dokumen')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Gagal membuka dokumen')));
       }
     }
   }
@@ -1654,7 +1754,7 @@ class _AssignmentCard extends StatelessWidget {
     final statusColor = _getStatusColor(item.status);
     final dateText = DateFormat('dd MMM yyyy', 'id').format(item.date);
     final participantSummary = _buildParticipantSummary();
-    
+
     final myEntryList = item.employees.where(
       (e) => e.userId.trim().toLowerCase() == user.id.trim().toLowerCase(),
     );
@@ -1794,7 +1894,9 @@ class _AssignmentCard extends StatelessWidget {
         ),
         _miniPill(
           Icons.shield_rounded,
-          myEntry != null ? _getEmployeeStatusDisplay(myEntry.employeeStatus) : '-',
+          myEntry != null
+              ? _getEmployeeStatusDisplay(myEntry.employeeStatus)
+              : '-',
           _getEmployeeStatusColor(myEntry?.employeeStatus ?? ''),
         ),
       ],
@@ -1895,7 +1997,9 @@ class _AssignmentDetailSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final myEntry = _findMyEntry();
     final canRespond =
-        assignment.isSubmitted && myEntry != null && myEntry.employeeStatus == 'pending';
+        assignment.isSubmitted &&
+        myEntry != null &&
+        myEntry.employeeStatus == 'pending';
     final participantCount = assignment.employees.length;
 
     return DraggableScrollableSheet(
@@ -2112,7 +2216,8 @@ class _AssignmentDetailSheet extends StatelessWidget {
 
   Widget _buildRewardSection(BuildContext context) {
     final myEntry = _findMyEntry();
-    if (myEntry == null) return const SizedBox.shrink(); // Always show if participant
+    if (myEntry == null)
+      return const SizedBox.shrink(); // Always show if participant
 
     final status = myEntry.dayOffStatus.toLowerCase();
     Color statusColor;
@@ -2211,7 +2316,10 @@ class _AssignmentDetailSheet extends StatelessWidget {
                       style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                     Text(
-                      DateFormat('EEEE, dd MMM yyyy', 'id').format(myEntry.replacementOffDate!),
+                      DateFormat(
+                        'EEEE, dd MMM yyyy',
+                        'id',
+                      ).format(myEntry.replacementOffDate!),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
@@ -2243,10 +2351,14 @@ class _AssignmentDetailSheet extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: myEntry.employeeStatus == 'agreed' ? onUseDayOff : null,
+                    onPressed: myEntry.employeeStatus == 'agreed'
+                        ? onUseDayOff
+                        : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: myEntry.employeeStatus == 'agreed' 
-                          ? (status == 'granted' ? statusColor : const Color(0xFF8B5CF6))
+                      backgroundColor: myEntry.employeeStatus == 'agreed'
+                          ? (status == 'granted'
+                                ? statusColor
+                                : const Color(0xFF8B5CF6))
                           : Colors.grey.shade400,
                       foregroundColor: Colors.white,
                       elevation: 0,
@@ -2255,8 +2367,13 @@ class _AssignmentDetailSheet extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      myEntry.employeeStatus == 'agreed' ? 'Pilih Hari Libur Pengganti' : 'Setujui Penugasan Terlebih Dahulu',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      myEntry.employeeStatus == 'agreed'
+                          ? 'Pilih Hari Libur Pengganti'
+                          : 'Setujui Penugasan Terlebih Dahulu',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
@@ -2359,7 +2476,10 @@ class _AssignmentDetailSheet extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    _statusPill(_getStatusDisplay(employee.employeeStatus), statusColor),
+                    _statusPill(
+                      _getStatusDisplay(employee.employeeStatus),
+                      statusColor,
+                    ),
                   ],
                 ),
                 if (employee.rejectionNote != null &&
@@ -2454,7 +2574,10 @@ class _AssignmentDetailSheet extends StatelessWidget {
 
       String rewardText = 'Hari Libur Pengganti';
       if (myEntry != null && myEntry.replacementOffDate != null) {
-        final dateStr = DateFormat('EEEE, dd MMMM yyyy', 'id').format(myEntry.replacementOffDate!);
+        final dateStr = DateFormat(
+          'EEEE, dd MMMM yyyy',
+          'id',
+        ).format(myEntry.replacementOffDate!);
         rewardText += ' ($dateStr)';
       }
 
@@ -2516,7 +2639,7 @@ class _AssignmentDetailSheet extends StatelessWidget {
               style: pw.TextStyle(font: times, fontSize: 11),
             ),
             pw.SizedBox(height: 10),
-            
+
             // Employees (No Table)
             for (final emp in assignment.employees)
               pw.Padding(
@@ -2524,37 +2647,80 @@ class _AssignmentDetailSheet extends StatelessWidget {
                 child: pw.Row(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('- ', style: pw.TextStyle(font: times, fontSize: 11)),
+                    pw.Text(
+                      '- ',
+                      style: pw.TextStyle(font: times, fontSize: 11),
+                    ),
                     pw.Expanded(
                       child: pw.Column(
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
-                          pw.Text(emp.fullName, style: pw.TextStyle(font: timesBold, fontSize: 11)),
-                          pw.Text('Jabatan: ${emp.positionName.isNotEmpty ? emp.positionName : '-'}', style: pw.TextStyle(font: times, fontSize: 10, color: PdfColors.grey700)),
+                          pw.Text(
+                            emp.fullName,
+                            style: pw.TextStyle(font: timesBold, fontSize: 11),
+                          ),
+                          pw.Text(
+                            'Jabatan: ${emp.positionName.isNotEmpty ? emp.positionName : '-'}',
+                            style: pw.TextStyle(
+                              font: times,
+                              fontSize: 10,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-            
+
             pw.SizedBox(height: 15),
-            
+
             // Details
-            _pdfDetailRow('Untuk keperluan / tugas', assignment.reason.isNotEmpty ? assignment.reason : '-', times, timesBold),
-            _pdfDetailRow('Pada hari / tanggal', DateFormat('EEEE, dd MMMM yyyy', 'id').format(assignment.date), times, timesBold),
-            _pdfDetailRow('Waktu', '${assignment.startTime} - ${assignment.endTime}', times, timesBold),
+            _pdfDetailRow(
+              'Untuk keperluan / tugas',
+              assignment.reason.isNotEmpty ? assignment.reason : '-',
+              times,
+              timesBold,
+            ),
+            _pdfDetailRow(
+              'Pada hari / tanggal',
+              DateFormat('EEEE, dd MMMM yyyy', 'id').format(assignment.date),
+              times,
+              timesBold,
+            ),
+            _pdfDetailRow(
+              'Waktu',
+              '${assignment.startTime} - ${assignment.endTime}',
+              times,
+              timesBold,
+            ),
             _pdfDetailRow('Pilihan Reward', rewardText, times, timesBold),
-            
+
             pw.SizedBox(height: 30),
-            
+
             // Signatures
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                _pdfSignBlock('Yang memberi perintah,', 'Departement Head', times, timesBold),
-                _pdfSignBlock('Yang menerima perintah,', 'Karyawan', times, timesBold),
-                _pdfSignBlock('Disetujui Oleh,', 'Office Manager / HRM / General Manager', times, timesBold),
+                _pdfSignBlock(
+                  'Yang memberi perintah,',
+                  'Departement Head',
+                  times,
+                  timesBold,
+                ),
+                _pdfSignBlock(
+                  'Yang menerima perintah,',
+                  'Karyawan',
+                  times,
+                  timesBold,
+                ),
+                _pdfSignBlock(
+                  'Disetujui Oleh,',
+                  'Office Manager / HRM / General Manager',
+                  times,
+                  timesBold,
+                ),
               ],
             ),
           ],
@@ -2566,30 +2732,56 @@ class _AssignmentDetailSheet extends StatelessWidget {
         name: 'Surat_Penugasan_${assignment.id}.pdf',
       );
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
     }
   }
 
-  pw.Widget _pdfDetailRow(String label, String value, pw.Font font, pw.Font fontBold) {
+  pw.Widget _pdfDetailRow(
+    String label,
+    String value,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 2),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.SizedBox(width: 120, child: pw.Text(label, style: pw.TextStyle(font: font, fontSize: 11))),
+          pw.SizedBox(
+            width: 120,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(font: font, fontSize: 11),
+            ),
+          ),
           pw.Text(': ', style: pw.TextStyle(font: font, fontSize: 11)),
-          pw.Expanded(child: pw.Text(value, style: pw.TextStyle(font: fontBold, fontSize: 11))),
+          pw.Expanded(
+            child: pw.Text(
+              value,
+              style: pw.TextStyle(font: fontBold, fontSize: 11),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  pw.Widget _pdfSignBlock(String label, String subLabel, pw.Font font, pw.Font fontBold) {
+  pw.Widget _pdfSignBlock(
+    String label,
+    String subLabel,
+    pw.Font font,
+    pw.Font fontBold,
+  ) {
     return pw.Column(
       children: [
         pw.Text(label, style: pw.TextStyle(font: font, fontSize: 10)),
         pw.SizedBox(height: 30),
-        pw.Text('( ____________________ )', style: pw.TextStyle(font: font, fontSize: 10)),
+        pw.Text(
+          '( ____________________ )',
+          style: pw.TextStyle(font: font, fontSize: 10),
+        ),
         pw.SizedBox(height: 4),
         pw.Text(subLabel, style: pw.TextStyle(font: fontBold, fontSize: 8)),
       ],
