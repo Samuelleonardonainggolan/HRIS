@@ -130,6 +130,9 @@ type PayrollResponse struct {
 	BasicSalary string `json:"basic_salary"`
 	NetSalary   string `json:"net_salary"`
 
+	BasicSalaryValue int64 `json:"basic_salary_value"`
+	NetSalaryValue   int64 `json:"net_salary_value"`
+
 	TotalDaysPresent string `json:"total_days_present"`
 	LateMinutesTotal int    `json:"late_minutes_total"`
 	AbsentDays       int    `json:"absent_days"`
@@ -146,8 +149,15 @@ type PayrollResponse struct {
 	LateDeduction   string `json:"late_deduction"`
 	AbsentDeduction string `json:"absent_deduction"`
 
+	OvertimePayValue     int64 `json:"overtime_pay_value"`
+	LateDeductionValue   int64 `json:"late_deduction_value"`
+	AbsentDeductionValue int64 `json:"absent_deduction_value"`
+
 	OtherEarnings   string `json:"other_earnings"`
 	OtherDeductions string `json:"other_deductions"`
+
+	OtherEarningsValue   int64 `json:"other_earnings_value"`
+	OtherDeductionsValue int64 `json:"other_deductions_value"`
 
 	Status string `json:"status"`
 
@@ -162,6 +172,8 @@ func (p *Payroll) ToResponse() PayrollResponse {
 		Year:                p.Year,
 		BasicSalary:         p.BasicSalary,
 		NetSalary:           p.NetSalary,
+		BasicSalaryValue:    p.BasicSalaryValue,
+		NetSalaryValue:      p.NetSalaryValue,
 		TotalDaysPresent:    p.TotalDaysPresent,
 		LateMinutesTotal:    p.LateMinutesTotal,
 		AbsentDays:          p.AbsentDays,
@@ -174,8 +186,13 @@ func (p *Payroll) ToResponse() PayrollResponse {
 		OvertimePay:         p.OvertimePay,
 		LateDeduction:       p.LateDeduction,
 		AbsentDeduction:     p.AbsentDeduction,
+		OvertimePayValue:    p.OvertimePayValue,
+		LateDeductionValue:  p.LateDeductionValue,
+		AbsentDeductionValue: p.AbsentDeductionValue,
 		OtherEarnings:       p.OtherEarnings,
 		OtherDeductions:     p.OtherDeductions,
+		OtherEarningsValue:  p.OtherEarningsValue,
+		OtherDeductionsValue: p.OtherDeductionsValue,
 		Status:              p.Status,
 		CreatedAt:           p.CreatedAt,
 		UpdatedAt:           p.UpdatedAt,

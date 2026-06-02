@@ -11,8 +11,10 @@ import { payrollApi, PayrollStatus } from "@/lib/api/payroll";
 import { format } from "date-fns";
 import { id as localeID } from "date-fns/locale";
 
-function formatIDR(n: number) {
-  return `Rp ${Math.round(n).toLocaleString("id-ID")}`;
+function formatIDR(n: any) {
+  const num = Number(n);
+  if (isNaN(num)) return "Rp 0";
+  return `Rp ${Math.round(num).toLocaleString("id-ID")}`;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -85,15 +87,14 @@ export default function PayrollDetailPage() {
         absentDays: payroll.absent_days || 0,
       },
       earnings: [
-        { label: "Gaji Pokok", desc: `Basis: ${formatIDR(payroll.basic_salary_value / (payroll.workdays_divisor || 24))} / hari`, amount: payroll.basic_salary_value },
-        { label: "Bonus 10% Revenue", desc: "Performance Incentive", amount: parseInt(payroll.other_earnings) || 0 },
-        { label: "Upah Lembur", desc: `Total ${payroll.overtime_hours_paid} Jam`, amount: payroll.overtime_pay_value },
+        { label: "Gaji Pokok", desc: `Basis: ${formatIDR((Number(payroll.basic_salary_value) || 0) / (Number(payroll.workdays_divisor) || 24))} / hari`, amount: Number(payroll.basic_salary_value) || 0 },
+        { label: "Upah Lembur", desc: `Total ${payroll.overtime_hours_paid || 0} Jam`, amount: Number(payroll.overtime_pay_value) || 0 },
       ],
       deductions: [
-        { label: "Potongan Keterlambatan", desc: `Total ${payroll.late_minutes_total} Menit`, amount: payroll.late_deduction_value },
-        { label: "Potongan Mangkir", desc: `Total ${payroll.absent_days} Hari`, amount: payroll.absent_deduction_value },
+        { label: "Potongan Keterlambatan", desc: `Total ${payroll.late_minutes_total || 0} Menit`, amount: Number(payroll.late_deduction_value) || 0 },
+        { label: "Potongan Mangkir", desc: `Total ${payroll.absent_days || 0} Hari`, amount: Number(payroll.absent_deduction_value) || 0 },
       ],
-      netSalary: payroll.net_salary_value,
+      netSalary: Number(payroll.net_salary_value) || 0,
       status: payroll.status,
       updatedAt: payroll.updated_at
     };

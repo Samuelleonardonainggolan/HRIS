@@ -106,6 +106,19 @@ export default function AccountantDashboardPage() {
 
   const pipeline = summary?.pipeline || { draft: 0, approved: 0, paid: 0 };
 
+  const alerts = [
+    {
+      title: "Bank Transfer Failed",
+      desc: "2 transactions failed to clear for BCA.",
+      tone: "danger",
+    },
+    {
+      title: "Pending Approvals",
+      desc: "Manager approval pending for 5 employees.",
+      tone: "warning",
+    },
+  ];
+
   // ✅ PENTING:
   // Jangan bungkus page dengan <Sidebar/> atau <div className="flex ..."> lagi,
   // karena itu sudah dilakukan oleh app/dashboard/layout.tsx

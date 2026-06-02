@@ -236,9 +236,6 @@ export default function PayrollPage() {
                     Gaji Pokok
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Bonus (10%)
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Lembur
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -273,16 +270,6 @@ export default function PayrollPage() {
 
                     <td className="px-6 py-4 text-sm text-gray-700">
                       {formatIDR(r.basicSalary)}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm">
-                      {r.bonus10 > 0 ? (
-                        <span className="font-semibold text-emerald-600">
-                          +{formatIDR(r.bonus10)}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
                     </td>
 
                     <td className="px-6 py-4 text-sm">
@@ -331,7 +318,7 @@ export default function PayrollPage() {
 
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
                       <div className="flex items-center justify-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Memuat data...
@@ -340,7 +327,7 @@ export default function PayrollPage() {
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-gray-500">
                       Tidak ada data payroll untuk periode <b>{period.label}</b>.
                     </td>
                   </tr>
