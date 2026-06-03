@@ -38,6 +38,16 @@ type FaceResult struct {
 	Message    string  `json:"message"`
 }
 
+type VerifyFaceResponse struct {
+	Matched      bool    `json:"matched"`
+	Similarity   float64 `json:"similarity"`
+	SpoofScore   float64 `json:"spoof_score"`
+	FinalScore   float64 `json:"final_score"`
+	Confidence   float64 `json:"confidence"`
+	Threshold    float64 `json:"threshold"`
+	Message      string  `json:"message"`
+}
+
 type AttendanceProcessResponse struct {
 	Decision   string      `json:"decision"` // "approved" / "rejected_gps" / "rejected_face"
 	Approved   bool        `json:"approved"`
@@ -139,6 +149,50 @@ func (c *Client) ProcessAttendance(
 
 	return &result, nil
 }
+
+func (c *Client) VerifyFace(
+	employeeID string,
+	storedEmbedding []float32,
+	photoBytes []byte,
+	filename string,
+	liveness string,
+	threshold *float64,
+) (*VerifyFaceResponse, error) {
+
+	reqData := map[string]interface{}{
+		"employee_id":      employeeID,
+		"stored_embedding": storedEmbedding,
+	}
+	if threshold != nil {
+		reqData["threshold"] = *threshold
+	}
+
+	dataJSON, err := json.Marshal(reqData)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request data: %w", err)
+	}
+
+	body, contentType, err := buildMultipartWithBytes(map[string]string{
+		"data":     string(dataJSON),
+		"liveness": liveness,
+	}, "photo", filename, photoBytes)
+	if err != nil {
+		return nil, fmt.Errorf("build request body: %w", err)
+	}
+
+	respBytes, err := c.post("/face/verify", body, contentType)
+	if err != nil {
+		return nil, err
+	}
+
+	var result VerifyFaceResponse
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 
 // ─── 3. ValidateGeo (opsional, jika ingin cek GPS saja) ──────────────────────
 type GeoRequest struct {

@@ -3,7 +3,19 @@ import os
 import json
 import time
 import logging
+from pathlib import Path
 from typing import Optional, Tuple, List, Dict, Any
+
+# ---------------------------------------------------------------------------
+# Logging harus dikonfigurasi SEBELUM import pihak ketiga agar semua output
+# tersaring dengan format yang benar.
+# ---------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("face-service")
+
+# Base directory = folder tempat main.py berada (dipakai untuk resolve path model)
+_BASE_DIR = Path(__file__).resolve().parent
+
 import cv2
 import numpy as np
 import torch
@@ -18,37 +30,45 @@ from torchvision import transforms, models
 from contextlib import asynccontextmanager
 from facenet_pytorch import InceptionResnetV1, MTCNN
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("face-service")
-
 # =============================================================================
 # KONFIGURASI
 # =============================================================================
-MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
-IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
-FINAL_SCORE_THRESHOLD = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.80"))
-ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
-ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\antispoof_model_final_improved.pth")
-ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", "0.85"))
-SPOOF_SCORE_THRESHOLD = float(os.getenv("SPOOF_SCORE_THRESHOLD", "0.65"))
-FACE_DET_MIN_PROB = float(os.getenv("FACE_DET_MIN_PROB", "0.90"))
-DEVICE = os.getenv("DEVICE", "cpu")
-FACE_CROP_MARGIN = float(os.getenv("FACE_CROP_MARGIN", "0.15"))
-ANTI_SPOOF_IMGSZ = int(os.getenv("ANTI_SPOOF_IMGSZ", "224"))
-LIVENESS_ENABLED = os.getenv("LIVENESS_ENABLED", "1") == "1"
-LIVENESS_MIN_FRAMES = int(os.getenv("LIVENESS_MIN_FRAMES", "3"))
-LIVENESS_STD_MEAN_THR = float(os.getenv("LIVENESS_STD_MEAN_THR", "0.008"))
-LIVENESS_YAW_RANGE_THR = float(os.getenv("LIVENESS_YAW_RANGE_THR", "0.08"))
-LIVENESS_MAX_FRAMES = int(os.getenv("LIVENESS_MAX_FRAMES", "6"))
-SCREEN_SPOOF_ENABLED = os.getenv("SCREEN_SPOOF_ENABLED", "1") == "1"
+# Path model: bisa di-override via env variable.
+# Default: relatif terhadap direktori main.py → tidak bergantung pada drive/folder.
+_DEFAULT_MODEL_PATH      = str(_BASE_DIR / "models" / "facenet_labersa_cpu.pt")
+_DEFAULT_ANTI_SPOOF_PATH = str(_BASE_DIR / "models" / "antispoof_model_final_improved.pth")
+
+MODEL_PATH                = os.getenv("MODEL_PATH",            _DEFAULT_MODEL_PATH)
+IMAGE_SIZE                = int(os.getenv("IMAGE_SIZE",              "160"))
+SIMILARITY_THRESHOLD      = float(os.getenv("SIMILARITY_THRESHOLD",  "0.75"))
+FINAL_SCORE_THRESHOLD     = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.55"))
+ANTI_SPOOFING_ENABLED     = os.getenv("ANTI_SPOOFING_ENABLED",  "1") == "1"
+ANTI_SPOOF_MODEL_PATH     = os.getenv("ANTI_SPOOF_MODEL_PATH",  _DEFAULT_ANTI_SPOOF_PATH)
+ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", "0.25"))
+SPOOF_SCORE_THRESHOLD     = float(os.getenv("SPOOF_SCORE_THRESHOLD",     "0.25"))
+FACE_DET_MIN_PROB         = float(os.getenv("FACE_DET_MIN_PROB",         "0.90"))
+DEVICE                    = os.getenv("DEVICE", "cpu")
+FACE_CROP_MARGIN          = float(os.getenv("FACE_CROP_MARGIN",          "0.15"))
+ANTI_SPOOF_IMGSZ          = int(os.getenv("ANTI_SPOOF_IMGSZ",           "224"))
+LIVENESS_ENABLED          = os.getenv("LIVENESS_ENABLED",  "1") == "1"
+LIVENESS_MIN_FRAMES       = int(os.getenv("LIVENESS_MIN_FRAMES",    "3"))
+LIVENESS_STD_MEAN_THR     = float(os.getenv("LIVENESS_STD_MEAN_THR", "0.008"))
+LIVENESS_YAW_RANGE_THR    = float(os.getenv("LIVENESS_YAW_RANGE_THR", "0.08"))
+LIVENESS_MAX_FRAMES       = int(os.getenv("LIVENESS_MAX_FRAMES",     "6"))
+SCREEN_SPOOF_ENABLED      = os.getenv("SCREEN_SPOOF_ENABLED",   "1") == "1"
 SCREEN_RECT_MIN_AREA_RATIO = float(os.getenv("SCREEN_RECT_MIN_AREA_RATIO", "0.25"))
 SCREEN_RECT_MAX_AREA_RATIO = float(os.getenv("SCREEN_RECT_MAX_AREA_RATIO", "0.95"))
-SCREEN_RECT_ASPECT_MIN = float(os.getenv("SCREEN_RECT_ASPECT_MIN", "0.35"))
-SCREEN_RECT_ASPECT_MAX = float(os.getenv("SCREEN_RECT_ASPECT_MAX", "0.85"))
-SCREEN_BORDER_DARK_MAX = float(os.getenv("SCREEN_BORDER_DARK_MAX", "85"))
-SCREEN_BORDER_DARK_DIFF = float(os.getenv("SCREEN_BORDER_DARK_DIFF", "25"))
-API_KEY = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
+SCREEN_RECT_ASPECT_MIN    = float(os.getenv("SCREEN_RECT_ASPECT_MIN", "0.35"))
+SCREEN_RECT_ASPECT_MAX    = float(os.getenv("SCREEN_RECT_ASPECT_MAX", "0.85"))
+SCREEN_BORDER_DARK_MAX    = float(os.getenv("SCREEN_BORDER_DARK_MAX", "85"))
+SCREEN_BORDER_DARK_DIFF   = float(os.getenv("SCREEN_BORDER_DARK_DIFF", "25"))
+API_KEY                   = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
+
+logger.info(f"[CONFIG] BASE_DIR              = {_BASE_DIR}")
+logger.info(f"[CONFIG] MODEL_PATH            = {MODEL_PATH}")
+logger.info(f"[CONFIG] ANTI_SPOOF_MODEL_PATH = {ANTI_SPOOF_MODEL_PATH}")
+logger.info(f"[CONFIG] LIVENESS_ENABLED      = {LIVENESS_ENABLED}")
+logger.info(f"[CONFIG] ANTI_SPOOFING_ENABLED = {ANTI_SPOOFING_ENABLED}")
 
 # =============================================================================
 # MODEL
@@ -300,7 +320,7 @@ class FaceService:
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 60, 180)
         edges = cv2.dilate(edges, np.ones((3, 3), np.uint8), iterations=1)
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return False, {"enabled": True, "reason": "no_contours"}
 
@@ -316,15 +336,17 @@ class FaceService:
             area = float(cv2.contourArea(cnt))
             if area < img_area * 0.05:
                 continue
-            peri = float(cv2.arcLength(cnt, True))
-            if peri <= 0:
-                continue
-            approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-            if len(approx) != 4 or not cv2.isContourConvex(approx):
-                continue
-
-            rect = cv2.minAreaRect(approx)
+            
+            rect = cv2.minAreaRect(cnt)
             (rw, rh) = rect[1]
+            if rw <= 1 or rh <= 1:
+                continue
+            
+            rect_area = rw * rh
+            # Cek seberapa mirip kontur dengan bentuk persegi panjang (rectangularity)
+            # Ini mengabaikan jari/tangan yang mungkin menutupi sedikit pinggiran HP
+            if rect_area <= 0 or (area / rect_area) < 0.55:
+                continue
             rw = float(rw)
             rh = float(rh)
             if rw <= 1 or rh <= 1:
@@ -457,7 +479,13 @@ class FaceService:
         s_blur = np.clip((18.0 - lap) / 18.0, 0.0, 1.0)
         s_flat = np.clip((4.6 - ent) / 1.2, 0.0, 1.0)
         s_peak = np.clip((peak - 8.0) / 10.0, 0.0, 1.0)
-        score = float(np.clip(0.45 * s_blur + 0.35 * s_flat + 0.20 * s_peak, 0.0, 1.0))
+        
+        # Layar HP/Monitor memancarkan frekuensi tinggi (Moire / grid pixel).
+        # Jika terdeteksi kuat, bobot s_peak dinaikkan agar otomatis terdeteksi spoof.
+        if s_peak > 0.4:
+            score = float(np.clip(0.20 * s_blur + 0.20 * s_flat + 0.60 * s_peak, 0.0, 1.0))
+        else:
+            score = float(np.clip(0.40 * s_blur + 0.40 * s_flat + 0.20 * s_peak, 0.0, 1.0))
 
         detail = {
             "enabled": True,
@@ -1006,7 +1034,7 @@ class FaceService:
                         "final_score": 0.0,
                         "confidence": 0.0,
                         "threshold": thr,
-                        "message": "Spoofing detected",
+                        "message": "Spoofing detected (Screen/Monitor)",
                     }
 
             is_real, spoof_score = self.detect_spoof(face_crop)
@@ -1018,7 +1046,7 @@ class FaceService:
                     "final_score": round(0.3 * float(spoof_score), 4),
                     "confidence": round(0.3 * float(spoof_score), 4),
                     "threshold": thr,
-                    "message": "Spoofing detected",
+                    "message": f"Spoofing detected (AI Score: {spoof_score:.2f})",
                 }
 
             live_emb = torch.tensor(self.extract_embedding_from_crop(face_crop), dtype=torch.float32)
@@ -1197,9 +1225,26 @@ async def verify_face(
     liveness: str = Form(..., description='String "true" if liveness steps performed'),
     _=Depends(verify_api_key),
 ):
-    # Enforce liveness check: must be "true"
-    if LIVENESS_ENABLED and liveness.lower() != "true":
-        raise HTTPException(400, "Liveness verification belum terpenuhi. Arahkan wajah ke kiri dan kanan sebelum mengirim foto.")
+    # Enforce liveness check
+    if LIVENESS_ENABLED:
+        if liveness.lower() == "false":
+            raise HTTPException(400, "Liveness verification belum terpenuhi. Arahkan wajah ke kiri dan kanan sebelum mengirim foto.")
+        elif liveness.lower() != "true":
+            try:
+                boxes_list = json.loads(liveness)
+                if not isinstance(boxes_list, list):
+                    raise ValueError("Liveness data harus berupa array")
+                boxes_seq = [np.array(b, dtype=np.float32) for b in boxes_list]
+                is_live, detail = face_svc.motion_liveness(boxes_seq)
+                if not is_live:
+                    reason = detail.get("reason", "unknown")
+                    raise HTTPException(400, f"Liveness gagal: {reason}")
+            except json.JSONDecodeError:
+                raise HTTPException(400, "Format data liveness tidak valid")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(400, f"Liveness error: {str(e)}")
     # Parse JSON body dari form field
     try:
         req = VerifyRequest(**json.loads(data))

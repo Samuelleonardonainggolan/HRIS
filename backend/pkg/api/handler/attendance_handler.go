@@ -65,6 +65,7 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 	latitudeStr := c.PostForm("latitude")
 	longitudeStr := c.PostForm("longitude")
 	verifyOnlyStr := c.PostForm("verify_only") // ✅ BARU: parameter untuk verifikasi saja atau submit
+	liveness := c.PostForm("liveness")         // ✅ BARU: parameter liveness
 
 	if recordType == "" || latitudeStr == "" || longitudeStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -133,6 +134,7 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		longitude,
 		recordType,
 		verifyOnly, // ✅ Kirim flag untuk kontrol verifikasi vs submit
+		liveness,   // ✅ Kirim parameter liveness
 	)
 
 	if err != nil {

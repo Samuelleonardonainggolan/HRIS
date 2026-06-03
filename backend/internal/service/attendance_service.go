@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +36,7 @@ type AttendanceService interface {
 	EndBreak(ctx context.Context, userID string) (*models.Attendance, error)
 	GetTodayAttendance(ctx context.Context, userID string) (*models.Attendance, error)
 	GetMonthlyAttendance(ctx context.Context, userID string, month, year int) (*models.MonthlyAttendanceResponse, error)
-	ProcessAttendanceWithFace(ctx context.Context, userID string, photo []byte, filename string, latitude, longitude float64, recordType string, verifyOnly bool) (*AttendanceProcessResult, error)
+	ProcessAttendanceWithFace(ctx context.Context, userID string, photo []byte, filename string, latitude, longitude float64, recordType string, verifyOnly bool, liveness string) (*AttendanceProcessResult, error)
 	ValidateClockInWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
 	ValidateClockOutWindow(ctx context.Context, userID string) (bool, *models.JamKerja, error)
 	GetScheduleInfo(ctx context.Context, userID string) (*ScheduleInfoResponse, error)
@@ -1046,6 +1047,7 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	latitude, longitude float64,
 	recordType string,
 	verifyOnly bool,
+	liveness string,
 ) (*AttendanceProcessResult, error) {
 
 	// 1. Validasi lokasi — coba geofence dinamis dari DB terlebih dahulu.
@@ -1096,32 +1098,48 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		}, nil
 	}
 
-	// 3. Ekstrak embedding foto saat ini
-	currentEmbedding, err := s.faceClient.ExtractEmbedding(resolvedUserID, photo, filename)
+	// 3. Panggil FastAPI /face/verify untuk validasi wajah, liveness, spoofing, aksesoris, dan similarity sekaligus!
+	thr := 0.75
+	verifyResp, err := s.faceClient.VerifyFace(resolvedUserID, faceEmbedding.FaceEmbedding, photo, filename, liveness, &thr)
 	if err != nil {
+		// Clean up error message if it is from the face service (e.g., FastAPI validation)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "face service error") {
+			parts := strings.SplitN(errMsg, ": ", 2)
+			if len(parts) > 1 {
+				errMsg = parts[1]
+				// If it's a FastAPI detail JSON, let's clean it up
+				if strings.Contains(errMsg, `{"detail":`) {
+					var detail struct {
+						Detail string `json:"detail"`
+					}
+					if json.Unmarshal([]byte(errMsg), &detail) == nil {
+						errMsg = detail.Detail
+					}
+				}
+			}
+		}
 		return &AttendanceProcessResult{
-			Success: false, Message: "Gagal memproses foto: " + err.Error(),
-			LocationValid: locationValid, Distance: distance,
-		}, nil
-	}
-	if len(currentEmbedding) == 0 {
-		return &AttendanceProcessResult{
-			Success: false, Message: "Tidak ada wajah terdeteksi dalam foto",
-			LocationValid: locationValid, Distance: distance,
+			Success:        false,
+			Message:        errMsg,
+			FaceSimilarity: 0.0,
+			LocationValid:  locationValid,
+			Distance:       distance,
 		}, nil
 	}
 
-	// 4. Hitung similarity
-	//    threshold 0.75 (V2 lebih ketat) — sesuaikan jika perlu
-	similarity := s.cosineSimilarity(currentEmbedding, faceEmbedding.FaceEmbedding)
-	const threshold = 0.75
-	if similarity < threshold {
+	// 4. Periksa hasil verifikasi
+	if !verifyResp.Matched {
 		return &AttendanceProcessResult{
 			Success:        false,
-			Message:        fmt.Sprintf("Wajah tidak cocok (similarity: %.1f%%, min: %.1f%%)", similarity*100, threshold*100),
-			FaceSimilarity: similarity, LocationValid: locationValid, Distance: distance,
+			Message:        verifyResp.Message,
+			FaceSimilarity: verifyResp.Similarity,
+			LocationValid:  locationValid,
+			Distance:       distance,
 		}, nil
 	}
+
+	similarity := verifyResp.Similarity
 
 	// 5. verifyOnly=true → hanya return hasil, tidak simpan ke DB
 	if verifyOnly {

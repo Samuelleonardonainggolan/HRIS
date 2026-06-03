@@ -14,7 +14,7 @@ import '../models/assignment.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.188.208.156:8080/api/v1';
+  static const String baseUrl = 'http://10.244.170.218:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -321,9 +321,10 @@ class ApiService {
     required double latitude,
     required double longitude,
     required String photoPath,
+    required String liveness,
   }) async {
     try {
-      print('[API] Processing attendance: $recordType');
+      print('[API] Processing attendance: $recordType, liveness: $liveness');
 
       if (await isTokenExpired()) {
         print('[API] Token expired, refreshing...');
@@ -348,6 +349,7 @@ class ApiService {
       request.fields['record_type'] = recordType;
       request.fields['latitude'] = latitude.toString();
       request.fields['longitude'] = longitude.toString();
+      request.fields['liveness'] = liveness;
       // ✅ PERBAIKN: Jangan kirim verify_only atau kirim false = ini adalah submission sesungguhnya
       // request.fields['verify_only'] = 'false'; // TIDAK kirim = backend default = save to DB
 
