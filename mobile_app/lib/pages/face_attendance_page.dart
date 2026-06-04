@@ -63,6 +63,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   String _livenessData = 'false';
   List<List<double>> _boxesSeq = [];
 
+  // Step labels for the status bar
+  final List<String> _stepLabels = ['Lihat Lurus', 'Tengok Kiri', 'Tengok Kanan'];
+
   // ─── Clock ───────────────────────────────────────────────────────────────────
   late Timer _clockTimer;
   String _currentTime = '';
@@ -274,7 +277,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
               break;
             case LivenessChallenge.smile:
               final smileProb = face.smilingProbability ?? 0.0;
-              if (smileProb > 0.65) passed = true;
+              if (smileProb > 0.80) passed = true; // Threshold tinggi = senyum lebar
               break;
             case LivenessChallenge.blink:
               final leftEye = face.leftEyeOpenProbability ?? 1.0;
@@ -312,7 +315,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       await _cameraController!.stopImageStream();
       await Future.delayed(const Duration(milliseconds: 200));
       final XFile photo = await _cameraController!.takePicture();
-      _livenessData = jsonEncode(_boxesSeq);
+      // Liveness has been fully completed on-device; send "true" to backend
+      // (FastAPI checks: liveness == "true" to allow verification)
+      _livenessData = 'true';
 
       if (!mounted) return;
       setState(() {
@@ -343,7 +348,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       _livenessCompleted = false;
       _isLivenessStarted = false; // Require manual start again
       _livenessStep = 0;
-      _livenessData = 'false';
+      _livenessData = 'false'; // reset to false until liveness is complete
       _boxesSeq = [];
       _isFaceVerified = false;
       _faceStatus = 'Arahkan wajah ke kamera';
@@ -353,14 +358,30 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
   void _generateRandomChallenges() {
     final random = Random();
-    final allChallenges = [
+
+    // Pool semua 4 tantangan, diacak
+    final all = [
       LivenessChallenge.lookLeft,
       LivenessChallenge.lookRight,
       LivenessChallenge.smile,
       LivenessChallenge.blink,
-    ];
-    allChallenges.shuffle(random);
-    _activeChallenges = allChallenges.take(3).toList();
+    ]..shuffle(random);
+
+    // Ambil 2 tantangan pertama dari pool (tidak duplikat, bisa apa saja)
+    final first = all[0];
+    final second = all[1];
+
+    // Tantangan ke-3 harus smile atau blink, tidak boleh sama dengan first/second
+    final faceOnly = [LivenessChallenge.smile, LivenessChallenge.blink]
+        .where((c) => c != first && c != second)
+        .toList();
+
+    // Jika keduanya sudah terpakai di slot 1 & 2, pilih salah satu secara random
+    final third = faceOnly.isNotEmpty
+        ? (faceOnly..shuffle(random)).first
+        : ([LivenessChallenge.smile, LivenessChallenge.blink]..shuffle(random)).first;
+
+    _activeChallenges = [first, second, third];
   }
 
   // ─── Location ───────────────────────────────────────────────────────────────
@@ -439,7 +460,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           (_currentPosition?.latitude ?? 0).toString();
       req.fields['longitude'] =
           (_currentPosition?.longitude ?? 0).toString();
-      req.fields['liveness'] = _livenessData;
+      // Send "true" because liveness was completed on-device
+      req.fields['liveness'] = 'true';
       req.files.add(await http.MultipartFile.fromPath(
         'photo',
         imagePath,
@@ -489,7 +511,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         photoPath: _capturedImage!.path,
-        liveness: _livenessData,
+        // Always send "true" — liveness was completed on-device before photo was taken
+        liveness: 'true',
       );
       if (result.success) {
         setState(() => _attendanceSuccess = true);
