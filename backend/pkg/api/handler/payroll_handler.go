@@ -22,6 +22,8 @@ type PayrollHandler struct {
 	attendanceRepo repository.AttendanceRepository
 	overtimeRepo   repository.OvertimeRequestRepository
 	jamKerjaRepo   repository.JamKerjaRepository
+	leaveRepo      repository.PengajuanIzinCutiRepository
+	assignmentRepo repository.AssignmentRepository
 }
 
 func NewPayrollHandler(
@@ -31,6 +33,8 @@ func NewPayrollHandler(
 	attendanceRepo repository.AttendanceRepository,
 	overtimeRepo repository.OvertimeRequestRepository,
 	jamKerjaRepo repository.JamKerjaRepository,
+	leaveRepo repository.PengajuanIzinCutiRepository,
+	assignmentRepo repository.AssignmentRepository,
 ) *PayrollHandler {
 	return &PayrollHandler{
 		repo:           repo,
@@ -39,6 +43,8 @@ func NewPayrollHandler(
 		attendanceRepo: attendanceRepo,
 		overtimeRepo:   overtimeRepo,
 		jamKerjaRepo:   jamKerjaRepo,
+		leaveRepo:      leaveRepo,
+		assignmentRepo: assignmentRepo,
 	}
 }
 
@@ -251,13 +257,59 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 		// Fetch Jam Kerja for the user
 		jk, _ := h.jamKerjaRepo.FindByUserID(ctx, u.ID.Hex())
 
-		for _, att := range attendances {
-			if att.Status == models.StatusLate && att.ClockInTime != nil && jk != nil {
-				clockInMinutes := att.ClockInTime.Hour()*60 + att.ClockInTime.Minute()
-				startMinutes := jk.StartTime.Hour()*60 + jk.StartTime.Minute()
+		// Fetch Assignments (Penugasan) for the user in this month
+		startOfMonth := time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.UTC)
+		endOfMonth := time.Date(req.Year, time.Month(req.Month+1), 1, 0, 0, 0, 0, time.UTC)
+		
+		assignments, _ := h.assignmentRepo.Find(ctx, bson.M{
+			"employees.user_id": u.ID,
+			"status":            models.AssignmentStatusPublished,
+			"date": bson.M{
+				"$gte": startOfMonth,
+				"$lt":  endOfMonth,
+			},
+		})
+		
+		assignmentMap := make(map[int]string) // map[day]StartTime ("HH:mm")
+		for _, asg := range assignments {
+			for _, emp := range asg.Employees {
+				if emp.UserID == u.ID && emp.EmployeeStatus == models.AssignmentEmployeeStatusAgreed {
+					if emp.AssignedShift.StartTime != "" {
+						assignmentMap[asg.Date.Day()] = emp.AssignedShift.StartTime
+					}
+					break
+				}
+			}
+		}
 
-				if clockInMinutes > startMinutes {
-					totalLateMinutes += (clockInMinutes - startMinutes)
+		for _, att := range attendances {
+			if att.Status == models.StatusLate && att.ClockInTime != nil {
+				// Cek apakah hari ini ada penugasan tukar shift
+				day := att.Date.In(wib).Day()
+				var startMinutes int
+				var hasSchedule bool
+				
+				if assignedStartTime, ok := assignmentMap[day]; ok {
+					// Gunakan StartTime dari penugasan (contoh: "10:00")
+					hStr, mStr := assignedStartTime[0:2], assignedStartTime[3:5]
+					hour, _ := strconv.Atoi(hStr)
+					minute, _ := strconv.Atoi(mStr)
+					startMinutes = hour*60 + minute
+					hasSchedule = true
+				} else if jk != nil {
+					// Gunakan StartTime standar dari JamKerja
+					startMinutes = jk.StartTime.UTC().Hour()*60 + jk.StartTime.UTC().Minute()
+					hasSchedule = true
+				}
+
+				if hasSchedule {
+					// ClockInTime tersimpan di UTC, kita baca sebagai WIB (GMT+7)
+					clockInWIB := att.ClockInTime.In(wib)
+					clockInMinutes := clockInWIB.Hour()*60 + clockInWIB.Minute()
+	
+					if clockInMinutes > startMinutes {
+						totalLateMinutes += (clockInMinutes - startMinutes)
+					}
 				}
 			}
 		}
@@ -267,9 +319,38 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 		nowWIB := time.Now().In(wib)
 		passedWorkdays := countPassedWorkdaysForUser(req.Year, req.Month, nowWIB, jk)
 
+		// Fetch approved leaves
+		// startOfMonth dan endOfMonth sudah didefinisikan sebelumnya di atas
+
+		leaves, _ := h.leaveRepo.Find(ctx, bson.M{
+			"user_id": u.ID,
+			"final_status": models.StatusApproved,
+			"start_date": bson.M{"$lt": endOfMonth},
+			"end_date": bson.M{"$gte": startOfMonth},
+		})
+		
+		leaveDays := 0
+		for _, l := range leaves {
+			// Sederhana: kita ambil jumlah hari izin/cuti dalam bulan ini
+			// yang jatuh sebelum/sama dengan hari ini (nowWIB) jika bulan ini.
+			// Untuk simplicity, kita hitung setiap hari dari StartDate sampai EndDate 
+			// yang jatuh di bulan req.Month dan <= passedWorkdays.
+			
+			d := l.StartDate
+			for d.Before(l.EndDate) || d.Equal(l.EndDate) {
+				if int(d.Month()) == req.Month && d.Year() == req.Year {
+					// Hanya kurangi mangkir jika tanggal cuti <= hari ini
+					if d.Day() <= passedWorkdays {
+						leaveDays++
+					}
+				}
+				d = d.Add(24 * time.Hour)
+			}
+		}
+
 		// Perhitungan mangkir yang adil:
-		// Selisih antara jadwal yang sudah lewat dengan kehadiran nyata.
-		absentDays := passedWorkdays - daysPresent
+		// Selisih antara jadwal yang sudah lewat dengan kehadiran nyata dan cuti.
+		absentDays := passedWorkdays - daysPresent - leaveDays
 		if absentDays < 0 {
 			absentDays = 0
 		}
@@ -336,8 +417,9 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 		payroll.OvertimeHoursPaid = totalOvertimeHours
 		payroll.OvertimePay = fmt.Sprintf("%d", payroll.OvertimePayValue)
 
-		payroll.LateDeductionValue = payroll.CalculateLateDeduction(totalLateMinutes)
-		payroll.LateDeduction = fmt.Sprintf("%d", payroll.LateDeductionValue)
+		// Potongan keterlambatan dimatikan sementara sesuai instruksi user
+		payroll.LateDeductionValue = 0 // payroll.CalculateLateDeduction(totalLateMinutes)
+		payroll.LateDeduction = "0"
 
 		payroll.AbsentDeductionValue = payroll.CalculateAbsentDeduction(absentDays)
 		payroll.AbsentDeduction = fmt.Sprintf("%d", payroll.AbsentDeductionValue)
@@ -391,12 +473,23 @@ func (h *PayrollHandler) GetPayrollDetail(c *gin.Context) {
 	// Ambil jadwal kerja untuk perbandingan (jika ada)
 	jk, _ := h.jamKerjaRepo.FindByUserID(ctx, payroll.UserID.Hex())
 
+	// Ambil data izin cuti yang disetujui bulan ini
+	startOfMonth := time.Date(payroll.Year, time.Month(payroll.Month), 1, 0, 0, 0, 0, time.UTC)
+	endOfMonth := time.Date(payroll.Year, time.Month(payroll.Month+1), 1, 0, 0, 0, 0, time.UTC)
+	leaves, _ := h.leaveRepo.Find(ctx, bson.M{
+		"user_id":      payroll.UserID,
+		"final_status": models.StatusApproved,
+		"start_date":   bson.M{"$lt": endOfMonth},
+		"end_date":     bson.M{"$gte": startOfMonth},
+	})
+
 	resp := payroll.ToResponse()
 	c.JSON(http.StatusOK, gin.H{
 		"payroll":     resp,
 		"user":        user,
 		"attendances": attendances,
 		"jam_kerja":   jk,
+		"leaves":      leaves,
 	})
 }
 

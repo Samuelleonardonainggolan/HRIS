@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { payrollApi, PayrollStatus } from "@/lib/api/payroll";
 import { format } from "date-fns";
 import { id as localeID } from "date-fns/locale";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 function formatIDR(n: any) {
   const num = Number(n);
@@ -102,7 +104,7 @@ export default function PayrollDetailPage() {
 
   const attendanceDetails = useMemo(() => {
     if (!data || !data.payroll) return [];
-    const { payroll, attendances, jam_kerja } = data;
+    const { payroll, attendances, jam_kerja, leaves } = data;
     const year = payroll.year;
     const month = payroll.month;
 
@@ -110,21 +112,35 @@ export default function PayrollDetailPage() {
     const daysInMonth = new Date(year, month, 0).getDate();
     const result = [];
 
-    // Current date for comparison (2026-05-22 according to context)
-    const now = new Date(2026, 4, 22); // Month is 0-indexed in JS Date
+    // Current date for comparison to determine if a scheduled day has passed
+    const now = new Date();
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month - 1, day);
       const dayNameStr = format(date, "EEEE", { locale: localeID }); // Senin, Selasa...
       
-      const isScheduled = jam_kerja?.day_of_week?.includes(dayNameStr);
+      const isScheduled = jam_kerja?.day_of_week?.includes(dayNameStr) ?? (dayNameStr !== "Minggu");
+      
       const attendance = attendances?.find((a: any) => {
         const d = new Date(a.date);
         return d.getDate() === day && (d.getMonth() + 1) === month && d.getFullYear() === year;
       });
 
+      // Cek apakah hari ini merupakan hari cuti/izin
+      const leave = leaves?.find((l: any) => {
+        const start = new Date(l.start_date);
+        const end = new Date(l.end_date);
+        // Normalize time to 00:00:00 for accurate comparison
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        const current = new Date(date);
+        return current >= start && current <= end;
+      });
+
       let status = "Libur";
-      if (isScheduled) {
+      if (leave) {
+        status = "Cuti/Izin";
+      } else if (isScheduled) {
         if (attendance && attendance.clock_in_time) {
           // Mangkir hanya jika tidak ada clock_in sama sekali
           status = attendance.status === "Late" ? "Terlambat" : "Hadir";
@@ -158,6 +174,129 @@ export default function PayrollDetailPage() {
 
   const totalEarnings = detail.earnings.reduce((sum, x) => sum + x.amount, 0);
   const totalDeductions = detail.deductions.reduce((sum, x) => sum + x.amount, 0);
+
+  const handleDownloadPDF = () => {
+    if (!detail) return;
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    // Logo (sama seperti SPKL)
+    try {
+      doc.addImage("/logo.jpg", "JPG", 20, 10, 25, 25);
+    } catch {
+      // skip jika logo tidak ditemukan
+    }
+
+    // Header: PT. Labersa Hutahaean (warna gold, sama seperti SPKL)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(152, 131, 0); // gold
+    doc.text("PT. Labersa Hutahaean", 105, 18, { align: "center" });
+
+    // Sub-header (warna hijau, sama seperti SPKL)
+    doc.setFontSize(14);
+    doc.setTextColor(0, 100, 0); // hijau
+    doc.text("HEAD OFFICE - WILAYAH TOBA", 105, 26, { align: "center" });
+
+    // Garis Pemisah
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(20, 38, 190, 38);
+
+    // Judul Slip Gaji
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`SLIP GAJI KARYAWAN - ${detail.periodLabel.toUpperCase()}`, 105, 50, { align: "center" });
+
+    // Info Karyawan
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const startY = 62;
+    const lh = 6;
+    doc.text(`Nama Karyawan  : ${detail.employee.name}`, 20, startY);
+    doc.text(`No. Payroll           : ${detail.employee.payrollNumber}`, 20, startY + lh);
+    doc.text(`Jabatan                : ${detail.employee.title || "-"}`, 20, startY + lh * 2);
+    doc.text(`Departemen        : ${detail.employee.dept}`, 20, startY + lh * 3);
+
+    doc.text(`Hari Kerja : ${detail.attendance.workDays} Hari`, 130, startY);
+    doc.text(`Mangkir    : ${detail.attendance.absentDays} Hari`, 130, startY + lh);
+    doc.text(`Telat          : ${detail.attendance.lateMinutes} Menit`, 130, startY + lh * 2);
+
+    // Tabel Penghasilan
+    autoTable(doc, {
+      startY: startY + lh * 4 + 4,
+      margin: { left: 20, right: 20 },
+      head: [["Penghasilan", "Keterangan", "Jumlah"]],
+      body: detail.earnings.map(e => [e.label, e.desc, formatIDR(e.amount)]),
+      theme: "grid",
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        halign: "center",
+        lineWidth: 0.2,
+        lineColor: [0, 0, 0],
+      },
+      styles: { fontSize: 10, textColor: [0, 0, 0], lineWidth: 0.2, lineColor: [0, 0, 0] },
+      foot: [["Total Penghasilan", "", formatIDR(totalEarnings)]],
+      footStyles: { fontStyle: "bold", fillColor: [240, 255, 240] },
+    });
+
+    // Tabel Potongan
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 6,
+      margin: { left: 20, right: 20 },
+      head: [["Potongan", "Keterangan", "Jumlah"]],
+      body: detail.deductions.map(d => [d.label, d.desc, `-${formatIDR(d.amount)}`]),
+      theme: "grid",
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        halign: "center",
+        lineWidth: 0.2,
+        lineColor: [0, 0, 0],
+      },
+      styles: { fontSize: 10, textColor: [0, 0, 0], lineWidth: 0.2, lineColor: [0, 0, 0] },
+      foot: [["Total Potongan", "", `-${formatIDR(totalDeductions)}`]],
+      footStyles: { fontStyle: "bold", fillColor: [255, 240, 240] },
+    });
+
+    // Total Take Home Pay
+    const finalY = (doc as any).lastAutoTable.finalY + 12;
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("Total Bersih Diterima (Take Home Pay):", 20, finalY);
+    doc.text(formatIDR(detail.netSalary), 190, finalY, { align: "right" });
+
+    // Tanda Tangan (sama format SPKL: 3 kolom)
+    const col1X = 48;
+    const col2X = 105;
+    const col3X = 162;
+    const today = format(new Date(), "dd MMMM yyyy", { locale: localeID });
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Balige, ${today}`, col2X, finalY + 18, { align: "center" });
+
+    doc.text("Departement Head,", col1X, finalY + 25, { align: "center" });
+    doc.text("Karyawan,", col2X, finalY + 25, { align: "center" });
+    doc.text("Disetujui Oleh,", col3X, finalY + 25, { align: "center" });
+
+    const signLineY = finalY + 50;
+    doc.text("( ____________________ )", col1X, signLineY, { align: "center" });
+    doc.text("( ____________________ )", col2X, signLineY, { align: "center" });
+    doc.text("( ____________________ )", col3X, signLineY, { align: "center" });
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("Departement Head", col1X, signLineY + 5, { align: "center" });
+    doc.text("Karyawan", col2X, signLineY + 5, { align: "center" });
+    doc.text("Office Manager / HRM /", col3X, signLineY + 5, { align: "center" });
+    doc.text("General Manager", col3X, signLineY + 10, { align: "center" });
+
+    doc.save(`Slip_Gaji_${detail.employee.name.replace(/\s+/g, '_')}_${detail.periodLabel.replace(/\s+/g, '_')}.pdf`);
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -202,7 +341,7 @@ export default function PayrollDetailPage() {
           </div>
         </div>
 
-        <Button className="rounded-xl gap-2" variant="outline">
+        <Button className="rounded-xl gap-2" variant="outline" onClick={handleDownloadPDF}>
           <Download className="h-4 w-4" />
           Download PDF
         </Button>
@@ -319,6 +458,11 @@ export default function PayrollDetailPage() {
                           {day.status === "Terlambat" && (
                             <Badge variant="outline" className="text-yellow-700 bg-yellow-50 border-yellow-100 gap-1">
                               <Clock className="h-3 w-3" /> Telat
+                            </Badge>
+                          )}
+                          {day.status === "Cuti/Izin" && (
+                            <Badge variant="outline" className="text-blue-700 bg-blue-50 border-blue-100 gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Cuti/Izin
                             </Badge>
                           )}
                           {day.status === "Mangkir" && (

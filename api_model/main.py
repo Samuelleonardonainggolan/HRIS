@@ -24,12 +24,14 @@ logger = logging.getLogger("face-service")
 # =============================================================================
 # KONFIGURASI
 # =============================================================================
-MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
+MODEL_PATH = os.getenv("MODEL_PATH", "models/facenet_labersa_cpu.pt")
+# MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 FINAL_SCORE_THRESHOLD = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.80"))
 ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
-ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\antispoof_model_improved.pt")
+ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", "models/antispoof_model_improved.pt")
+# ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\antispoof_model_improved.pt")
 # Threshold hasil training terbaru adalah THRESHOLD SPOOF = 0.420.
 # Artinya: prediksi spoof jika probabilitas kelas spoof >= 0.420.
 ANTI_SPOOF_THRESHOLD = float(os.getenv("ANTI_SPOOF_THRESHOLD", "0.420"))
