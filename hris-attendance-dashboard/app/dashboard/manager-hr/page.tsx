@@ -41,11 +41,12 @@ function mapAttendanceToEmployee(item: ManagerAttendanceItem): Employee {
     id: item.id,
     name: item.full_name,
     avatar: initials,
+    profilePicture: item.profile_picture || undefined,
     nik: item.payroll_number,
     department: item.department_name,
     position: item.position_name,
     checkInTime: clockIn,
-    status: statusMap[item.status] ?? "HADIR",
+    status: statusMap[item.status] ?? "ALPHA",
     verified: {
       biometric: true,
       geofencing: !!item.location,
@@ -70,6 +71,15 @@ export default function ManagerHRDashboard() {
 
   // ── Table data
   const [employees, setEmployees] = useState<Employee[]>([]);
+
+  // ── Hitung persen kehadiran setiap kali presentToday / totalEmployees berubah
+  useEffect(() => {
+    if (totalEmployees > 0) {
+      setPresentPct(Math.round((presentToday / totalEmployees) * 100));
+    } else {
+      setPresentPct(0);
+    }
+  }, [presentToday, totalEmployees]);
 
   /* ─── Load total karyawan aktif ─── */
   const loadTotalEmployees = useCallback(async () => {
@@ -99,10 +109,8 @@ export default function ManagerHRDashboard() {
 
       const hadir = items.filter((i) => i.status === "HADIR").length;
       const telat = items.filter((i) => i.status === "TELAT").length;
-      const total = items.length;
 
       setPresentToday(hadir + telat);
-      setPresentPct(total > 0 ? Math.round(((hadir + telat) / total) * 100) : 0);
       setLateToday(telat);
       setEmployees(items.map(mapAttendanceToEmployee));
     } catch {
@@ -208,10 +216,6 @@ export default function ManagerHRDashboard() {
             iconColor="text-blue-600"
             iconBgColor="bg-blue-50"
             loading={loadingStats}
-            trend={{
-              value: 0,
-              isPositive: true,
-            }}
           />
 
           {/* Hadir Hari Ini - Green/Teal */}
@@ -250,10 +254,6 @@ export default function ManagerHRDashboard() {
             iconColor="text-red-500"
             iconBgColor="bg-red-50"
             loading={loadingLeave}
-            trend={{
-              value: 0,
-              isPositive: false,
-            }}
           />
         </div>
 

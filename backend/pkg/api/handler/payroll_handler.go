@@ -154,20 +154,22 @@ func (h *PayrollHandler) GetPayrolls(c *gin.Context) {
 		}
 
 		row := gin.H{
-			"id":          "",
-			"user_id":     u.ID.Hex(),
-			"name":        u.FullName,
-			"initials":    initials,
-			"position":    u.PositionName,
-			"department":  u.DepartmentName,
-			"basicSalary": salaryDoc.BasicSalary,
-			"bonus10":     0,
-			"overtime":    0,
-			"deduction":   0,
-			"netTotal":    salaryDoc.BasicSalary,
-			"status":      "not_generated",
-			"month":       month,
-			"year":        year,
+			"id":             "",
+			"user_id":        u.ID.Hex(),
+			"name":           u.FullName,
+			"initials":       initials,
+			"avatar":         u.Avatar,
+			"payroll_number": u.PayrollNumber,
+			"position":       u.PositionName,
+			"department":     u.DepartmentName,
+			"basicSalary":    salaryDoc.BasicSalary,
+			"bonus10":        0,
+			"overtime":       0,
+			"deduction":      0,
+			"netTotal":       salaryDoc.BasicSalary,
+			"status":         "not_generated",
+			"month":          month,
+			"year":           year,
 		}
 
 		if exists {
@@ -279,7 +281,8 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 				"$gte": time.Date(req.Year, time.Month(req.Month), 1, 0, 0, 0, 0, time.UTC),
 				"$lt":  time.Date(req.Year, time.Month(req.Month+1), 1, 0, 0, 0, 0, time.UTC),
 			},
-			"status": models.StatusPublished,
+			// Sertakan "submitted" dan "published"
+			"status": bson.M{"$in": []string{models.StatusSubmitted, models.StatusPublished}},
 		})
 
 		totalOvertimeHours := 0.0
@@ -303,9 +306,13 @@ func (h *PayrollHandler) GenerateMonthlyPayrolls(c *gin.Context) {
 								rv = rv.Elem()
 							}
 							if rv.Kind() == reflect.Struct {
-								f := rv.FieldByName("RewardAmount")
-								if f.IsValid() && f.CanInt() {
-									sessionPay = f.Int()
+								f := rv.FieldByName("RewardNominal")
+								if f.IsValid() {
+									if f.CanFloat() {
+										sessionPay = int64(f.Float())
+									} else if f.CanInt() {
+										sessionPay = f.Int()
+									}
 								}
 							}
 						}

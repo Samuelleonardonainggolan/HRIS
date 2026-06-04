@@ -74,6 +74,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         case 'staf':
           redirectPath = '/dashboard/staff';
           break;
+        case 'accountant':
+          redirectPath = '/dashboard/accountant';
+          break;
         default:
           redirectPath = '/dashboard';
       }

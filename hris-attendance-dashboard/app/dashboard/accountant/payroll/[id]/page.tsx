@@ -76,10 +76,10 @@ export default function PayrollDetailPage() {
       employee: {
         name: user.full_name,
         title: user.position_name,
-        nik: user.nik || "-",
+        payrollNumber: user.payroll_number || "-",
         dept: user.department_name,
-        rekening: "-", // Mock for now
-        avatarUrl: user.avatar_url,
+        rekening: "-",
+        avatarUrl: user.avatar_url || user.avatar,
       },
       attendance: {
         workDays: parseInt(payroll.total_days_present) || 0,
@@ -125,10 +125,14 @@ export default function PayrollDetailPage() {
 
       let status = "Libur";
       if (isScheduled) {
-        if (attendance) {
-          status = attendance.status === "late" ? "Terlambat" : "Hadir";
+        if (attendance && attendance.clock_in_time) {
+          // Mangkir hanya jika tidak ada clock_in sama sekali
+          status = attendance.status === "Late" ? "Terlambat" : "Hadir";
+        } else if (attendance && !attendance.clock_in_time) {
+          // Ada record tapi tidak ada clock_in — anggap hadir (anomali data)
+          status = "Hadir";
         } else {
-          // Jika sudah lewat dan tidak ada attendance
+          // Tidak ada record attendance sama sekali
           if (date <= now) {
             status = "Mangkir";
           } else {
@@ -359,15 +363,19 @@ export default function PayrollDetailPage() {
 
               <div className="mt-4 space-y-2 text-sm">
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>NIK</span>
-                  <span className="text-gray-900 font-medium">{detail.employee.nik}</span>
+                  <span>No. Payroll</span>
+                  <span className="text-gray-900 font-medium">{detail.employee.payrollNumber}</span>
                 </div>
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>DEPT.</span>
+                  <span>Jabatan</span>
+                  <span className="text-gray-900 font-medium text-right max-w-[55%]">{detail.employee.title || "-"}</span>
+                </div>
+                <div className="flex items-center justify-between text-gray-600">
+                  <span>Dept.</span>
                   <span className="text-gray-900 font-medium">{detail.employee.dept}</span>
                 </div>
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>STATUS</span>
+                  <span>Status</span>
                   <StatusBadge status={detail.status} />
                 </div>
               </div>

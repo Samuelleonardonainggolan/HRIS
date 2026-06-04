@@ -105,6 +105,13 @@ function getFileNameFromUrl(url?: string) {
   }
 }
 
+function isNotCancelled(x: LeaveRequestApprovalResponse): boolean {
+  const kepala = (x.pengajuan.status_kepala_departemen || "").toUpperCase();
+  const hr = (x.pengajuan.status_manager_hr || "").toUpperCase();
+  const final_ = (x.pengajuan.final_status ?? x.pengajuan.status_final ?? "").toUpperCase();
+  return kepala !== "CANCELLED" && hr !== "CANCELLED" && final_ !== "CANCELLED";
+}
+
 function mapResponseToItem(x: LeaveRequestApprovalResponse): LeaveApprovalItem {
   const employeeName = x.employee?.full_name ?? "(Karyawan)";
   const employeeId = x.employee?.payroll_number ?? x.pengajuan.user_id;
@@ -182,7 +189,7 @@ export default function PersetujuanIzinCutiPage() {
             status: activeStatus,
             search: searchEmployee.trim() || undefined,
           });
-          const mapped = res.map(mapResponseToItem);
+          const mapped = res.filter(isNotCancelled).map(mapResponseToItem);
           if (cancelled) return;
           setItems(mapped);
           setSelectedId((prev) => {
@@ -230,7 +237,7 @@ export default function PersetujuanIzinCutiPage() {
         status: activeStatus,
         search: searchEmployee.trim() || undefined,
       });
-      const mapped = res.map(mapResponseToItem);
+      const mapped = res.filter(isNotCancelled).map(mapResponseToItem);
       setItems(mapped);
       setSelectedId(mapped[0]?.id ?? null);
     } catch (e) {
@@ -271,7 +278,7 @@ export default function PersetujuanIzinCutiPage() {
         status: activeStatus,
         search: searchEmployee.trim() || undefined,
       });
-      const mapped = res.map(mapResponseToItem);
+      const mapped = res.filter(isNotCancelled).map(mapResponseToItem);
       setItems(mapped);
       setSelectedId(mapped[0]?.id ?? null);
     } catch (e) {

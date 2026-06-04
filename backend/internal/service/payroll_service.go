@@ -381,9 +381,16 @@ func (s *payrollService) calcAttendanceSummary(
 		return
 	}
 
-	// Bangun set tanggal hadir (dalam WIB)
+	// Bangun set tanggal hadir berdasarkan ClockInTime —
+	// mangkir hanya jika karyawan tidak clock_in sama sekali pada hari itu.
+	// Karyawan yang clock_in tapi tidak clock_out tetap dianggap HADIR.
 	presentSet := map[int]bool{}
 	for _, att := range attendances {
+		// Hanya anggap hadir jika ada ClockInTime (sudah absen masuk)
+		if att.ClockInTime == nil {
+			continue
+		}
+
 		dayWIB := att.Date.In(wibPayroll).Day()
 		presentSet[dayWIB] = true
 
@@ -395,10 +402,7 @@ func (s *payrollService) calcAttendanceSummary(
 		presentDays++
 
 		// Keterlambatan: jika ada ClockInTime dan status Late
-		if att.Status == models.StatusLate && att.ClockInTime != nil {
-			// Jam mulai kerja standar (08:00 WIB) — bisa disesuaikan dari jadwal kerja
-			// Untuk sederhananya kita hitung dari menit terlambat yang sudah direcord di attendance
-			// Namun karena belum ada field late_minutes, kita hitung dari ClockInTime vs jam 08:00
+		if att.Status == models.StatusLate {
 			clockInWIB := att.ClockInTime.In(wibPayroll)
 			scheduleStart := time.Date(
 				clockInWIB.Year(), clockInWIB.Month(), clockInWIB.Day(),
@@ -457,7 +461,9 @@ func (s *payrollService) calcOvertimePay(
 			"$gte": startOfMonth,
 			"$lt":  endOfMonth,
 		},
-		"status": models.StatusPublished, // hanya yang sudah published
+		// Sertakan "submitted" dan "published" — reward bisa sudah
+		// "granted" meskipun status OT belum berubah ke published.
+		"status": bson.M{"$in": []string{models.StatusSubmitted, models.StatusPublished}},
 	})
 	if err != nil {
 		return
@@ -492,9 +498,13 @@ func (s *payrollService) calcOvertimePay(
 						rv = rv.Elem()
 					}
 					if rv.Kind() == reflect.Struct {
-						f := rv.FieldByName("RewardAmount")
-						if f.IsValid() && f.CanInt() {
-							sessionPay = f.Int()
+						f := rv.FieldByName("RewardNominal")
+						if f.IsValid() {
+							if f.CanFloat() {
+								sessionPay = int64(f.Float())
+							} else if f.CanInt() {
+								sessionPay = f.Int()
+							}
 						}
 					}
 				}

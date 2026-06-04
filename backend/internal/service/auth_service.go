@@ -108,7 +108,11 @@ func (s *authService) Login(ctx context.Context, req models.LoginRequest) (*mode
 		return nil, errors.New("failed to generate refresh token")
 	}
 
-	expiresIn := time.Now().Add(24 * time.Hour).Unix()
+	expiryDuration, err := time.ParseDuration(s.jwtExpiry)
+	if err != nil {
+		expiryDuration = 4 * time.Hour
+	}
+	expiresIn := time.Now().Add(expiryDuration).Unix()
 
 	// CEK APAKAH USER SUDAH PUNYA FACE EMBEDDING
 	var requiresFaceRegistration bool = true
@@ -211,7 +215,11 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	}
 
 	// Calculate expiry time
-	expiresIn := time.Now().Add(24 * time.Hour).Unix()
+	expiryDuration, err := time.ParseDuration(s.jwtExpiry)
+	if err != nil {
+		expiryDuration = 4 * time.Hour
+	}
+	expiresIn := time.Now().Add(expiryDuration).Unix()
 
 	// Convert to response
 	userResponse := user.ToResponse()

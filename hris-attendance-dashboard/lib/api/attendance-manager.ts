@@ -20,6 +20,7 @@ export interface ManagerAttendanceItem {
   clock_out_time: string;
   status: AttendanceStatusUI;
   location: string;
+  profile_picture?: string;
 }
 
 export interface ManagerAttendanceSummary {

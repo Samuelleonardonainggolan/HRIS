@@ -20,7 +20,16 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      // Redirect berdasarkan role agar tidak override AuthContext
+      const rolePathMap: Record<string, string> = {
+        manager_hr: '/dashboard/manager-hr',
+        manager_departemen: '/dashboard/manager-dept',
+        admin_departemen: '/dashboard/admin-dept',
+        staf: '/dashboard/staff',
+        accountant: '/dashboard/accountant',
+      };
+      const dest = rolePathMap[user.role] ?? '/dashboard';
+      router.replace(dest);
     }
   }, [loading, user, router]);
 

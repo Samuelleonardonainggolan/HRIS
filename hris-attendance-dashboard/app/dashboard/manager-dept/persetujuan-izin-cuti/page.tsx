@@ -111,7 +111,12 @@ export default function PersetujuanIzinCutiManagerDepartemenPage() {
       }
     };
 
-    return (rows || []).map((r) => {
+    return (rows || []).filter((r) => {
+      const kepala = (r.pengajuan.status_kepala_departemen || "").toUpperCase();
+      const hr = (r.pengajuan.status_manager_hr || "").toUpperCase();
+      const final_ = (r.pengajuan.final_status || "").toUpperCase();
+      return kepala !== "CANCELLED" && hr !== "CANCELLED" && final_ !== "CANCELLED";
+    }).map((r) => {
       const empName = r.employee?.full_name || "Karyawan";
       const empId = r.employee?.payroll_number || r.pengajuan.user_id;
       const dept = r.employee?.department_name || "";

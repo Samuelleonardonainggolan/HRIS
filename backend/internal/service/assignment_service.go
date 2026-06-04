@@ -190,9 +190,13 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 			assignedEnd = *empInput.AssignedEndTime
 		}
 
-		eligibleReward := false
-		if origShift.Type == models.ShiftTypeOff {
-			eligibleReward = true
+		// Karyawan hanya mendapat day_off_reward jika hari tersebut
+		// memang jadwal libur (off). Jika hanya mengubah jam kerja (shift → shift),
+		// karyawan tidak berhak atas reward karena memang seharusnya masuk.
+		eligibleReward := origShift.Type == models.ShiftTypeOff
+		dayOffStatus := models.DayOffRewardStatusNone
+		if eligibleReward {
+			dayOffStatus = models.DayOffRewardStatusPending
 		}
 
 		employees = append(employees, models.AssignmentEmployee{
@@ -205,7 +209,7 @@ func (s *assignmentService) Create(ctx context.Context, requestedByID string, re
 			EmployeeStatus: models.AssignmentEmployeeStatusPending,
 			DayOffReward: models.AssignmentDayOffReward{
 				Eligible: eligibleReward,
-				Status:   models.DayOffRewardStatusPending,
+				Status:   dayOffStatus,
 			},
 		})
 	}
@@ -543,7 +547,14 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 				assignedEnd = *empInput.AssignedEndTime
 			}
 
-			eligibleReward := (origShift.Type == models.ShiftTypeOff)
+			// Karyawan hanya mendapat day_off_reward jika hari tersebut
+			// memang jadwal libur (off). Jika hanya mengubah jam kerja (shift → shift),
+			// karyawan tidak berhak atas reward karena memang seharusnya masuk.
+			eligibleReward := origShift.Type == models.ShiftTypeOff
+			dayOffStatus := models.DayOffRewardStatusNone
+			if eligibleReward {
+				dayOffStatus = models.DayOffRewardStatusPending
+			}
 
 			employees = append(employees, models.AssignmentEmployee{
 				UserID:        empOID,
@@ -555,7 +566,7 @@ func (s *assignmentService) Update(ctx context.Context, id string, req models.Up
 				EmployeeStatus: models.AssignmentEmployeeStatusPending,
 				DayOffReward: models.AssignmentDayOffReward{
 					Eligible: eligibleReward,
-					Status:   models.DayOffRewardStatusPending,
+					Status:   dayOffStatus,
 				},
 			})
 		}

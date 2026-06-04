@@ -6,8 +6,6 @@ import {
   Calendar,
   UserPlus,
   Download,
-  Settings,
-  HelpCircle,
   ChevronDown,
 } from "lucide-react";
 import {
@@ -143,20 +141,6 @@ export function ManagementPanel({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              variant="dark"
-              className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700"
-            >
-              <Settings className="h-5 w-5" />
-              <span className="text-xs">Pengaturan</span>
-            </Button>
-            <Button
-              variant="dark"
-              className="flex flex-col items-center gap-2 h-auto py-4 bg-gray-800 hover:bg-gray-700"
-            >
-              <HelpCircle className="h-5 w-5" />
-              <span className="text-xs">Bantuan</span>
-            </Button>
           </div>
         </CardContent>
       </Card>

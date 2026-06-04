@@ -6,11 +6,12 @@ export interface Employee {
   id: string;
   name: string;
   avatar?: string;
+  profilePicture?: string;
   nik: string;
   department: string;
   position: string;
   checkInTime?: string;
-  status: 'AKTIF' | 'NONAKTIF' | 'HADIR' | 'TELAMBAT' | 'IZIN' | 'ALPHA';
+  status: 'AKTIF' | 'NONAKTIF' | 'HADIR' | 'TELAT' | 'TELAMBAT' | 'IZIN' | 'ALPHA';
   verified?: {
     biometric: boolean;
     geofencing: boolean;

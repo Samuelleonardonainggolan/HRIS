@@ -7,6 +7,8 @@ export type PayrollRecord = {
   user_id: string;
   name: string;
   initials: string;
+  avatar?: string;
+  payroll_number?: string;
   position: string;
   department: string;
   basicSalary: number;

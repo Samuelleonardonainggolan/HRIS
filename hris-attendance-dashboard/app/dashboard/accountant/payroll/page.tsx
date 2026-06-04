@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -256,9 +257,14 @@ export default function PayrollPage() {
                   <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-xs font-semibold text-gray-700">
-                          {r.initials}
-                        </div>
+                        <Avatar className="h-9 w-9">
+                          {r.avatar ? (
+                            <AvatarImage src={r.avatar} alt={r.name} />
+                          ) : null}
+                          <AvatarFallback className="bg-gray-100 text-xs font-semibold text-gray-700">
+                            {r.initials}
+                          </AvatarFallback>
+                        </Avatar>
                         <div>
                           <div className="text-sm font-semibold text-gray-900">
                             {r.name}

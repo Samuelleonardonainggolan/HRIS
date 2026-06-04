@@ -390,9 +390,6 @@ export default function GeofencingPage() {
                     Lokasi
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                    Alamat Lengkap
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
                     Koordinat
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -409,14 +406,14 @@ export default function GeofencingPage() {
               <tbody className="divide-y divide-gray-200">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                       <p className="mt-2 text-sm">Memuat data...</p>
                     </td>
                   </tr>
                 ) : geofences.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                       <MapPinIcon className="w-12 h-12 mx-auto text-gray-400 mb-2" />
                       <p className="text-sm">Belum ada lokasi terdaftar</p>
                       <p className="text-xs text-gray-400 mt-1">Klik pada peta untuk menambah lokasi baru</p>
@@ -440,9 +437,6 @@ export default function GeofencingPage() {
                           </div>
                           <span className="font-medium text-gray-900 text-sm">{geofence.name}</span>
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {geofence.address || '-'}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 font-mono">
                         {geofence.latitude.toFixed(4)}, {geofence.longitude.toFixed(4)}

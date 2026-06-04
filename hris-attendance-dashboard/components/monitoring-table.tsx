@@ -1,13 +1,32 @@
-import { Check, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Employee } from "@/types";
 
 interface MonitoringTableProps {
   employees: Employee[];
   loading?: boolean;
   emptyMessage?: string;
+}
+
+function statusVariant(status: Employee["status"]): "success" | "warning" | "destructive" | "secondary" {
+  switch (status) {
+    case "HADIR":   return "success";
+    case "TELAT":   return "warning";
+    case "IZIN":    return "secondary";
+    case "ALPHA":   return "destructive";
+    default:        return "secondary";
+  }
+}
+
+function avatarColor(status: Employee["status"]): string {
+  switch (status) {
+    case "HADIR":   return "bg-teal-500 text-white";
+    case "TELAT":   return "bg-orange-500 text-white";
+    case "IZIN":    return "bg-blue-400 text-white";
+    case "ALPHA":   return "bg-red-500 text-white";
+    default:        return "bg-gray-400 text-white";
+  }
 }
 
 export function MonitoringTable({
@@ -34,9 +53,6 @@ export function MonitoringTable({
                 <th className="pb-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   Status
                 </th>
-                <th className="pb-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Verifikasi
-                </th>
               </tr>
             </thead>
             {loading ? (
@@ -58,9 +74,6 @@ export function MonitoringTable({
                     <td className="py-4">
                       <div className="h-6 w-16 bg-gray-200 animate-pulse rounded-full" />
                     </td>
-                    <td className="py-4">
-                      <div className="h-6 w-12 bg-gray-200 animate-pulse rounded" />
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -68,7 +81,7 @@ export function MonitoringTable({
               <tbody>
                 <tr>
                   <td
-                    colSpan={4}
+                    colSpan={3}
                     className="py-12 text-center text-sm text-gray-400"
                   >
                     {emptyMessage}
@@ -82,17 +95,13 @@ export function MonitoringTable({
                     <td className="py-4">
                       <div className="flex items-center gap-3">
                         <Avatar>
-                          <AvatarFallback
-                            className={
-                              employee.status === "HADIR"
-                                ? "bg-teal-500 text-white"
-                                : employee.status === "TELAT"
-                                ? "bg-orange-500 text-white"
-                                : employee.status === "TELAMBAT"
-                                ? "bg-orange-500 text-white"
-                                : "bg-blue-500 text-white"
-                            }
-                          >
+                          {employee.profilePicture ? (
+                            <AvatarImage
+                              src={employee.profilePicture}
+                              alt={employee.name}
+                            />
+                          ) : null}
+                          <AvatarFallback className={avatarColor(employee.status)}>
                             {employee.avatar}
                           </AvatarFallback>
                         </Avatar>
@@ -100,9 +109,13 @@ export function MonitoringTable({
                           <div className="font-medium text-gray-900">
                             {employee.name}
                           </div>
-                          {employee.checkInTime && (
+                          {employee.checkInTime ? (
                             <div className="text-sm text-gray-500">
                               absen pukul {employee.checkInTime}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-400">
+                              {employee.nik}
                             </div>
                           )}
                         </div>
@@ -114,34 +127,9 @@ export function MonitoringTable({
                       </span>
                     </td>
                     <td className="py-4">
-                      <Badge
-                        variant={
-                          employee.status === "HADIR"
-                            ? "success"
-                            : employee.status === "TELAT"
-                            ? "warning"
-                            : "warning"
-                        }
-                      >
+                      <Badge variant={statusVariant(employee.status)}>
                         {employee.status}
                       </Badge>
-                    </td>
-                    <td className="py-4">
-                      <div className="flex items-center gap-2">
-                        {employee.verified?.biometric && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
-                            <Check className="h-4 w-4 text-blue-600" />
-                          </div>
-                        )}
-                        {employee.verified?.geofencing && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
-                            <MapPin className="h-4 w-4 text-blue-600" />
-                          </div>
-                        )}
-                        {!employee.verified && (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
-                      </div>
                     </td>
                   </tr>
                 ))}
