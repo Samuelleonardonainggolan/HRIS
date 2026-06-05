@@ -67,23 +67,6 @@ export default function LoginPage() {
     }
   };
 
-  // Quick login buttons for testing
-  const quickLogin = async (userEmail: string, userPassword: string) => {
-    setEmail(userEmail);
-    setPassword(userPassword);
-    setError("");
-    setIsLoading(true);
-
-    try {
-      await login({ email: userEmail, password: userPassword });
-      // ❌ jangan push di sini juga
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-0">
       <div className="max-w-md w-full space-y-8">
@@ -91,7 +74,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="mx-auto h-36 w-36 relative mb-0">
             <Image
-              src="/logo.png"
+              src="/logo-remove-bg.png"
               alt="Logo"
               fill
               sizes="64px"
@@ -100,7 +83,7 @@ export default function LoginPage() {
             />
           </div>
           <h2 className="text-3xl font-extrabold text-gray-900">
-            Masuk Admin HR
+            PT. Labersa Hutahaean
           </h2>
           <p className="mt-2 text-sm text-gray-600">
             Silakan masuk untuk mengelola sistem manajemen hotel
@@ -220,54 +203,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-
-          {/* Divider */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Quick Login (Testing)</span>
-              </div>
-            </div>
-
-            {/* Quick Login Buttons */}
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => quickLogin('manager.hr@company.com', 'password123')}
-                disabled={isLoading}
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Manager HR
-              </button>
-              <button
-                type="button"
-                onClick={() => quickLogin('manager.it@company.com', 'password123')}
-                disabled={isLoading}
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Manager IT
-              </button>
-              <button
-                type="button"
-                onClick={() => quickLogin('admin.it@company.com', 'password123')}
-                disabled={isLoading}
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Admin IT
-              </button>
-              <button
-                type="button"
-                onClick={() => quickLogin('staf.it@company.com', 'password123')}
-                disabled={isLoading}
-                className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-              >
-                Staf IT
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
