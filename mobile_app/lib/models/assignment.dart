@@ -146,8 +146,12 @@ class AssignmentEmployee {
       employeeStatus: (json['employee_status'] ?? 'pending').toString().toLowerCase(),
       rejectionNote: json['rejection_note']?.toString(),
       confirmedAt: parseMaybeDate(json['confirmed_at'] ?? json['confirmedAt']),
-      dayOffEligible: (json['day_off_eligible'] == true) || (json['dayOffEligible'] == true),
-      dayOffStatus: (json['day_off_status'] ?? json['dayOffStatus'] ?? '').toString(),
+      dayOffEligible: json['day_off_reward'] != null 
+          ? (json['day_off_reward']['eligible'] == true)
+          : ((json['day_off_eligible'] == true) || (json['dayOffEligible'] == true)),
+      dayOffStatus: json['day_off_reward'] != null
+          ? (json['day_off_reward']['status'] ?? '').toString()
+          : (json['day_off_status'] ?? json['dayOffStatus'] ?? '').toString(),
       dayOffGrantedAt: parseMaybeDate(json['day_off_granted_at'] ?? json['dayOffGrantedAt']),
       dayOffUsedAt: parseMaybeDate(json['day_off_used_at'] ?? json['dayOffUsedAt']),
       replacementOffDate: parseMaybeDate(json['replacement_off_date'] ?? json['replacementOffDate']),

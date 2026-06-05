@@ -26,6 +26,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
 
   bool _isKeyboardVisible = false;
   bool _isLoading = false;
+  String? _authErrorMessage;
 
   @override
   void initState() {
@@ -85,6 +86,7 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
     FocusScope.of(context).unfocus();
     setState(() {
       _isKeyboardVisible = false;
+      _authErrorMessage = null;
     });
 
     if (_formKey.currentState?.validate() ?? false) {
@@ -119,16 +121,38 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
         if (!mounted) return;
 
         print('❌ LOGIN ERROR: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Login gagal: ${e.toString()}'),
-            backgroundColor: AppTheme.errorColor,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(15),
+        
+        final errorMessage = e.toString().replaceFirst('Exception: ', '');
+        final isAuthError = errorMessage.toLowerCase().contains('email') || 
+                            errorMessage.toLowerCase().contains('password') || 
+                            errorMessage.toLowerCase().contains('kredensial') ||
+                            errorMessage.toLowerCase().contains('salah') ||
+                            errorMessage.toLowerCase().contains('tidak ditemukan') ||
+                            errorMessage.toLowerCase().contains('unauthorized');
+
+        if (isAuthError) {
+          setState(() {
+            final lowerError = errorMessage.toLowerCase();
+            if (lowerError.contains('email')) {
+              _authErrorMessage = 'Email tidak ditemukan atau salah';
+            } else if (lowerError.contains('password') || lowerError.contains('sandi')) {
+              _authErrorMessage = 'Password salah';
+            } else {
+              _authErrorMessage = 'Email atau Password salah';
+            }
+          });
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Login gagal: $errorMessage'),
+              backgroundColor: AppTheme.errorColor,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
             ),
-          ),
-        );
+          );
+        }
       } finally {
         if (mounted) {
           setState(() {
@@ -244,6 +268,19 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                             key: _formKey,
                             child: Column(
                               children: [
+                                if (_authErrorMessage != null) ...[
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.only(bottom: 8, left: 12),
+                                    child: Text(
+                                      _authErrorMessage!,
+                                      style: const TextStyle(
+                                        color: AppTheme.errorColor,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 _buildEmailField(),
                                 const SizedBox(height: 16),
                                 _buildPasswordField(),
@@ -420,6 +457,13 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                     vertical: 14,
                   ),
                 ),
+                onChanged: (val) {
+                  if (_authErrorMessage != null) {
+                    setState(() {
+                      _authErrorMessage = null;
+                    });
+                  }
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Email tidak boleh kosong';
@@ -533,6 +577,13 @@ class _EmployeeLoginPageState extends State<EmployeeLoginPage>
                     vertical: 14,
                   ),
                 ),
+                onChanged: (val) {
+                  if (_authErrorMessage != null) {
+                    setState(() {
+                      _authErrorMessage = null;
+                    });
+                  }
+                },
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Password tidak boleh kosong';

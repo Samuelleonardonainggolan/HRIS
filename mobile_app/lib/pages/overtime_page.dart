@@ -2219,6 +2219,46 @@ class _AssignmentDetailSheet extends StatelessWidget {
     if (myEntry == null)
       return const SizedBox.shrink(); // Always show if participant
 
+    if (!myEntry.dayOffEligible) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Day Off Reward',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Color(0xFF64748B), size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Tidak ada reward karena penugasan berada di hari kerja.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF475569),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     final status = myEntry.dayOffStatus.toLowerCase();
     Color statusColor;
     String statusText;
