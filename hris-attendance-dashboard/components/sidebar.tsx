@@ -107,7 +107,6 @@ export function Sidebar() {
           { name: "Laporan", href: `${basePath}/laporan`, icon: "FileText" },
           { name: "Pengajuan Lembur", href: `${basePath}/lembur`, icon: "FilePlus" },
           { name: "Penugasan", href: `${basePath}/penugasan`, icon: "FileBox" },
-          { name: "Notifikasi", href: `${basePath}/notifikasi`, icon: "Bell" },
         ];
 
       case "accountant":
