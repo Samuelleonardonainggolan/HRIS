@@ -16,28 +16,34 @@ class SlipGajiData {
   final String periode;
   final int gajiPokok;
   final int lembur;
-  final int tunjanganCuti;
-  final int potongan;
   final int bonus;
+  final int potonganTerlambat;
+  final int potonganMangkir;
+  final int potonganLainnya;
   final String status;
-  final double overtimeHours;
-  final int cutiHari;
+  final double overtimeHoursPaid;
+  final int lateMinutes;
+  final int absentDays;
   final int? customTotalBersih;
 
   SlipGajiData({
     required this.periode,
     required this.gajiPokok,
     required this.lembur,
-    required this.tunjanganCuti,
-    required this.potongan,
     required this.bonus,
+    required this.potonganTerlambat,
+    required this.potonganMangkir,
+    required this.potonganLainnya,
     required this.status,
-    required this.overtimeHours,
-    required this.cutiHari,
+    required this.overtimeHoursPaid,
+    required this.lateMinutes,
+    required this.absentDays,
     this.customTotalBersih,
   });
 
-  int get totalBersih => customTotalBersih ?? (gajiPokok + lembur + tunjanganCuti + bonus - potongan);
+  int get totalPotongan => potonganTerlambat + potonganMangkir + potonganLainnya;
+  int get totalPendapatan => gajiPokok + lembur + bonus;
+  int get totalBersih => customTotalBersih ?? (totalPendapatan - totalPotongan);
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -125,13 +131,22 @@ class _SlipGajiPageState extends State<SlipGajiPage>
       // Ambil data payroll dari backend
       final payrollResp = await ApiService.getMyPayroll(now.month, now.year);
       
-      final gajiPokok = _parseMoney(
-        payrollResp['basic_salary_value'] ?? payrollResp['basic_salary'],
-      );
-      final netSalary = _parseMoney(
-        payrollResp['net_salary_value'] ?? payrollResp['net_salary'],
-      );
-      final cutiHari = _parseMoney(payrollResp['total_leave']);
+      final gajiPokok = _parseMoney(payrollResp['basic_salary_value'] ?? payrollResp['basic_salary']);
+      final netSalary = _parseMoney(payrollResp['net_salary_value'] ?? payrollResp['net_salary']);
+      
+      final lembur = _parseMoney(payrollResp['overtime_pay_value']);
+      final bonus = _parseMoney(payrollResp['other_earnings_value']);
+      
+      final potonganTerlambat = _parseMoney(payrollResp['late_deduction_value']);
+      final potonganMangkir = _parseMoney(payrollResp['absent_deduction_value']);
+      final potonganLainnya = _parseMoney(payrollResp['other_deductions_value']);
+      
+      final overtimeHoursPaid = (payrollResp['overtime_hours_paid'] ?? 0.0) is num 
+          ? (payrollResp['overtime_hours_paid'] as num).toDouble() 
+          : double.tryParse(payrollResp['overtime_hours_paid'].toString()) ?? 0.0;
+          
+      final lateMinutes = _parseMoney(payrollResp['late_minutes_total']);
+      final absentDays = _parseMoney(payrollResp['absent_days']);
 
       final periode = DateFormat('MMMM yyyy', 'id_ID').format(now);
 
@@ -141,13 +156,15 @@ class _SlipGajiPageState extends State<SlipGajiPage>
           _slip = SlipGajiData(
             periode: periode,
             gajiPokok: gajiPokok,
-            lembur: 0,
-            tunjanganCuti: 0,
-            potongan: 0,
-            bonus: 0,
+            lembur: lembur,
+            bonus: bonus,
+            potonganTerlambat: potonganTerlambat,
+            potonganMangkir: potonganMangkir,
+            potonganLainnya: potonganLainnya,
             status: payrollResp['status'] ?? payrollResp['payment_status'] ?? 'Belum Terbayar',
-            overtimeHours: 0,
-            cutiHari: cutiHari,
+            overtimeHoursPaid: overtimeHoursPaid,
+            lateMinutes: lateMinutes,
+            absentDays: absentDays,
             customTotalBersih: netSalary,
           );
           _isLoading = false;
@@ -237,15 +254,21 @@ class _SlipGajiPageState extends State<SlipGajiPage>
               _pdfRow('Gaji Pokok', fmt.format(slip.gajiPokok)),
               if (slip.lembur > 0)
                 _pdfRow(
-                    'Lembur (${slip.overtimeHours} jam)',
+                    'Lembur (${_formatOvertimeHours(slip.overtimeHoursPaid)} jam)',
                     fmt.format(slip.lembur)),
-              if (slip.tunjanganCuti > 0)
-                _pdfRow(
-                    'Tunjangan Cuti (${slip.cutiHari} hari)',
-                    fmt.format(slip.tunjanganCuti)),
               if (slip.bonus > 0)
-                _pdfRow('Bonus', fmt.format(slip.bonus)),
-              _pdfRow('Potongan (BPJS)', '- ${fmt.format(slip.potongan)}'),
+                _pdfRow('Pendapatan Lain/Bonus', fmt.format(slip.bonus)),
+              pw.SizedBox(height: 8),
+              pw.Text('Potongan',
+                  style: pw.TextStyle(
+                      fontSize: 13, fontWeight: pw.FontWeight.bold, color: PdfColors.red)),
+              pw.Divider(),
+              if (slip.potonganTerlambat > 0)
+                _pdfRow('Terlambat (${slip.lateMinutes} mnt)', '- ${fmt.format(slip.potonganTerlambat)}', isDeduction: true),
+              if (slip.potonganMangkir > 0)
+                _pdfRow('Mangkir (${slip.absentDays} hari)', '- ${fmt.format(slip.potonganMangkir)}', isDeduction: true),
+              if (slip.potonganLainnya > 0 || (slip.potonganTerlambat == 0 && slip.potonganMangkir == 0))
+                _pdfRow('Potongan Lain (BPJS dll)', '- ${fmt.format(slip.potonganLainnya)}', isDeduction: true),
               pw.Divider(),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -297,7 +320,7 @@ class _SlipGajiPageState extends State<SlipGajiPage>
     }
   }
 
-  pw.Widget _pdfRow(String label, String value) => pw.Padding(
+  pw.Widget _pdfRow(String label, String value, {bool isDeduction = false}) => pw.Padding(
         padding: const pw.EdgeInsets.symmetric(vertical: 4),
         child: pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -306,7 +329,9 @@ class _SlipGajiPageState extends State<SlipGajiPage>
                 style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700)),
             pw.Text(value,
                 style: pw.TextStyle(
-                    fontSize: 11, fontWeight: pw.FontWeight.bold)),
+                    fontSize: 11, 
+                    fontWeight: pw.FontWeight.bold,
+                    color: isDeduction ? PdfColors.red : PdfColors.black)),
           ],
         ),
       );
@@ -441,21 +466,9 @@ class _SlipGajiPageState extends State<SlipGajiPage>
               iconBg: const Color(0xFFFFF7ED),
               iconColor: Colors.orange,
               title: 'Lembur',
-              subtitle: '${_formatOvertimeHours(slip.overtimeHours)} jam',
+              subtitle: '${_formatOvertimeHours(slip.overtimeHoursPaid)} jam',
               amount: fmt.format(slip.lembur),
               amountColor: const Color(0xFF1A1C1E),
-            ),
-          ],
-          if (slip.tunjanganCuti > 0) ...[
-            const SizedBox(height: 12),
-            _buildComponentItem(
-              icon: Icons.event_available_rounded,
-              iconBg: const Color(0xFFECFDF5),
-              iconColor: _green,
-              title: 'Tunjangan Cuti',
-              subtitle: '${slip.cutiHari} hari cuti berbayar',
-              amount: fmt.format(slip.tunjanganCuti),
-              amountColor: _green,
             ),
           ],
           if (slip.bonus > 0) ...[
@@ -464,22 +477,60 @@ class _SlipGajiPageState extends State<SlipGajiPage>
               icon: Icons.star_rounded,
               iconBg: const Color(0xFFFFFBEB),
               iconColor: const Color(0xFFF59E0B),
-              title: 'Bonus',
-              subtitle: 'Bonus kinerja',
+              title: 'Pendapatan Lain',
+              subtitle: 'Bonus & penyesuaian positif',
               amount: fmt.format(slip.bonus),
               amountColor: const Color(0xFFF59E0B),
             ),
           ],
-          const SizedBox(height: 12),
-          _buildComponentItem(
-            icon: Icons.remove_circle_outline_rounded,
-            iconBg: const Color(0xFFFEF2F2),
-            iconColor: _red,
-            title: 'Potongan',
-            subtitle: 'BPJS Ketenagakerjaan 2%',
-            amount: '- ${fmt.format(slip.potongan)}',
-            amountColor: _red,
+          const SizedBox(height: 28),
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 14),
+            child: Text(
+              'RINCIAN POTONGAN',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: _red,
+              ),
+            ),
           ),
+          if (slip.potonganTerlambat > 0) ...[
+            _buildComponentItem(
+              icon: Icons.timer_off_rounded,
+              iconBg: const Color(0xFFFEF2F2),
+              iconColor: _red,
+              title: 'Keterlambatan',
+              subtitle: 'Total telat ${slip.lateMinutes} menit',
+              amount: '- ${fmt.format(slip.potonganTerlambat)}',
+              amountColor: _red,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (slip.potonganMangkir > 0) ...[
+            _buildComponentItem(
+              icon: Icons.event_busy_rounded,
+              iconBg: const Color(0xFFFEF2F2),
+              iconColor: _red,
+              title: 'Mangkir / Alpha',
+              subtitle: 'Tidak hadir ${slip.absentDays} hari',
+              amount: '- ${fmt.format(slip.potonganMangkir)}',
+              amountColor: _red,
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (slip.potonganLainnya > 0 || (slip.potonganTerlambat == 0 && slip.potonganMangkir == 0)) ...[
+            _buildComponentItem(
+              icon: Icons.remove_circle_outline_rounded,
+              iconBg: const Color(0xFFFEF2F2),
+              iconColor: _red,
+              title: 'Potongan Lainnya',
+              subtitle: 'BPJS / Penyesuaian negatif',
+              amount: '- ${fmt.format(slip.potonganLainnya)}',
+              amountColor: _red,
+            ),
+          ],
 
           const SizedBox(height: 32),
 
@@ -614,7 +665,9 @@ class _SlipGajiPageState extends State<SlipGajiPage>
                 child: _buildSummaryChip(
                   icon: Icons.trending_down_rounded,
                   label: 'Potongan',
-                  value: '- ${fmt.format(slip.potongan)}',
+                  value: slip.totalPotongan > 0
+                      ? '- ${fmt.format(slip.totalPotongan)}'
+                      : 'Rp 0',
                 ),
               ),
             ],
