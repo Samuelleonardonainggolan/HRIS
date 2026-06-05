@@ -18,7 +18,7 @@
     <uses-feature android:name="android.hardware.camera.autofocus"/>
 
     <application
-        android:label="HRIS Mobile"
+        android:label="Labersa HRIS"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">

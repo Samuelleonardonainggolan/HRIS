@@ -11,3 +11,4 @@ build/
 /playwright/.cache/
 /playwright/.auth/
 node_modules/
+api_model/Face-Space/

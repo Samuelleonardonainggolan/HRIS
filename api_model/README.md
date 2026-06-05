@@ -1,8 +1,18 @@
+---
+title: Face Recognition Microservice HRIS
+emoji: 🏢
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+---
 # Face Recognition Microservice — Hotel Labersa Toba
-
-Stateless microservice khusus Face Recognition & GPS Geofencing.
+Model dan stateless microservice khusus Face Recognition & Liveness (Anti-Spoofing) & GPS Geofencing.
 Dipanggil oleh **Golang Backend** — tidak ada database, tidak ada auth sendiri.
-
+## Model yang Tersedia di Repository ini:
+1. `facenet_labersa_cpu.pt`: Model ekstraksi wajah (FaceNet) yang dioptimasi untuk CPU.
+2. `antispoof_model_improved.pt`: Model liveness detection untuk mencegah absen menggunakan foto palsu/layar HP.
+---
 ---
 
 ## Arsitektur

@@ -196,7 +196,7 @@ func main() {
 	reportService := service.NewReportService(attendanceRepo, pengajuanIzinCutiRepo, overtimeRequestRepo, userRepo)
 	reportHandler := handler.NewReportHandler(reportService)
 
-	payrollHandler := handler.NewPayrollHandler(payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo)
+	payrollHandler := handler.NewPayrollHandler(payrollRepo, userRepo, employeeBasicSalaryRepo, attendanceRepo, overtimeRequestRepo, jamKerjaRepo, pengajuanIzinCutiRepo, assignmentRepo)
 
 	// SSE / Notification handlers
 	sseHandler := handler.NewSSEHandler(wsHub, cfg.JWTSecret)
