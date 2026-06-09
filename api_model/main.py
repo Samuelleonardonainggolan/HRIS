@@ -17,6 +17,13 @@ from PIL import Image
 from torchvision import transforms, models
 from contextlib import asynccontextmanager
 from facenet_pytorch import InceptionResnetV1, MTCNN
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+from api_config import ApiConfigPatch
+from hf_antispoof_ensemble import HFAntiSpoofEnsemble
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("face-service")
@@ -30,13 +37,13 @@ IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 FINAL_SCORE_THRESHOLD = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.80"))
 ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
-ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", "models/antispoof_model_improved.pt")
-# ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\antispoof_model_improved.pt")
-# Threshold hasil training terbaru adalah THRESHOLD SPOOF = 0.420.
-# Artinya: prediksi spoof jika probabilitas kelas spoof >= 0.420.
-ANTI_SPOOF_THRESHOLD = float(os.getenv("ANTI_SPOOF_THRESHOLD", "0.420"))
-# Backward compatibility: jika masih ada kode lama yang membaca threshold real.
-ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", str(1.0 - ANTI_SPOOF_THRESHOLD)))
+# Mode baru: anti-spoofing menggunakan ensemble HuggingFace.
+# HF_REPO_DIR harus menunjuk ke repo HF asli yang berisi IADG.py, SASF.py, src/, weights/.
+HF_REPO_DIR = os.getenv("HF_REPO_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "face-anti-spoofing_hf"))
+ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", "HF_ENSEMBLE")  # backward-compatible field
+# Threshold tambahan untuk real_score. Default 0 berarti keputusan utama mengikuti threshold ensemble.
+ANTI_SPOOF_THRESHOLD = float(os.getenv("ANTI_SPOOF_THRESHOLD", "0.0"))
+ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", "0.0"))
 SPOOF_SCORE_THRESHOLD = float(os.getenv("SPOOF_SCORE_THRESHOLD", "0.65"))
 FACE_DET_MIN_PROB = float(os.getenv("FACE_DET_MIN_PROB", "0.90"))
 DEVICE = os.getenv("DEVICE", "cpu")
@@ -114,7 +121,8 @@ class FaceService:
         self.class_names = []
         self.loaded = False
         self.face_det = None
-        self.anti_spoof = None
+        self.anti_spoof = None  # legacy ResNet18, tidak dipakai pada mode HF ensemble
+        self.hf_antispoof = None
         self.anti_spoof_labels = []
         self.anti_spoof_real_index = 0
         self.anti_spoof_spoof_index = 1
@@ -166,40 +174,15 @@ class FaceService:
                 logger.warning(f"Model tidak ditemukan di {MODEL_PATH}, pakai pretrained VGGFace2")
 
             if ANTI_SPOOFING_ENABLED:
-                if not os.path.exists(ANTI_SPOOF_MODEL_PATH):
-                    raise FileNotFoundError(f"Anti-spoof model tidak ditemukan: {ANTI_SPOOF_MODEL_PATH}")
-
-                ckpt = torch.load(ANTI_SPOOF_MODEL_PATH, map_location=TORCH_DEVICE)
-
-                # File improved menyimpan checkpoint lengkap: model_state_dict, threshold, class_names.
-                # Jika yang dipakai hanya state_dict legacy, bagian ini tetap bisa membaca.
-                if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
-                    state_dict = ckpt["model_state_dict"]
-                    labels = ckpt.get("class_names", ["real", "spoof"])
-                    checkpoint_threshold = float(ckpt.get("threshold", ANTI_SPOOF_THRESHOLD))
-                else:
-                    state_dict = ckpt
-                    labels = ["real", "spoof"]
-                    checkpoint_threshold = ANTI_SPOOF_THRESHOLD
-
-                self.anti_spoof_threshold = float(os.getenv("ANTI_SPOOF_THRESHOLD", str(checkpoint_threshold)))
-                self.anti_spoof = AntiSpoofNet(dropout=0.35, num_classes=len(labels)).to(TORCH_DEVICE)
-
-                # Training script menyimpan state_dict ResNet langsung tanpa prefix "backbone.".
-                # Class FastAPI ini memakai wrapper self.backbone, jadi prefix ditambahkan otomatis.
-                model_keys = list(self.anti_spoof.state_dict().keys())
-                sd_keys = list(state_dict.keys())
-                if sd_keys and not sd_keys[0].startswith("backbone.") and model_keys and model_keys[0].startswith("backbone."):
-                    state_dict = {f"backbone.{k}": v for k, v in state_dict.items()}
-
-                self.anti_spoof.load_state_dict(state_dict, strict=True)
-                self.anti_spoof.eval()
-                self.anti_spoof_labels = labels
-                self.anti_spoof_real_index = labels.index("real") if "real" in labels else 0
-                self.anti_spoof_spoof_index = labels.index("spoof") if "spoof" in labels else 1
+                # Anti-spoofing baru: ensemble HuggingFace (SASF, FLRGB, ICM2O, IOM2C, CDCN++ opsional).
+                # Threshold dan weight dibaca dari api_settings.json atau environment variable HF_THR_* / HF_W_*.
+                self.hf_antispoof = HFAntiSpoofEnsemble(prefer_finetuned=True)
+                if self.hf_antispoof.load_error:
+                    raise RuntimeError(self.hf_antispoof.load_error)
+                cfg = self.hf_antispoof.get_config()
                 logger.info(
-                    f"Anti-spoof model loaded. labels={labels}, "
-                    f"spoof_threshold={self.anti_spoof_threshold:.3f}, device={TORCH_DEVICE}"
+                    "HF anti-spoof ensemble loaded successfully. "
+                    f"hf_repo_dir={cfg.get('hf_repo_dir')} thresholds={cfg.get('thresholds')} weights={cfg.get('weights')}"
                 )
 
             self.loaded = True
@@ -268,29 +251,34 @@ class FaceService:
         return face, [float(x1), float(y1), float(x2), float(y2)]
 
     @torch.no_grad()
-    def detect_spoof(self, face_crop_rgb: np.ndarray) -> Tuple[bool, float, float]:
+    def detect_spoof(self, face_crop_rgb: np.ndarray, full_image_rgb: Optional[np.ndarray] = None) -> Tuple[bool, float, float]:
         """
         Return:
-          is_real: True jika spoof_probability < threshold hasil tuning
-          real_score: probabilitas kelas real
-          spoof_score: probabilitas kelas spoof
+          is_real: True jika ensemble HF memutuskan LIVE/REAL
+          real_score: 1 - ensemble_spoof_score
+          spoof_score: ensemble_spoof_score
+
+        full_image_rgb lebih disarankan untuk model HF karena detector internalnya
+        membutuhkan bbox dan landmark. face_crop_rgb tetap dipakai sebagai fallback.
         """
         if not ANTI_SPOOFING_ENABLED:
             return True, 1.0, 0.0
-        if self.anti_spoof is None:
-            raise ValueError("Anti-spoof model belum diinisialisasi")
+        if self.hf_antispoof is None:
+            raise ValueError("HF anti-spoof ensemble belum diinisialisasi")
 
-        img = Image.fromarray(face_crop_rgb.astype(np.uint8))
-        tensor = self.anti_spoof_transform(img).unsqueeze(0).to(TORCH_DEVICE)
-        logits = self.anti_spoof(tensor)
-        probs = torch.softmax(logits, dim=1)
+        image_for_spoof = full_image_rgb if full_image_rgb is not None else face_crop_rgb
+        res = self.hf_antispoof.predict_on_image(image_for_spoof)
 
-        real_score = float(probs[0, self.anti_spoof_real_index].item())
-        spoof_score = float(probs[0, self.anti_spoof_spoof_index].item())
+        # Fallback: jika detector HF gagal pada full image, coba crop wajah dari MTCNN.
+        if (not res.ok) and (full_image_rgb is not None):
+            res = self.hf_antispoof.predict_on_face_crop(face_crop_rgb)
 
-        # Threshold 0.420 dari training adalah threshold untuk kelas spoof.
-        is_real = bool(spoof_score < float(self.anti_spoof_threshold))
-        return is_real, real_score, spoof_score
+        if not res.ok:
+            raise ValueError(res.error or "Anti-spoof gagal")
+
+        self.anti_spoof_threshold = float(res.real_threshold)
+        is_real = (not res.is_spoof) and (float(res.real_score) >= float(ANTI_SPOOF_REAL_THRESHOLD))
+        return bool(is_real), float(res.real_score), float(res.spoof_score)
 
     @torch.no_grad()
     def extract_embedding_from_crop(self, face_crop_rgb: np.ndarray) -> list[float]:
@@ -521,113 +509,99 @@ class FaceService:
 
     def detect_glasses(self, face_region: np.ndarray) -> Tuple[bool, str]:
         """
-        Deteksi kacamata (termasuk kacamata bening) menggunakan beberapa metode
-        Disesuaikan untuk kulit putih/polos
+        Deteksi kacamata (termasuk kacamata bening) menggunakan beberapa metode.
+        Ditingkatkan dengan pengecekan simetri dan penolakan tepi masker.
         """
         try:
             height, width = face_region.shape[:2]
             
-            # Region mata (sekitar 1/3 atas wajah)
-            eye_region_y1 = int(height * 0.2)
-            eye_region_y2 = int(height * 0.5)
+            # Region mata (fokus pada area lensa, hindari hidung/masker bawah)
+            eye_region_y1 = int(height * 0.24) 
+            eye_region_y2 = int(height * 0.45) # Dikurangi dari 0.50 agar tidak mengambil tepi masker
             eye_region = face_region[eye_region_y1:eye_region_y2, :]
             
             if eye_region.size == 0:
                 return False, "Region mata tidak valid"
             
-            # 1. Deteksi tepi menggunakan Canny (frame kacamata)
             gray_eye = cv2.cvtColor(eye_region, cv2.COLOR_RGB2GRAY)
-            edges = cv2.Canny(gray_eye, 50, 150)
             
-            # Hitung rasio tepi (edge density)
-            edge_ratio = np.sum(edges > 0) / edges.size if edges.size > 0 else 0
+            # 1. Deteksi tepi (Canny)
+            median_val = np.median(gray_eye)
+            lower = int(max(0, (1.0 - 0.33) * median_val))
+            upper = int(min(255, (1.0 + 0.33) * median_val))
+            edges = cv2.Canny(gray_eye, lower, upper)
             
-            # 2. Deteksi garis horizontal yang kuat (frame kacamata)
-            horizontal_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=30, maxLineGap=10)
+            # 2. Deteksi Garis Horizontal (Bingkai)
+            horizontal_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=45, minLineLength=30, maxLineGap=10)
+            line_count = 0
+            if horizontal_lines is not None:
+                for line in horizontal_lines:
+                    _, y_a, _, y_b = line[0]
+                    # Tolak garis yang berada di 10% area terbawah (kemungkinan tepi masker)
+                    if y_a > (eye_region.shape[0] * 0.9) or y_b > (eye_region.shape[0] * 0.9):
+                        continue
+                    line_count += 1
+
+            # 3. Pengecekan simetri Tepi
+            w_mid = width // 2
+            left_edges = edges[:, :w_mid]
+            right_edges = edges[:, w_mid:]
+            left_density = np.sum(left_edges > 0) / left_edges.size if left_edges.size > 0 else 0
+            right_density = np.sum(right_edges > 0) / right_edges.size if right_edges.size > 0 else 0
             
-            # 3. Analisis tekstur untuk kacamata bening - PERBAIKAN UTAMA
+            # 4. Deteksi refleksi/silau (Specular Reflection)
+            _, specular_mask = cv2.threshold(gray_eye, 242, 255, cv2.THRESH_BINARY)
+            specular_ratio = np.sum(specular_mask > 0) / specular_mask.size
+            
+            # Simetri Refleksi
+            left_spec = np.sum(specular_mask[:, :w_mid] > 0)
+            right_spec = np.sum(specular_mask[:, w_mid:] > 0)
+            has_spec_symmetry = (left_spec > 0 and right_spec > 0)
+
+            # 5. Analisis tekstur (Entropy)
             from skimage.feature import local_binary_pattern
-            
-            # Gunakan radius lebih besar untuk menangkap pola lebih luas
             lbp = local_binary_pattern(gray_eye, 16, 2, method='uniform')
             lbp_hist, _ = np.histogram(lbp.ravel(), bins=np.arange(0, 19), range=(0, 18))
             lbp_hist = lbp_hist / (lbp_hist.sum() + 1e-8)
-            
-            # Hitung entropy (ketidak-teraturan) - alternatif dari uniformity
             entropy = -np.sum(lbp_hist * np.log2(lbp_hist + 1e-8))
             
-            # 4. Deteksi refleksi/silau pada kacamata
             brightness_std = np.std(gray_eye)
-            
-            # ====================================================
-            # PARAMETER YANG DIOPTIMASI UNTUK KULIT PUTIH
-            # ====================================================
-            
-            # Texture uniformity untuk kulit putih alami lebih rendah
-            # Tapi kacamata bening menyebabkan pola yang SANGAT berbeda
-            # Kita gunakan ENTROPY sebagai pengganti uniformity
-            
-            # Batas entropy untuk kulit normal (lebih tinggi = lebih acak)
-            # Kulit putih: entropy sekitar 2.5 - 3.5
-            # Kacamata bening: entropy bisa turun drastis (< 2.0) karena pola teratur
-            ENTROPY_THRESHOLD = 2.2  # Jika entropy < 2.2, curiga kacamata
-            
-            # Edge ratio untuk frame kacamata
-            EDGE_RATIO_THRESHOLD = 0.28  # Dinaikkan untuk kulit putih
-            
-            # Brightness std untuk refleksi
-            BRIGHTNESS_STD_THRESHOLD = 80  # Dinaikkan
-            
-            # ====================================================
-            # VALIDASI TAMBAHAN - CEK KULIT ASLI
-            # ====================================================
-            
-            # Ambil sampel kulit dari pipi (area bawah mata)
-            cheek_y1 = int(height * 0.5)
-            cheek_y2 = int(height * 0.7)
-            cheek_region = face_region[cheek_y1:cheek_y2, :]
-            
+
+            # VALIDASI KULIT
+            cheek_y1, cheek_y2 = int(height * 0.6), int(height * 0.8)
+            cheek_region = face_region[cheek_y1:cheek_y2, int(width*0.25):int(width*0.75)]
             if cheek_region.size > 0:
-                gray_cheek = cv2.cvtColor(cheek_region, cv2.COLOR_RGB2GRAY)
-                cheek_std = np.std(gray_cheek)
-                cheek_mean = np.mean(gray_cheek)
-                
-                # Kulit asli memiliki variasi yang konsisten
-                # Jika area mata dan pipi memiliki karakteristik mirip, mungkin bukan kacamata
+                cheek_std = np.std(cv2.cvtColor(cheek_region, cv2.COLOR_RGB2GRAY))
                 skin_similarity = abs(brightness_std - cheek_std) / (cheek_std + 1e-8)
             else:
                 skin_similarity = 1.0
-            
+
             # ====================================================
-            # LOGIKA KEPUTUSAN UTAMA - FOKUS PADA ENTROPY
+            # LOGIKA KEPUTUSAN
             # ====================================================
             
-            # LOG 1: Cek entropy (indikator utama kacamata bening)
-            if entropy < ENTROPY_THRESHOLD:
-                # Tapi cek juga skin similarity untuk validasi
-                if skin_similarity > 0.3:  # Area mata berbeda dari pipi
-                    return True, f"Terdeteksi pola tidak wajar di area mata (entropy={entropy:.2f} < {ENTROPY_THRESHOLD})"
-                else:
-                    # Jika mirip dengan kulit pipi, mungkin false positive
-                    logger.info(f"[GLASSES] False positive terdeteksi: entropy={entropy:.2f} tapi skin_similarity={skin_similarity:.2f}")
-                    # Lanjutkan ke pengecekan lain
-            
-            # LOG 2: Deteksi frame kacamata (edge dan garis)
-            if edge_ratio > EDGE_RATIO_THRESHOLD:
-                return True, f"Terdeteksi bingkai kacamata (edge={edge_ratio:.2f})"
-            
-            if horizontal_lines is not None and len(horizontal_lines) > 4:
-                return True, "Terdeteksi garis horizontal (frame kacamata)"
-            
-            # LOG 3: Deteksi refleksi dengan validasi tambahan
-            if brightness_std > BRIGHTNESS_STD_THRESHOLD:
-                # Cek apakah ini memang refleksi atau hanya kulit cerah
-                # Kulit cerah punya std tinggi tapi juga mean tinggi
-                if brightness_std > 90 and skin_similarity < 0.2:
-                    return True, f"Terdeteksi refleksi cahaya (std={brightness_std:.1f})"
-            
+            # Rule 1: Refleksi Spekular (Simetris atau Sangat Kuat)
+            if specular_ratio > 0.015: 
+                return True, f"Terdeteksi refleksi cahaya kuat (ratio={specular_ratio:.3f})"
+            if specular_ratio > 0.005 and has_spec_symmetry:
+                return True, "Terdeteksi refleksi cahaya simetris (kacamata)"
+
+            # Rule 2: Bingkai kacamata (Edge) simetris
+            edge_density = (left_density + right_density) / 2
+            if edge_density > 0.30 and skin_similarity > 0.35:
+                if min(left_density, right_density) / (max(left_density, right_density) + 1e-8) > 0.5:
+                    return True, f"Terdeteksi bingkai kacamata simetris (density={edge_density:.2f})"
+
+            # Rule 3: Garis horizontal valid (bukan tepi masker)
+            if line_count >= 4 and skin_similarity > 0.35:
+                return True, f"Terdeteksi bingkai horizontal kacamata (count={line_count})"
+
+            # Rule 4: Kacamata bening
+            if entropy < 1.95 and skin_similarity > 0.45:
+                return True, f"Terdeteksi pola kacamata bening (entropy={entropy:.2f})"
+
             # Log untuk debugging
-            logger.info(f"[GLASSES] edge={edge_ratio:.3f}, entropy={entropy:.3f}, brightness_std={brightness_std:.1f}, skin_sim={skin_similarity:.2f}")
+            logger.info(f"[GLASSES] L_den={left_density:.3f}, R_den={right_density:.3f}, ent={entropy:.2f}, spec={specular_ratio:.3f}, lines={line_count}")
             
             return False, "Tidak terdeteksi kacamata"
             
@@ -637,15 +611,15 @@ class FaceService:
 
     def detect_mask(self, face_region: np.ndarray) -> Tuple[bool, str]:
         """
-        Deteksi masker menggunakan analisis warna dan tekstur
-        Dioptimalkan untuk kulit putih/polos
+        Deteksi masker menggunakan analisis warna, tekstur, dan kehalusan permukaan.
+        Dioptimalkan untuk berbagai jenis masker (medis, kain, N95).
         """
         try:
             height, width = face_region.shape[:2]
             
             # Region mulut dan dagu (sepertiga bawah wajah)
-            mouth_region_y1 = int(height * 0.6)
-            mouth_region_y2 = height
+            mouth_region_y1 = int(height * 0.62)
+            mouth_region_y2 = int(height * 0.95)
             mouth_region = face_region[mouth_region_y1:mouth_region_y2, :]
             
             if mouth_region.size == 0:
@@ -662,7 +636,6 @@ class FaceService:
             # ====================================================
             # ANALISIS WARNA
             # ====================================================
-            # Konversi ke HSV untuk analisis warna
             hsv_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2HSV)
             hsv_skin = cv2.cvtColor(skin_region, cv2.COLOR_RGB2HSV) if skin_region.size > 0 else None
             
@@ -677,14 +650,11 @@ class FaceService:
                 skin_sat_mean = np.mean(hsv_skin[:,:,1])
                 skin_val_mean = np.mean(hsv_skin[:,:,2])
                 
-                # Hitung perbedaan warna antara mulut dan kulit
                 hue_diff = abs(mouth_hue_mean - skin_hue_mean)
                 sat_diff = abs(mouth_sat_mean - skin_sat_mean)
                 val_diff = abs(mouth_val_mean - skin_val_mean)
             else:
-                hue_diff = 30  # Default tinggi
-                sat_diff = 50
-                val_diff = 50
+                hue_diff, sat_diff, val_diff = 30, 50, 50
             
             # ====================================================
             # DETEKSI WARNA MASKER UMUM
@@ -692,118 +662,77 @@ class FaceService:
             total_pixels = mouth_region.shape[0] * mouth_region.shape[1]
             
             # Masker biru (medis)
-            blue_mask = np.sum((hsv_mouth[:,:,0] > 90) & (hsv_mouth[:,:,0] < 130) & 
-                            (hsv_mouth[:,:,1] > 70) & (hsv_mouth[:,:,2] > 50))
+            blue_mask = np.sum((hsv_mouth[:,:,0] > 85) & (hsv_mouth[:,:,0] < 135) & 
+                            (hsv_mouth[:,:,1] > 60) & (hsv_mouth[:,:,2] > 50))
             blue_ratio = blue_mask / total_pixels
             
             # Masker hijau (medis)
-            green_mask = np.sum((hsv_mouth[:,:,0] > 35) & (hsv_mouth[:,:,0] < 85) & 
-                            (hsv_mouth[:,:,1] > 60) & (hsv_mouth[:,:,2] > 50))
+            green_mask = np.sum((hsv_mouth[:,:,0] > 35) & (hsv_mouth[:,:,0] < 90) & 
+                            (hsv_mouth[:,:,1] > 50) & (hsv_mouth[:,:,2] > 50))
             green_ratio = green_mask / total_pixels
             
-            # Masker hitam
-            black_mask = np.sum((hsv_mouth[:,:,2] < 60) & (hsv_mouth[:,:,1] < 50))
+            # Masker hitam/gelap
+            black_mask = np.sum((hsv_mouth[:,:,2] < 55) & (hsv_mouth[:,:,1] < 60))
             black_ratio = black_mask / total_pixels
             
-            # Masker putih (sering digunakan)
-            white_mask = np.sum((hsv_mouth[:,:,2] > 180) & (hsv_mouth[:,:,1] < 40))
+            # Masker putih/cerah
+            white_mask = np.sum((hsv_mouth[:,:,2] > 190) & (hsv_mouth[:,:,1] < 35))
             white_ratio = white_mask / total_pixels
+
+            # Masker abu-abu/grey (tambahan)
+            grey_mask = np.sum((hsv_mouth[:,:,1] < 25) & (hsv_mouth[:,:,2] > 80) & (hsv_mouth[:,:,2] < 180))
+            grey_ratio = grey_mask / total_pixels
             
             # ====================================================
-            # DETEKSI TEKSTUR
+            # DETEKSI TEKSTUR & KEHALUSAN
             # ====================================================
             gray_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2GRAY)
             
-            # Edge density (detail area mulut)
-            edges = cv2.Canny(gray_mouth, 50, 150)
+            # Kehalusan permukaan (Laplacian variance)
+            # Masker cenderung memiliki permukaan yang lebih "datar" secara tekstur dibanding bibir/dagu
+            laplacian_var = cv2.Laplacian(gray_mouth, cv2.CV_64F).var()
+            
+            # Edge density
+            edges = cv2.Canny(gray_mouth, 40, 120)
             edge_density = np.sum(edges > 0) / total_pixels if total_pixels > 0 else 0
             
-            # Texture analysis dengan LBP
-            from skimage.feature import local_binary_pattern
-            lbp = local_binary_pattern(gray_mouth, 8, 1, method='uniform')
-            lbp_hist, _ = np.histogram(lbp.ravel(), bins=np.arange(0, 11), range=(0, 10))
-            lbp_hist = lbp_hist / (lbp_hist.sum() + 1e-8)
-            texture_uniformity = np.sum(lbp_hist ** 2)
-            
-            # ====================================================
-            # VALIDASI BIBIR
-            # ====================================================
-            # Deteksi warna bibir (merah) di area mulut
-            # Konversi ke ruang warna yang lebih baik untuk deteksi bibir
+            # Validasi bibir (merah)
             lab_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2LAB)
-            
-            # Bibir memiliki nilai 'a' yang tinggi (merah-hijau)
             a_channel = lab_mouth[:,:,1]
-            lip_mask = a_channel > np.percentile(a_channel, 70)  # Top 30% nilai 'a'
+            # Bibir biasanya memiliki nilai 'a' yang tinggi (merah)
+            lip_mask = a_channel > 145 # Threshold empiris untuk warna kemerahan bibir
             lip_ratio = np.sum(lip_mask) / total_pixels if total_pixels > 0 else 0
             
             # ====================================================
-            # PARAMETER THRESHOLD UNTUK KULIT PUTIH
+            # THRESHOLDS
             # ====================================================
-            
-            # Threshold untuk warna masker
-            BLUE_THRESHOLD = 0.25      # Turunkan dari 0.3
-            GREEN_THRESHOLD = 0.25     # Turunkan dari 0.3
-            BLACK_THRESHOLD = 0.40     # Turunkan dari 0.5
-            WHITE_THRESHOLD = 0.35     # Threshold baru untuk masker putih
-            
-            # Threshold untuk perbedaan warna dengan kulit
-            HUE_DIFF_THRESHOLD = 20    # Perbedaan hue > 20
-            SAT_DIFF_THRESHOLD = 40    # Perbedaan saturasi > 40
-            
-            # Threshold untuk tekstur
-            EDGE_DENSITY_THRESHOLD = 0.03      # Turunkan dari 0.05
-            TEXTURE_UNIFORMITY_THRESHOLD = 0.25 # Texture uniformity untuk kulit normal
-            
-            # Threshold untuk deteksi bibir
-            LIP_RATIO_THRESHOLD = 0.15  # Minimal 15% area adalah bibir
+            COLOR_THR = 0.22
+            LAPLACIAN_THR = 80.0 # Jika < 80, area sangat halus (curiga masker)
+            LIP_THR = 0.08      # Jika < 8% area adalah bibir, kemungkinan tertutup
             
             # ====================================================
             # LOGIKA KEPUTUSAN
             # ====================================================
             
-            # LOG 1: Cek apakah ada bibir (indikator tidak pakai masker)
-            if lip_ratio > LIP_RATIO_THRESHOLD:
-                # Ada bibir terdeteksi, kemungkinan tidak pakai masker
-                # Tapi tetap cek warna masker jika sangat dominan
-                if blue_ratio > BLUE_THRESHOLD or green_ratio > GREEN_THRESHOLD or black_ratio > BLACK_THRESHOLD or white_ratio > WHITE_THRESHOLD:
-                    # Warna masker dominan meski ada bibir? Curiga
-                    # Tapi perlu validasi lebih lanjut
-                    if hue_diff > HUE_DIFF_THRESHOLD and sat_diff > SAT_DIFF_THRESHOLD:
-                        return True, f"Terdeteksi warna tidak wajar di area mulut"
-                
-                # Ada bibir, kemungkinan tidak pakai masker
-                logger.info(f"[MASK] Lip detected: {lip_ratio:.2f}")
-                return False, "Bibir terdeteksi"
+            # LOG 1: Deteksi Warna Dominan
+            if blue_ratio > COLOR_THR: return True, f"Terdeteksi masker medis biru ({blue_ratio:.2f})"
+            if green_ratio > COLOR_THR: return True, f"Terdeteksi masker medis hijau ({green_ratio:.2f})"
+            if black_ratio > 0.35: return True, f"Terdeteksi masker hitam ({black_ratio:.2f})"
+            if white_ratio > 0.30: return True, f"Terdeteksi masker putih ({white_ratio:.2f})"
+            if grey_ratio > 0.30: return True, f"Terdeteksi masker abu-abu ({grey_ratio:.2f})"
             
-            # LOG 2: Deteksi warna masker spesifik
-            if blue_ratio > BLUE_THRESHOLD:
-                return True, f"Terdeteksi warna biru dominan (masker)"
+            # LOG 2: Deteksi Berdasarkan Kehalusan Permukaan & Absensi Bibir
+            # Jika area mulut sangat halus DAN tidak terdeteksi bibir merah wajar
+            if laplacian_var < LAPLACIAN_THR and lip_ratio < LIP_THR:
+                if sat_diff > 35 or val_diff > 40: # Validasi dengan perbedaan warna kulit
+                    return True, f"Area mulut tertutup material halus (var={laplacian_var:.1f})"
             
-            if green_ratio > GREEN_THRESHOLD:
-                return True, f"Terdeteksi warna hijau dominan (masker medis)"
-            
-            if black_ratio > BLACK_THRESHOLD:
-                return True, f"Terdeteksi area gelap dominan (masker hitam)"
-            
-            if white_ratio > WHITE_THRESHOLD:
-                return True, f"Terdeteksi warna putih dominan (masker)"
-            
-            # LOG 3: Deteksi berdasarkan perbedaan warna dengan kulit
-            if hue_diff > HUE_DIFF_THRESHOLD and sat_diff > SAT_DIFF_THRESHOLD:
-                # Area mulut sangat berbeda warna dari kulit
-                # Tapi pastikan bukan karena bibir
-                if lip_ratio < 0.1:  # Bibir tidak terdeteksi
-                    return True, f"Warna area mulut berbeda dari kulit (kemungkinan masker)"
-            
-            # LOG 4: Deteksi berdasarkan edge density (detail)
-            if edge_density < EDGE_DENSITY_THRESHOLD:
-                # Kurang detail, tapi pastikan bukan karena kulit halus
-                if texture_uniformity < TEXTURE_UNIFORMITY_THRESHOLD:
-                    return True, f"Area mulut terlalu halus (kemungkinan masker)"
+            # LOG 3: Perbedaan Warna Kontras dengan Kulit
+            if hue_diff > 25 and sat_diff > 45 and lip_ratio < 0.05:
+                return True, "Warna area mulut tidak wajar (kemungkinan masker kain)"
             
             # Log untuk debugging
-            logger.info(f"[MASK] blue={blue_ratio:.3f}, green={green_ratio:.3f}, black={black_ratio:.3f}, white={white_ratio:.3f}, lip={lip_ratio:.3f}, edge={edge_density:.3f}")
+            logger.info(f"[MASK] b={blue_ratio:.2f}, k={black_ratio:.2f}, w={white_ratio:.2f}, lip={lip_ratio:.2f}, lap={laplacian_var:.1f}")
             
             return False, "Tidak terdeteksi masker"
             
@@ -814,118 +743,83 @@ class FaceService:
     def detect_hat(self, face_region: np.ndarray, full_image: np.ndarray, box: list) -> Tuple[bool, str]:
         """
         Deteksi topi/aksesoris kepala dengan menganalisis area di atas wajah.
-        PERBAIKAN: Threshold diperketat agar rambut alami tidak salah terdeteksi sebagai topi.
+        Mendeteksi tepi tajam, konsistensi warna, dan warna mencolok.
         """
         try:
             x1, y1, x2, y2 = [int(b) for b in box]
 
-            # Area di atas wajah — ambil hanya 40% di atas bounding box wajah
-            head_top = max(0, y1 - int((y2 - y1) * 0.4))
+            # Area di atas wajah — ambil sekitar 45% dari tinggi wajah ke atas
+            head_h = int((y2 - y1) * 0.45)
+            head_top = max(0, y1 - head_h)
             head_region = full_image[head_top:y1, x1:x2]
 
             if head_region.size == 0:
                 return False, "Region kepala tidak valid"
 
             total_pixels = head_region.shape[0] * head_region.shape[1]
-            if total_pixels < 100:
+            if total_pixels < 50:
                 return False, "Region terlalu kecil"
 
             gray_head = cv2.cvtColor(head_region, cv2.COLOR_RGB2GRAY)
             hsv_head  = cv2.cvtColor(head_region, cv2.COLOR_RGB2HSV)
 
-            # ── 1. Edge density ─────────────────────────────────────────────
-            # Rambut memiliki tekstur tinggi → edge density bisa mencapai 0.3.
-            # Topi keras/baseball memiliki garis-garis SANGAT jelas dan tepi lurus.
-            # Naikkan threshold dari 0.3 → 0.65 untuk menghindari false-positive rambut.
-            edges = cv2.Canny(gray_head, 80, 200)
+            # ── 1. Deteksi Tepi Tajam (Sharp Edges) ─────────────────────────
+            # Topi memiliki tepi yang jauh lebih tajam dibanding rambut.
+            edges = cv2.Canny(gray_head, 100, 200)
             edge_density = np.sum(edges > 0) / edges.size
-
-            # Tambahan: pastikan ada garis horizontal panjang (ciri topi, bukan rambut)
-            lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=60,
-                                    minLineLength=int((x2-x1)*0.5),
-                                    maxLineGap=10)
-            has_strong_horizontal = False
-            if lines is not None:
-                for line in lines:
-                    x_a, y_a, x_b, y_b = line[0]
-                    angle = abs(np.degrees(np.arctan2(y_b - y_a, x_b - x_a)))
-                    if angle < 10 or angle > 170:  # hampir horizontal
-                        has_strong_horizontal = True
-                        break
-
-            # Hanya flag jika edge density SANGAT tinggi DAN ada garis horizontal
-            if edge_density > 0.65 and has_strong_horizontal:
-                return True, "Terdeteksi tepi tajam di kepala (kemungkinan topi)"
-
-            # ── 2. Warna area kepala ─────────────────────────────────────────
-            hue   = hsv_head[:, :, 0]
-            sat   = hsv_head[:, :, 1]
-            val   = hsv_head[:, :, 2]
-
-            # Warna rambut alami: hitam (val rendah), coklat (hue ~10-30, sat sedang),
-            # pirang (hue ~20-35, val tinggi), putih/abu (sat rendah).
-            # Kita KECUALIKAN warna-warna rambut tersebut sebelum menghitung warna topi.
-
-            # Mask piksel yang BUKAN rambut alami (saturasi tinggi + hue di luar rambut)
-            # Rambut alami umumnya: saturation < 150 ATAU hue dalam rentang rambut
+            
+            # Deteksi garis lurus/lengkung panjang (khas topi)
+            lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=40,
+                                    minLineLength=int(head_region.shape[1] * 0.4),
+                                    maxLineGap=15)
+            
+            # ── 2. Analisis Warna & Konsistensi ──────────────────────────────
+            hue, sat, val = hsv_head[:,:,0], hsv_head[:,:,1], hsv_head[:,:,2]
+            
+            # Mask untuk warna yang BUKAN rambut alami
+            # Rambut alami: Saturation rendah (hitam/putih/abu) atau Hue coklat/pirang dengan Sat sedang
             is_natural_hair = (
-                (sat < 60) |                                           # hitam/abu/putih
-                ((hue >= 5)  & (hue <= 40) & (sat < 180)) |           # coklat/pirang
-                (val < 50)                                             # sangat gelap
+                (sat < 65) |                                  # Hitam/Putih/Abu/Botak
+                ((hue >= 5) & (hue <= 35) & (sat < 160)) |    # Coklat/Pirang
+                (val < 45)                                    # Sangat gelap (bayangan/rambut hitam)
             )
-
-            # Piksel non-rambut (kandidat warna aksesoris)
+            
             non_hair_mask = ~is_natural_hair
             non_hair_ratio = np.sum(non_hair_mask) / total_pixels
+            
+            # Deteksi warna solid mencolok (Topi seringkali satu warna solid)
+            # Hitung standar deviasi warna pada area non-rambut
+            if np.sum(non_hair_mask) > 10:
+                color_std = np.std(hue[non_hair_mask])
+            else:
+                color_std = 100 # Default tinggi (tidak konsisten)
 
-            # Jika mayoritas piksel terlihat sebagai rambut alami, langsung pass
-            if non_hair_ratio < 0.30:
-                logger.info(f"[HAT] Kemungkinan rambut alami (non_hair={non_hair_ratio:.2f}), skip")
-                return False, "Tidak terdeteksi topi"
+            # ── 3. Logika Keputusan ──────────────────────────────────────────
+            
+            # LOG 1: Tepi Tajam & Garis (Topi Baseball/Keras)
+            if edge_density > 0.15 and lines is not None and len(lines) >= 2:
+                return True, f"Terdeteksi struktur kaku di kepala (edge={edge_density:.2f})"
+            
+            # LOG 2: Warna Mencolok & Konsisten (Topi Warna)
+            # Jika ada area non-rambut yang cukup luas DAN warnanya konsisten (std rendah)
+            if non_hair_ratio > 0.45 and color_std < 25:
+                return True, f"Terdeteksi material berwarna solid di kepala (ratio={non_hair_ratio:.2f})"
+            
+            # LOG 3: Deteksi Warna Spesifik (Sangat Kuat)
+            # Biru, Merah, Hijau terang
+            bright_color = np.sum(non_hair_mask & (sat > 150) & (val > 100)) / total_pixels
+            if bright_color > 0.25:
+                return True, f"Terdeteksi warna aksesoris mencolok (ratio={bright_color:.2f})"
 
-            # Hanya cek warna mencolok pada piksel NON-rambut
-            non_hair_hue = hue[non_hair_mask]
-            non_hair_total = len(non_hair_hue)
+            # LOG 4: Deteksi Topi Hitam/Gelap (Tantangan Utama)
+            # Jika area di atas dahi sangat datar (var rendah) tapi bukan kulit
+            laplacian_head = cv2.Laplacian(gray_head, cv2.CV_64F).var()
+            if laplacian_head < 40 and non_hair_ratio > 0.5:
+                return True, "Terdeteksi penutup kepala datar/gelap"
 
-            if non_hair_total == 0:
-                return False, "Tidak terdeteksi topi"
-
-            # Topi biru solid (hue 100-130, saturasi tinggi)
-            blue_topi  = np.sum(
-                non_hair_mask &
-                (hue > 100) & (hue < 130) &
-                (sat > 100)
-            ) / total_pixels
-
-            # Topi merah solid (hue <10 atau >160, saturasi tinggi)
-            red_topi   = np.sum(
-                non_hair_mask &
-                ((hue < 10) | (hue > 160)) &
-                (sat > 100)
-            ) / total_pixels
-
-            # Topi hijau/kuning mencolok
-            green_topi = np.sum(
-                non_hair_mask &
-                (hue > 35) & (hue < 85) &
-                (sat > 120)
-            ) / total_pixels
-
-            # ── Threshold diperketat: 0.4 → 0.55 ───────────────────────────
-            logger.info(
-                f"[HAT] edge={edge_density:.3f} non_hair={non_hair_ratio:.2f} "
-                f"blue={blue_topi:.3f} red={red_topi:.3f} green={green_topi:.3f}"
-            )
-
-            if blue_topi > 0.55:
-                return True, "Terdeteksi warna biru mencolok di kepala (kemungkinan topi)"
-
-            if red_topi > 0.55:
-                return True, "Terdeteksi warna merah mencolok di kepala (kemungkinan topi)"
-
-            if green_topi > 0.55:
-                return True, "Terdeteksi warna mencolok di kepala (kemungkinan topi)"
-
+            # Log untuk debugging
+            logger.info(f"[HAT] edge={edge_density:.2f}, non_hair={non_hair_ratio:.2f}, std={color_std:.1f}, lap={laplacian_head:.1f}")
+            
             return False, "Tidak terdeteksi topi"
 
         except Exception as e:
@@ -934,8 +828,8 @@ class FaceService:
 
     def check_accessories(self, image_bytes: bytes, boxes: list) -> Tuple[bool, str]:
         """
-        Periksa apakah ada aksesoris yang menutupi wajah
-        Returns: (is_valid, message)
+        Periksa apakah ada aksesoris yang menutupi wajah.
+        Urutan diubah: Masker dideteksi terlebih dahulu untuk menghindari false positive pada kacamata.
         """
         try:
             img_array = self._decode_image(image_bytes)
@@ -948,25 +842,23 @@ class FaceService:
             x1, y1, x2, y2 = [int(b) for b in largest_box]
             
             # Pastikan koordinat dalam batas gambar
-            x1 = max(0, x1)
-            y1 = max(0, y1)
-            x2 = min(img_array.shape[1], x2)
-            y2 = min(img_array.shape[0], y2)
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(img_array.shape[1], x2), min(img_array.shape[0], y2)
             
             face_region = img_array[y1:y2, x1:x2]
             
             if face_region.size == 0:
                 return False, "Region wajah tidak valid"
             
-            # 1. Deteksi kacamata (termasuk bening)
-            has_glasses, glasses_msg = self.detect_glasses(face_region)
-            if has_glasses:
-                return False, f"{glasses_msg}. Harap lepas kacamata."
-            
-            # 2. Deteksi masker
+            # 1. Deteksi masker (Dahulukan karena sering menutupi sebagian area kacamata)
             has_mask, mask_msg = self.detect_mask(face_region)
             if has_mask:
                 return False, f"{mask_msg}. Harap lepas masker."
+            
+            # 2. Deteksi kacamata
+            has_glasses, glasses_msg = self.detect_glasses(face_region)
+            if has_glasses:
+                return False, f"{glasses_msg}. Harap lepas kacamata."
             
             # 3. Deteksi topi
             has_hat, hat_msg = self.detect_hat(face_region, img_array, largest_box)
@@ -976,7 +868,7 @@ class FaceService:
             return True, "Wajah valid, tidak ada aksesoris terdeteksi"
         except Exception as e:
             logger.error(f"Error checking accessories: {e}")
-            return True, "Tidak dapat memeriksa aksesoris"  # Default ke valid jika error
+            return True, "Tidak dapat memeriksa aksesoris"
 
     @torch.no_grad()
     def extract_embedding(self, image_bytes: bytes) -> list[float]:
@@ -998,13 +890,14 @@ class FaceService:
             raise ValueError(message)
 
         face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
+        img_rgb = self._decode_image(image_bytes)
 
         if SCREEN_SPOOF_ENABLED:
-            screen_is_spoof, _ = self.screen_spoof_check(self._decode_image(image_bytes), box_xyxy)
+            screen_is_spoof, _ = self.screen_spoof_check(img_rgb, box_xyxy)
             if screen_is_spoof:
                 raise ValueError("Spoofing detected")
 
-        is_real, real_score, spoof_score = self.detect_spoof(face_crop)
+        is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
         if not is_real:
             raise ValueError("Spoofing detected")
 
@@ -1041,9 +934,10 @@ class FaceService:
                 raise ValueError(message)
 
             face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
+            img_rgb = self._decode_image(image_bytes)
 
             if SCREEN_SPOOF_ENABLED:
-                screen_is_spoof, _ = self.screen_spoof_check(self._decode_image(image_bytes), box_xyxy)
+                screen_is_spoof, _ = self.screen_spoof_check(img_rgb, box_xyxy)
                 if screen_is_spoof:
                     return {
                         "matched": False,
@@ -1055,7 +949,7 @@ class FaceService:
                         "message": "Spoofing detected",
                     }
 
-            is_real, real_score, spoof_score = self.detect_spoof(face_crop)
+            is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
             if not is_real:
                 return {
                     "matched": False,
@@ -1184,6 +1078,66 @@ def health():
         "threshold": SIMILARITY_THRESHOLD,
         "anti_spoof_threshold": getattr(face_svc, "anti_spoof_threshold", ANTI_SPOOF_THRESHOLD),
         "anti_spoof_model_path": ANTI_SPOOF_MODEL_PATH,
+        "hf_repo_dir": HF_REPO_DIR,
+        "hf_antispoof": face_svc.hf_antispoof.get_config() if face_svc.hf_antispoof else None,
+    }
+
+
+# ── Konfigurasi Anti-Spoofing HF Ensemble ─────────────────────────────────────
+@app.get("/face/antispoof/config", summary="Lihat threshold & weight anti-spoofing HF")
+def get_antispoof_config(_=Depends(verify_api_key)):
+    if not face_svc.loaded:
+        face_svc.load()
+    if face_svc.hf_antispoof is None:
+        raise HTTPException(400, "Anti-spoofing tidak aktif")
+    return face_svc.hf_antispoof.get_config()
+
+
+@app.put("/face/antispoof/config", summary="Ubah threshold & weight anti-spoofing HF")
+def update_antispoof_config(patch: ApiConfigPatch, _=Depends(verify_api_key)):
+    if not face_svc.loaded:
+        face_svc.load()
+    if face_svc.hf_antispoof is None:
+        raise HTTPException(400, "Anti-spoofing tidak aktif")
+    return face_svc.hf_antispoof.update_config(patch.model_dump(exclude_unset=True))
+
+
+@app.post("/face/antispoof/reload", summary="Reload model anti-spoofing HF")
+def reload_antispoof_model(_=Depends(verify_api_key)):
+    if not face_svc.loaded:
+        face_svc.load()
+    if face_svc.hf_antispoof is None:
+        raise HTTPException(400, "Anti-spoofing tidak aktif")
+    result = face_svc.hf_antispoof.reload_models()
+    if face_svc.hf_antispoof.load_error:
+        raise HTTPException(500, face_svc.hf_antispoof.load_error)
+    return result
+
+
+@app.post("/face/antispoof/predict", summary="Tes anti-spoofing HF tanpa verifikasi embedding")
+async def predict_antispoof_only(
+    photo: UploadFile = File(..., description="Foto wajah/selfie"),
+    _=Depends(verify_api_key),
+):
+    _validate_image_file(photo)
+    image_bytes = await photo.read()
+    if not face_svc.loaded:
+        face_svc.load()
+    if face_svc.hf_antispoof is None:
+        raise HTTPException(400, "Anti-spoofing tidak aktif")
+    img_rgb = face_svc._decode_image(image_bytes)
+    res = face_svc.hf_antispoof.predict_on_image(img_rgb)
+    if not res.ok:
+        return JSONResponse(status_code=400, content={"ok": False, "message": res.error, "detail": res.detail})
+    return {
+        "ok": True,
+        "label": res.label,
+        "is_spoof": res.is_spoof,
+        "real_score": round(float(res.real_score), 4),
+        "spoof_score": round(float(res.spoof_score), 4),
+        "real_threshold": round(float(res.real_threshold), 4),
+        "spoof_threshold": round(float(res.spoof_threshold), 4),
+        "detail": res.detail,
     }
 
 
