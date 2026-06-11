@@ -35,17 +35,21 @@ type FaceResult struct {
 	Similarity float64 `json:"similarity"`
 	Confidence float64 `json:"confidence"`
 	Threshold  float64 `json:"threshold"`
+	RealScore  float64 `json:"real_score"`
+	SpoofScore float64 `json:"spoof_score"`
 	Message    string  `json:"message"`
 }
 
 type VerifyFaceResponse struct {
-	Matched      bool    `json:"matched"`
-	Similarity   float64 `json:"similarity"`
-	SpoofScore   float64 `json:"spoof_score"`
-	FinalScore   float64 `json:"final_score"`
-	Confidence   float64 `json:"confidence"`
-	Threshold    float64 `json:"threshold"`
-	Message      string  `json:"message"`
+	Matched            bool    `json:"matched"`
+	Similarity         float64 `json:"similarity"`
+	RealScore          float64 `json:"real_score"`
+	SpoofScore         float64 `json:"spoof_score"`
+	AntiSpoofThreshold float64 `json:"anti_spoof_threshold"`
+	FinalScore         float64 `json:"final_score"`
+	Confidence         float64 `json:"confidence"`
+	Threshold          float64 `json:"threshold"`
+	Message            string  `json:"message"`
 }
 
 type AttendanceProcessResponse struct {
@@ -192,7 +196,6 @@ func (c *Client) VerifyFace(
 
 	return &result, nil
 }
-
 
 // ─── 3. ValidateGeo (opsional, jika ingin cek GPS saja) ──────────────────────
 type GeoRequest struct {
