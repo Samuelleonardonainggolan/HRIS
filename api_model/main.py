@@ -507,108 +507,6 @@ class FaceService:
             return False, "Foto terindikasi spoofing (foto cetak/layar). Harap ambil selfie langsung dari kamera.", detail
         return True, "ok", detail
 
-    def detect_glasses(self, face_region: np.ndarray) -> Tuple[bool, str]:
-        """
-        Deteksi kacamata (termasuk kacamata bening) menggunakan beberapa metode.
-        Ditingkatkan dengan pengecekan simetri dan penolakan tepi masker.
-        """
-        try:
-            height, width = face_region.shape[:2]
-            
-            # Region mata (fokus pada area lensa, hindari hidung/masker bawah)
-            eye_region_y1 = int(height * 0.24) 
-            eye_region_y2 = int(height * 0.45) # Dikurangi dari 0.50 agar tidak mengambil tepi masker
-            eye_region = face_region[eye_region_y1:eye_region_y2, :]
-            
-            if eye_region.size == 0:
-                return False, "Region mata tidak valid"
-            
-            gray_eye = cv2.cvtColor(eye_region, cv2.COLOR_RGB2GRAY)
-            
-            # 1. Deteksi tepi (Canny)
-            median_val = np.median(gray_eye)
-            lower = int(max(0, (1.0 - 0.33) * median_val))
-            upper = int(min(255, (1.0 + 0.33) * median_val))
-            edges = cv2.Canny(gray_eye, lower, upper)
-            
-            # 2. Deteksi Garis Horizontal (Bingkai)
-            horizontal_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=45, minLineLength=30, maxLineGap=10)
-            line_count = 0
-            if horizontal_lines is not None:
-                for line in horizontal_lines:
-                    _, y_a, _, y_b = line[0]
-                    # Tolak garis yang berada di 10% area terbawah (kemungkinan tepi masker)
-                    if y_a > (eye_region.shape[0] * 0.9) or y_b > (eye_region.shape[0] * 0.9):
-                        continue
-                    line_count += 1
-
-            # 3. Pengecekan simetri Tepi
-            w_mid = width // 2
-            left_edges = edges[:, :w_mid]
-            right_edges = edges[:, w_mid:]
-            left_density = np.sum(left_edges > 0) / left_edges.size if left_edges.size > 0 else 0
-            right_density = np.sum(right_edges > 0) / right_edges.size if right_edges.size > 0 else 0
-            
-            # 4. Deteksi refleksi/silau (Specular Reflection)
-            _, specular_mask = cv2.threshold(gray_eye, 242, 255, cv2.THRESH_BINARY)
-            specular_ratio = np.sum(specular_mask > 0) / specular_mask.size
-            
-            # Simetri Refleksi
-            left_spec = np.sum(specular_mask[:, :w_mid] > 0)
-            right_spec = np.sum(specular_mask[:, w_mid:] > 0)
-            has_spec_symmetry = (left_spec > 0 and right_spec > 0)
-
-            # 5. Analisis tekstur (Entropy)
-            from skimage.feature import local_binary_pattern
-            lbp = local_binary_pattern(gray_eye, 16, 2, method='uniform')
-            lbp_hist, _ = np.histogram(lbp.ravel(), bins=np.arange(0, 19), range=(0, 18))
-            lbp_hist = lbp_hist / (lbp_hist.sum() + 1e-8)
-            entropy = -np.sum(lbp_hist * np.log2(lbp_hist + 1e-8))
-            
-            brightness_std = np.std(gray_eye)
-
-            # VALIDASI KULIT
-            cheek_y1, cheek_y2 = int(height * 0.6), int(height * 0.8)
-            cheek_region = face_region[cheek_y1:cheek_y2, int(width*0.25):int(width*0.75)]
-            if cheek_region.size > 0:
-                cheek_std = np.std(cv2.cvtColor(cheek_region, cv2.COLOR_RGB2GRAY))
-                skin_similarity = abs(brightness_std - cheek_std) / (cheek_std + 1e-8)
-            else:
-                skin_similarity = 1.0
-
-            # ====================================================
-            # LOGIKA KEPUTUSAN
-            # ====================================================
-            
-            # Rule 1: Refleksi Spekular (Simetris atau Sangat Kuat)
-            if specular_ratio > 0.015: 
-                return True, f"Terdeteksi refleksi cahaya kuat (ratio={specular_ratio:.3f})"
-            if specular_ratio > 0.005 and has_spec_symmetry:
-                return True, "Terdeteksi refleksi cahaya simetris (kacamata)"
-
-            # Rule 2: Bingkai kacamata (Edge) simetris
-            edge_density = (left_density + right_density) / 2
-            if edge_density > 0.30 and skin_similarity > 0.35:
-                if min(left_density, right_density) / (max(left_density, right_density) + 1e-8) > 0.5:
-                    return True, f"Terdeteksi bingkai kacamata simetris (density={edge_density:.2f})"
-
-            # Rule 3: Garis horizontal valid (bukan tepi masker)
-            if line_count >= 4 and skin_similarity > 0.35:
-                return True, f"Terdeteksi bingkai horizontal kacamata (count={line_count})"
-
-            # Rule 4: Kacamata bening
-            if entropy < 1.95 and skin_similarity > 0.45:
-                return True, f"Terdeteksi pola kacamata bening (entropy={entropy:.2f})"
-
-            # Log untuk debugging
-            logger.info(f"[GLASSES] L_den={left_density:.3f}, R_den={right_density:.3f}, ent={entropy:.2f}, spec={specular_ratio:.3f}, lines={line_count}")
-            
-            return False, "Tidak terdeteksi kacamata"
-            
-        except Exception as e:
-            logger.error(f"Error detecting glasses: {e}")
-            return False, "Error deteksi kacamata"
-
     def detect_mask(self, face_region: np.ndarray) -> Tuple[bool, str]:
         """
         Deteksi masker menggunakan analisis warna, tekstur, dan kehalusan permukaan.
@@ -829,7 +727,6 @@ class FaceService:
     def check_accessories(self, image_bytes: bytes, boxes: list) -> Tuple[bool, str]:
         """
         Periksa apakah ada aksesoris yang menutupi wajah.
-        Urutan diubah: Masker dideteksi terlebih dahulu untuk menghindari false positive pada kacamata.
         """
         try:
             img_array = self._decode_image(image_bytes)
@@ -850,17 +747,12 @@ class FaceService:
             if face_region.size == 0:
                 return False, "Region wajah tidak valid"
             
-            # 1. Deteksi masker (Dahulukan karena sering menutupi sebagian area kacamata)
+            # 1. Deteksi masker
             has_mask, mask_msg = self.detect_mask(face_region)
             if has_mask:
                 return False, f"{mask_msg}. Harap lepas masker."
             
-            # 2. Deteksi kacamata
-            has_glasses, glasses_msg = self.detect_glasses(face_region)
-            if has_glasses:
-                return False, f"{glasses_msg}. Harap lepas kacamata."
-            
-            # 3. Deteksi topi
+            # 2. Deteksi topi
             has_hat, hat_msg = self.detect_hat(face_region, img_array, largest_box)
             if has_hat:
                 return False, f"{hat_msg}. Harap lepas topi/aksesoris kepala."
@@ -889,17 +781,7 @@ class FaceService:
         if not is_valid:
             raise ValueError(message)
 
-        face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
-        img_rgb = self._decode_image(image_bytes)
-
-        if SCREEN_SPOOF_ENABLED:
-            screen_is_spoof, _ = self.screen_spoof_check(img_rgb, box_xyxy)
-            if screen_is_spoof:
-                raise ValueError("Spoofing detected")
-
-        is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
-        if not is_real:
-            raise ValueError("Spoofing detected")
+        face_crop, _ = self._crop_largest_face_rgb(image_bytes, boxes)
 
         return self.extract_embedding_from_crop(face_crop)
 
