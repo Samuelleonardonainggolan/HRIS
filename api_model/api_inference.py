@@ -14,8 +14,6 @@ from torchvision import transforms
 
 
 def _default_hf_repo_dir() -> str:
-    # Default untuk integrasi FastAPI ini: folder face-anti-spoofing_hf di dalam project API.
-    # Tetap bisa dioverride dengan environment variable HF_REPO_DIR.
     here = os.path.dirname(os.path.abspath(__file__))
     return os.path.abspath(os.path.join(here, "face-anti-spoofing_hf"))
 
@@ -25,10 +23,9 @@ if HF_REPO_DIR not in sys.path:
     sys.path.insert(0, HF_REPO_DIR)
 
 
-# Import dari repo HF (asli)
-import IADG  # noqa: E402
-import SASF  # noqa: E402
-from infer_cdcnpp import load as load_cdcnpp_model  # noqa: E402
+import IADG
+import SASF
+from infer_cdcnpp import load as load_cdcnpp_model
 
 
 def _to_label_index(value: Any) -> int:
@@ -96,11 +93,6 @@ class LoadedModels:
 
 
 def load_models(prefer_finetuned: bool = True) -> LoadedModels:
-    """
-    Memuat model seperti di Space (ensemble).
-    Fine-tuned weights tetap dibaca dari folder HF: face-anti-spoofing_hf/finetuned_weights
-    (karena SASF.py & app.py memang default-nya begitu).
-    """
     try:
         finetuned_dir = os.path.join(HF_REPO_DIR, "finetuned_weights")
         weights_dir = os.path.join(HF_REPO_DIR, "weights")
@@ -119,10 +111,6 @@ def load_models(prefer_finetuned: bool = True) -> LoadedModels:
         )
         cdcn = CDCNPPWrapper(cdcn_weights, threshold=0.53) if cdcn_weights else None
 
-        # IADG fine-tuned loading sudah di-handle oleh app.py di repo HF untuk Gradio,
-        # tapi untuk konsistensi FastAPI kita cukup bergantung pada file finetuned yang
-        # akan dibaca oleh logic kita sendiri (opsional). Karena IADG.aSpoof memuat
-        # pretrained, kita bisa swap state_dict jika file finetuned ada.
         if prefer_finetuned:
             for model, fname in ((icm2o, "ICM2O_finetuned.pth"), (iom2c, "IOM2C_finetuned.pth")):
                 ft_path = os.path.join(finetuned_dir, fname)
@@ -162,7 +150,6 @@ def run_ensemble(
 
     bbox, landmark = bboxes[0], landmarks[0]
 
-    # set thresholds
     models.sasf.threshold = float(thresholds.get("sasf", 0.70))
     models.flrgb.threshold = float(thresholds.get("flrgb", 0.45))
     models.icm2o.threshold = float(thresholds.get("icm2o", 0.564862))
@@ -217,7 +204,7 @@ def run_ensemble(
     total_w = float(sum(float(weights.get(k, 0.0)) for k in usable)) or 1.0
     norm_w_usable = {k: float(weights.get(k, 0.0)) / total_w for k in usable}
 
-    ensemble_spoof_score = float(sum(norm_w_usable[k] * results[k][1] for k in usable))  # type: ignore[index]
+    ensemble_spoof_score = float(sum(norm_w_usable[k] * results[k][1] for k in usable))
     ensemble_spoof_thr = float(sum(norm_w_usable[k] * float(thresholds.get(k, 0.5)) for k in usable))
     ensemble_real_score = 1.0 - ensemble_spoof_score
     ensemble_real_thr = 1.0 - ensemble_spoof_thr
@@ -246,4 +233,3 @@ def decode_image_to_rgb(image_bytes: bytes) -> np.ndarray:
     if bgr is None:
         raise ValueError("File bukan image yang valid / gagal dibaca oleh OpenCV.")
     return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-
