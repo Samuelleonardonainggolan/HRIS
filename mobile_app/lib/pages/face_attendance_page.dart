@@ -64,7 +64,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   List<List<double>> _boxesSeq = [];
 
   // Step labels for the status bar
-  final List<String> _stepLabels = ['Lihat Lurus', 'Tengok Kiri', 'Tengok Kanan'];
+  final List<String> _stepLabels = ['Lihat Lurus', 'Lihat Kiri', 'Lihat Kanan'];
 
   // ─── Clock ───────────────────────────────────────────────────────────────────
   late Timer _clockTimer;
@@ -81,9 +81,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     if (_livenessStep >= _activeChallenges.length) return 'Selesai!';
     switch (_activeChallenges[_livenessStep]) {
       case LivenessChallenge.lookLeft:
-        return 'Tengok ke Kiri';
+        return 'Lihat ke Kiri';
       case LivenessChallenge.lookRight:
-        return 'Tengok ke Kanan';
+        return 'Lihat ke Kanan';
       case LivenessChallenge.smile:
         return 'Tersenyum Lebar';
       case LivenessChallenge.blink:
