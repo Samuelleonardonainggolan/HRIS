@@ -487,11 +487,11 @@ class FaceService:
             COLOR_THR = 0.22
             LAPLACIAN_THR = 80.0 
             LIP_THR = 0.08      
-            if blue_ratio > COLOR_THR: return True, f"Terdeteksi masker medis biru ({blue_ratio:.2f})"
-            if green_ratio > COLOR_THR: return True, f"Terdeteksi masker medis hijau ({green_ratio:.2f})"
-            if black_ratio > 0.35: return True, f"Terdeteksi masker hitam ({black_ratio:.2f})"
-            if white_ratio > 0.30: return True, f"Terdeteksi masker putih ({white_ratio:.2f})"
-            if grey_ratio > 0.30: return True, f"Terdeteksi masker abu-abu ({grey_ratio:.2f})"
+            if blue_ratio > COLOR_THR: return True, f"Terdeteksi masker"
+            if green_ratio > COLOR_THR: return True, f"Terdeteksi masker"
+            if black_ratio > 0.35: return True, f"Terdeteksi masker"
+            if white_ratio > 0.30: return True, f"Terdeteksi masker"
+            if grey_ratio > 0.30: return True, f"Terdeteksi masker"
             if laplacian_var < LAPLACIAN_THR and lip_ratio < LIP_THR:
                 if sat_diff > 35 or val_diff > 40: 
                     return True, f"Area mulut tertutup material halus (var={laplacian_var:.1f})"
@@ -534,15 +534,15 @@ class FaceService:
             else:
                 color_std = 100 
             if edge_density > 0.15 and lines is not None and len(lines) >= 2:
-                return True, f"Terdeteksi struktur kaku di kepala (edge={edge_density:.2f})"
+                return True, f"Terdeteksi topi atau aksesoris kepala"
             if non_hair_ratio > 0.45 and color_std < 25:
-                return True, f"Terdeteksi material berwarna solid di kepala (ratio={non_hair_ratio:.2f})"
+                return True, f"Terdeteksi topi atau aksesoris"
             bright_color = np.sum(non_hair_mask & (sat > 150) & (val > 100)) / total_pixels
             if bright_color > 0.25:
-                return True, f"Terdeteksi warna aksesoris mencolok (ratio={bright_color:.2f})"
+                return True, f"Terdeteksi topi atau aksesoris "
             laplacian_head = cv2.Laplacian(gray_head, cv2.CV_64F).var()
             if laplacian_head < 40 and non_hair_ratio > 0.5:
-                return True, "Terdeteksi penutup kepala datar/gelap"
+                return True, "Terdeteksi topi atau aksesoris "
             logger.info(f"[HAT] edge={edge_density:.2f}, non_hair={non_hair_ratio:.2f}, std={color_std:.1f}, lap={laplacian_head:.1f}")
             return False, "Tidak terdeteksi topi"
         except Exception as e:
@@ -621,7 +621,7 @@ class FaceService:
                         "final_score": 0.0,
                         "confidence": 0.0,
                         "threshold": thr,
-                        "message": "Spoofing detected",
+                        "message": "Terdeteksi Kecurangan",
                     }
             is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
             if not is_real:
@@ -634,7 +634,7 @@ class FaceService:
                     "final_score": round(0.3 * float(real_score), 4),
                     "confidence": round(0.3 * float(real_score), 4),
                     "threshold": thr,
-                    "message": "Spoofing detected",
+                    "message": "Terdeteksi Kecurangan",
                 }
             live_emb = torch.tensor(self.extract_embedding_from_crop(face_crop), dtype=torch.float32)
             stored = torch.tensor(stored_embedding, dtype=torch.float32)
@@ -838,7 +838,8 @@ async def verify_face(
     except Exception as e:
         raise HTTPException(400, f"Format 'data' tidak valid: {e}")
     if len(req.stored_embedding) != 512:
-        raise HTTPException(400, f"stored_embedding harus 512 dimensi, dapat {len(req.stored_embedding)}")
+        # raise HTTPException(400, f"stored_embedding harus 512 dimensi, dapat {len(req.stored_embedding)}")
+        raise HTTPException(400, f"Wajah kurang jelas, coba lagi")
     _validate_image_file(photo)
     image_bytes = await photo.read()
     t0 = time.time()

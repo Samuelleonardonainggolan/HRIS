@@ -299,7 +299,7 @@ class _OvertimePageState extends State<OvertimePage> {
         content: Text(message),
         backgroundColor: isError
             ? const Color(0xFFEF4444)
-            : const Color(0xFF135BEC),
+            : const Color(0xFF2ECC71), // Emerald Green for Success
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -1629,35 +1629,7 @@ class _OvertimeDetailSheet extends StatelessWidget {
       if (picked != null) {
         final dateStr = DateFormat('yyyy-MM-dd').format(picked);
         if (!context.mounted) return;
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Pilih Opsi Pengurangan'),
-            content: const Text(
-              'Pilih bagaimana Anda ingin menggunakan pengurangan jam kerja ini:',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showFinalConfirmation(context, type, dateStr, 'late_in');
-                },
-                child: const Text('Masuk Terlambat'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _showFinalConfirmation(context, type, dateStr, 'early_out');
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF135BEC),
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Pulang Cepat'),
-              ),
-            ],
-          ),
-        );
+        _showFinalConfirmation(context, type, dateStr, 'early_out');
       }
       return;
     }

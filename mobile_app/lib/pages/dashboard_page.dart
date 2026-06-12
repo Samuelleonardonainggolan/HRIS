@@ -2,6 +2,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:mobile_app/pages/face_attendance_page.dart';
 import 'package:mobile_app/pages/slip_gaji_page.dart';
 import 'package:mobile_app/services/api_service.dart';
@@ -10,6 +14,7 @@ import 'package:mobile_app/models/attendance_model.dart';
 import 'package:mobile_app/models/user_model.dart';
 import 'package:mobile_app/models/overtime_request.dart';
 import 'package:mobile_app/models/assignment.dart';
+import 'package:mobile_app/models/geofence_model.dart';
 import 'package:mobile_app/services/sse_service.dart';
 import 'package:mobile_app/widgets/app_sidebar.dart';
 import 'package:mobile_app/widgets/app_header.dart';
@@ -57,6 +62,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   int _leaveRemaining = 0;
   double _overtimeHours = 0;
   bool _isLoadingStats = true;
+  List<GeofenceModel> _geofences = [];
 
   List<Map<String, dynamic>> _activities = [];
 
@@ -89,6 +95,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     _loadTodayAttendance();
     _loadMonthlyStats();
     _loadUser();
+    _loadGeofences();
     _checkReplacementDayOff();
 
     _statsRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
@@ -138,6 +145,35 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
   }
 
   // ✅ BARU: Load work schedule info
+  Future<void> _loadGeofences() async {
+    try {
+      final geofences = await ApiService.getGeofences();
+      
+      // Urutkan geofence berdasarkan jarak terdekat dari lokasi user
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
+          Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+          geofences.sort((a, b) {
+            double distA = Geolocator.distanceBetween(position.latitude, position.longitude, a.latitude, a.longitude);
+            double distB = Geolocator.distanceBetween(position.latitude, position.longitude, b.latitude, b.longitude);
+            return distA.compareTo(distB);
+          });
+        }
+      } catch (locErr) {
+        print('Could not sort geofences by distance: $locErr');
+      }
+
+      if (mounted) {
+        setState(() {
+          _geofences = geofences;
+        });
+      }
+    } catch (e) {
+      print('Error loading geofences: $e');
+    }
+  }
+
   Future<void> _loadWorkScheduleInfo({bool silent = false}) async {
     if (!silent) {
       setState(() => _isLoadingSchedule = true);
@@ -1680,13 +1716,21 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
 
   Widget _buildLiveLocationCard() {
     final todaySchedule = _workScheduleInfo?.todaySchedule;
+    final locationName = _user?.department != null && _user!.department.isNotEmpty
+        ? 'Kantor ${_user!.department}'
+        : 'Kantor Pusat - Labersa';
+
+    final hasGeofence = _geofences.isNotEmpty;
+    final initialCenter = hasGeofence
+        ? LatLng(_geofences.first.latitude, _geofences.first.longitude)
+        : const LatLng(2.3385, 99.0494);
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      height: 160,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFFF1F5F9), // Light map-like background
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: todaySchedule?.isWorkDay ?? false
               ? const Color(0xFF135BEC).withOpacity(0.3)
@@ -1694,39 +1738,141 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
           width: 1.5,
         ),
       ),
-      child: Row(
+      child: Stack(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFF135BEC).withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.location_on,
-              color: Color(0xFF135BEC),
-              size: 24,
+          // Real Map Background
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: hasGeofence
+                  ? FlutterMap(
+                      options: MapOptions(
+                        initialCenter: initialCenter,
+                        initialZoom: 16.0,
+                        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.example.hris',
+                        ),
+                        CircleLayer(
+                          circles: _geofences.map((g) => CircleMarker(
+                            point: LatLng(g.latitude, g.longitude),
+                            color: const Color(0xFF135BEC).withOpacity(0.15),
+                            borderColor: const Color(0xFF135BEC),
+                            borderStrokeWidth: 1.5,
+                            useRadiusInMeter: true,
+                            radius: g.radius.toDouble(),
+                          )).toList(),
+                        ),
+                      ],
+                    )
+                  : CustomPaint(
+                      painter: _MapGridPainter(),
+                    ),
             ),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          // Center Pin
+          Center(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  "Lokasi Kantor",
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
+                // Pulsing effect pin
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF135BEC).withOpacity(0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF135BEC),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0xFF135BEC),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.my_location_rounded, color: Colors.white, size: 24),
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  "Labersa Hotel - Danau Toba",
-                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                const SizedBox(height: 8),
+                // Location Label
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.08),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF2ECC71),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        hasGeofence ? _geofences.first.name : locationName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
+            ),
+          ),
+          // Title Badge
+          Positioned(
+            top: 16,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.map_outlined, size: 14, color: Color(0xFF64748B)),
+                  SizedBox(width: 4),
+                  Text(
+                    "Area Clock In / Out",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1853,4 +1999,24 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
     ];
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
+}
+
+class _MapGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFCBD5E1).withOpacity(0.4)
+      ..strokeWidth = 1.0;
+    
+    // Draw grid
+    for (double i = 0; i < size.width; i += 20) {
+      canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
+    }
+    for (double i = 0; i < size.height; i += 20) {
+      canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

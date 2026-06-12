@@ -11,10 +11,11 @@ import '../models/attendance_model.dart';
 import '../models/leave_request.dart';
 import '../models/overtime_request.dart';
 import '../models/assignment.dart';
+import '../models/geofence_model.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.252.84.48:8080/api/v1';
+  static const String baseUrl = 'http://10.50.34.119:8080/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 
@@ -271,6 +272,34 @@ class ApiService {
     } catch (e) {
       print('[API] getWorkScheduleInfo error: $e');
       rethrow;
+    }
+  }
+
+  /// GET /api/v1/geofences
+  static Future<List<GeofenceModel>> getGeofences() async {
+    try {
+      if (await isTokenExpired()) {
+        await refreshToken();
+      }
+
+      final headers = await getHeaders();
+      final response = await http
+          .get(Uri.parse('$baseUrl/geofences'), headers: headers)
+          .timeout(const Duration(seconds: 30));
+
+      print('[API] getGeofences status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final list = data['data'] as List?;
+        if (list != null) {
+          return list.map((e) => GeofenceModel.fromJson(e)).toList();
+        }
+      }
+      return [];
+    } catch (e) {
+      print('[API] getGeofences error: $e');
+      return [];
     }
   }
 
