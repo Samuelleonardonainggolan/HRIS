@@ -7,6 +7,7 @@ import 'package:mobile_app/main_navigation.dart';
 import 'package:mobile_app/services/api_service.dart';
 import 'package:mobile_app/theme/app_theme.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:mobile_app/login.dart';
 
 class FaceRegistrationPage extends StatefulWidget {
   final String userId;
@@ -246,7 +247,7 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
             ),
             const SizedBox(height: 8),
             const Text(
-              'Data wajah Anda telah tersimpan. Anda sekarang dapat menggunakan fitur absensi face recognition.',
+              'Data wajah Anda telah tersimpan. Anda sekarang dapat menggunakan fitur absensi.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
             ),
@@ -638,7 +639,15 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF0F172A)),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const EmployeeLoginPage(),
+              ),
+              (route) => false,
+            );
+          },
         ),
         title: const Text(
           'Registrasi Wajah',
@@ -858,7 +867,8 @@ class _FaceRegistrationPageState extends State<FaceRegistrationPage>
                                   ),
                                   if (_isFaceDetected && _faceEmbedding != null)
                                     Text(
-                                      'Embedding: ${_faceEmbedding!.length} dimensi',
+                                      // 'Embedding: ${_faceEmbedding!.length} dimensi',
+                                      'Lanjutkan Simpan Data Wajah',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey.shade600,

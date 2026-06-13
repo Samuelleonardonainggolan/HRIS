@@ -8,8 +8,6 @@ from pydantic import BaseModel, Field
 
 
 DEFAULT_THRESHOLDS: Dict[str, float] = {
-    # Threshold untuk "spoof_prob".
-    # Artinya: spoof jika spoof_prob >= threshold.
     "sasf": 0.70,
     "flrgb": 0.45,
     "icm2o": 0.564862,
@@ -30,9 +28,8 @@ class ApiConfig(BaseModel):
     thresholds: Dict[str, float] = Field(default_factory=lambda: dict(DEFAULT_THRESHOLDS))
     weights: Dict[str, float] = Field(default_factory=lambda: dict(DEFAULT_WEIGHTS))
 
-    # Pengaturan micro-motion (untuk endpoint /predict/frames)
     enable_temporal: bool = True
-    temporal_weight: float = 0.35  # sisanya = spoof_weight
+    temporal_weight: float = 0.35
 
 
 class ApiConfigPatch(BaseModel):
@@ -73,4 +70,3 @@ def apply_patch(cfg: ApiConfig, patch: ApiConfigPatch) -> ApiConfig:
         else:
             data[k] = v
     return ApiConfig.model_validate(data)
-

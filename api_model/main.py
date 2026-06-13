@@ -19,7 +19,6 @@ from contextlib import asynccontextmanager
 from facenet_pytorch import InceptionResnetV1, MTCNN
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
 from api_config import ApiConfigPatch
@@ -28,20 +27,13 @@ from hf_antispoof_ensemble import HFAntiSpoofEnsemble
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("face-service")
 
-# =============================================================================
-# KONFIGURASI
-# =============================================================================
 MODEL_PATH = os.getenv("MODEL_PATH", "models/facenet_labersa_cpu.pt")
-# MODEL_PATH = os.getenv("MODEL_PATH", r"D:\Semester 6\PA\HRIS\api_model\models\facenet_labersa_cpu.pt")
 IMAGE_SIZE = int(os.getenv("IMAGE_SIZE", "160"))
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 FINAL_SCORE_THRESHOLD = float(os.getenv("FINAL_SCORE_THRESHOLD", "0.80"))
 ANTI_SPOOFING_ENABLED = os.getenv("ANTI_SPOOFING_ENABLED", "1") == "1"
-# Mode baru: anti-spoofing menggunakan ensemble HuggingFace.
-# HF_REPO_DIR harus menunjuk ke repo HF asli yang berisi IADG.py, SASF.py, src/, weights/.
 HF_REPO_DIR = os.getenv("HF_REPO_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "face-anti-spoofing_hf"))
-ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", "HF_ENSEMBLE")  # backward-compatible field
-# Threshold tambahan untuk real_score. Default 0 berarti keputusan utama mengikuti threshold ensemble.
+ANTI_SPOOF_MODEL_PATH = os.getenv("ANTI_SPOOF_MODEL_PATH", "HF_ENSEMBLE")
 ANTI_SPOOF_THRESHOLD = float(os.getenv("ANTI_SPOOF_THRESHOLD", "0.0"))
 ANTI_SPOOF_REAL_THRESHOLD = float(os.getenv("ANTI_SPOOF_REAL_THRESHOLD", "0.0"))
 SPOOF_SCORE_THRESHOLD = float(os.getenv("SPOOF_SCORE_THRESHOLD", "0.65"))
@@ -64,9 +56,7 @@ SCREEN_BORDER_DARK_MAX = float(os.getenv("SCREEN_BORDER_DARK_MAX", "85"))
 SCREEN_BORDER_DARK_DIFF = float(os.getenv("SCREEN_BORDER_DARK_DIFF", "25"))
 API_KEY = os.getenv("FACE_API_KEY", "labersa-internal-api-key-2026")
 
-# =============================================================================
-# MODEL
-# =============================================================================
+
 class FaceNetExtractor(nn.Module):
     def __init__(self):
         super().__init__()
@@ -92,10 +82,6 @@ class LightClassifier(nn.Module):
 
 
 class AntiSpoofNet(nn.Module):
-    """
-    Arsitektur harus sama dengan model training improved:
-    torchvision ResNet18 + fc = Dropout(0.35) + Linear(512, 2).
-    """
     def __init__(self, dropout: float = 0.35, num_classes: int = 2):
         super().__init__()
         try:
@@ -111,9 +97,6 @@ class AntiSpoofNet(nn.Module):
         return self.backbone(x)
 
 
-# =============================================================================
-# FACE SERVICE (stateless) - DENGAN DETEKSI AKSESORIS YANG LEBIH KUAT
-# =============================================================================
 class FaceService:
     def __init__(self):
         self.extractor = None
@@ -121,7 +104,7 @@ class FaceService:
         self.class_names = []
         self.loaded = False
         self.face_det = None
-        self.anti_spoof = None  # legacy ResNet18, tidak dipakai pada mode HF ensemble
+        self.anti_spoof = None
         self.hf_antispoof = None
         self.anti_spoof_labels = []
         self.anti_spoof_real_index = 0
@@ -132,7 +115,6 @@ class FaceService:
             transforms.ToTensor(),
             transforms.Normalize([0.5]*3, [0.5]*3),
         ])
-        # Harus sama dengan preprocessing saat training anti-spoofing improved.
         self.anti_spoof_transform = transforms.Compose([
             transforms.Resize((ANTI_SPOOF_IMGSZ, ANTI_SPOOF_IMGSZ)),
             transforms.ToTensor(),
@@ -140,16 +122,10 @@ class FaceService:
         ])
 
     def _decode_image(self, image_bytes: bytes) -> np.ndarray:
-        """
-        Decode bytes gambar ke array RGB uint8 yang eksplisit.
-        Menghindari jalur dtype inference yang kadang bermasalah saat pakai PIL langsung.
-        """
         image_array = np.frombuffer(image_bytes, dtype=np.uint8)
         image_bgr = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-
         if image_bgr is None:
             raise ValueError("File gambar tidak valid atau rusak")
-
         return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
     def load(self):
@@ -159,10 +135,7 @@ class FaceService:
                 device=TORCH_DEVICE,
             )
             logger.info("MTCNN face detector loaded successfully")
-
-            # Inisialisasi extractor
             self.extractor = FaceNetExtractor().to(TORCH_DEVICE).eval()
-
             if os.path.exists(MODEL_PATH):
                 ckpt = torch.load(MODEL_PATH, map_location="cpu")
                 self.class_names = ckpt.get("class_names", [])
@@ -172,10 +145,7 @@ class FaceService:
                 logger.info(f"Model loaded: {len(self.class_names)} classes")
             else:
                 logger.warning(f"Model tidak ditemukan di {MODEL_PATH}, pakai pretrained VGGFace2")
-
             if ANTI_SPOOFING_ENABLED:
-                # Anti-spoofing baru: ensemble HuggingFace (SASF, FLRGB, ICM2O, IOM2C, CDCN++ opsional).
-                # Threshold dan weight dibaca dari api_settings.json atau environment variable HF_THR_* / HF_W_*.
                 self.hf_antispoof = HFAntiSpoofEnsemble(prefer_finetuned=True)
                 if self.hf_antispoof.load_error:
                     raise RuntimeError(self.hf_antispoof.load_error)
@@ -184,26 +154,19 @@ class FaceService:
                     "HF anti-spoof ensemble loaded successfully. "
                     f"hf_repo_dir={cfg.get('hf_repo_dir')} thresholds={cfg.get('thresholds')} weights={cfg.get('weights')}"
                 )
-
             self.loaded = True
         except Exception as e:
             logger.error(f"Gagal load model: {e}")
             raise
 
     def detect_faces(self, image_bytes: bytes) -> Tuple[bool, int, list]:
-        """
-        Deteksi wajah dalam gambar menggunakan MTCNN
-        Returns: (has_face, face_count, boxes)
-        """
         try:
             if self.face_det is None:
                 raise ValueError("Face detector belum diinisialisasi")
-
             img = self._decode_image(image_bytes)
             boxes, probs = self.face_det.detect(img)
             if boxes is None or probs is None:
                 return False, 0, []
-
             valid_boxes = []
             for box, prob in zip(boxes, probs):
                 if prob is None or float(prob) < FACE_DET_MIN_PROB:
@@ -211,7 +174,6 @@ class FaceService:
                 x1, y1, x2, y2 = [float(v) for v in box.tolist()]
                 if (x2 - x1) >= 50 and (y2 - y1) >= 50:
                     valid_boxes.append([x1, y1, x2, y2])
-
             return len(valid_boxes) > 0, len(valid_boxes), valid_boxes
         except Exception as e:
             logger.error(f"Error detecting faces: {e}")
@@ -252,30 +214,16 @@ class FaceService:
 
     @torch.no_grad()
     def detect_spoof(self, face_crop_rgb: np.ndarray, full_image_rgb: Optional[np.ndarray] = None) -> Tuple[bool, float, float]:
-        """
-        Return:
-          is_real: True jika ensemble HF memutuskan LIVE/REAL
-          real_score: 1 - ensemble_spoof_score
-          spoof_score: ensemble_spoof_score
-
-        full_image_rgb lebih disarankan untuk model HF karena detector internalnya
-        membutuhkan bbox dan landmark. face_crop_rgb tetap dipakai sebagai fallback.
-        """
         if not ANTI_SPOOFING_ENABLED:
             return True, 1.0, 0.0
         if self.hf_antispoof is None:
             raise ValueError("HF anti-spoof ensemble belum diinisialisasi")
-
         image_for_spoof = full_image_rgb if full_image_rgb is not None else face_crop_rgb
         res = self.hf_antispoof.predict_on_image(image_for_spoof)
-
-        # Fallback: jika detector HF gagal pada full image, coba crop wajah dari MTCNN.
         if (not res.ok) and (full_image_rgb is not None):
             res = self.hf_antispoof.predict_on_face_crop(face_crop_rgb)
-
         if not res.ok:
             raise ValueError(res.error or "Anti-spoof gagal")
-
         self.anti_spoof_threshold = float(res.real_threshold)
         is_real = (not res.is_spoof) and (float(res.real_score) >= float(ANTI_SPOOF_REAL_THRESHOLD))
         return bool(is_real), float(res.real_score), float(res.spoof_score)
@@ -329,7 +277,6 @@ class FaceService:
     def screen_spoof_check(self, img_rgb: np.ndarray, face_box_xyxy: List[float]) -> Tuple[bool, Dict[str, Any]]:
         if not SCREEN_SPOOF_ENABLED:
             return False, {"enabled": False}
-
         h, w = img_rgb.shape[:2]
         gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
         edges = cv2.Canny(gray, 60, 180)
@@ -337,15 +284,12 @@ class FaceService:
         contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return False, {"enabled": True, "reason": "no_contours"}
-
         fx1, fy1, fx2, fy2 = [float(v) for v in face_box_xyxy]
         cx = float((fx1 + fx2) * 0.5)
         cy = float((fy1 + fy2) * 0.5)
-
         img_area = float(h * w + 1e-9)
         best = None
         best_area = 0.0
-
         for cnt in contours:
             area = float(cv2.contourArea(cnt))
             if area < img_area * 0.05:
@@ -356,7 +300,6 @@ class FaceService:
             approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
             if len(approx) != 4 or not cv2.isContourConvex(approx):
                 continue
-
             rect = cv2.minAreaRect(approx)
             (rw, rh) = rect[1]
             rw = float(rw)
@@ -369,19 +312,15 @@ class FaceService:
                 continue
             if not (SCREEN_RECT_ASPECT_MIN <= aspect <= SCREEN_RECT_ASPECT_MAX):
                 continue
-
             box = cv2.boxPoints(rect)
             inside = cv2.pointPolygonTest(box.astype(np.float32), (cx, cy), False)
             if inside < 0:
                 continue
-
             if area > best_area:
                 best_area = area
                 best = (box, area_ratio, aspect)
-
         if best is None:
             return False, {"enabled": True, "reason": "no_rect_candidate"}
-
         box, area_ratio, aspect = best
         poly = box.astype(np.int32)
         mask = np.zeros((h, w), dtype=np.uint8)
@@ -394,11 +333,9 @@ class FaceService:
         border_px = gray[border > 0]
         if border_px.size == 0:
             return False, {"enabled": True, "reason": "no_border_pixels", "area_ratio": round(area_ratio, 4), "aspect": round(aspect, 4)}
-
         border_mean = float(border_px.mean())
         overall_mean = float(gray.mean())
         dark = bool((border_mean <= SCREEN_BORDER_DARK_MAX) and ((overall_mean - border_mean) >= SCREEN_BORDER_DARK_DIFF))
-
         detail = {
             "enabled": True,
             "reason": "screen_like_rect" if dark else "rect_not_dark",
@@ -461,7 +398,6 @@ class FaceService:
             return True, "ok", {"enabled": False}
         if not boxes:
             return False, "Tidak ada wajah terdeteksi (anti-spoofing)", {"enabled": True}
-
         img = self._decode_image(image_bytes)
         largest_box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
         screen_is_spoof, screen_detail = self.screen_spoof_check(img, [float(v) for v in largest_box])
@@ -479,20 +415,16 @@ class FaceService:
         y2 = max(0, min(h, y2))
         if x2 - x1 < 40 or y2 - y1 < 40:
             return False, "Wajah terlalu kecil untuk verifikasi (anti-spoofing)", {"enabled": True}
-
         face = img[y1:y2, x1:x2]
         gray = (0.299 * face[..., 0] + 0.587 * face[..., 1] + 0.114 * face[..., 2]).astype(np.uint8)
-
         lap = self._laplacian_var(gray)
         hist = self._lbp_hist(gray)
         ent = self._entropy(hist)
         peak = self._fft_peak_ratio(gray)
-
         s_blur = np.clip((18.0 - lap) / 18.0, 0.0, 1.0)
         s_flat = np.clip((4.6 - ent) / 1.2, 0.0, 1.0)
         s_peak = np.clip((peak - 8.0) / 10.0, 0.0, 1.0)
         score = float(np.clip(0.45 * s_blur + 0.35 * s_flat + 0.20 * s_peak, 0.0, 1.0))
-
         detail = {
             "enabled": True,
             "spoof_score": round(score, 4),
@@ -502,369 +434,139 @@ class FaceService:
             "threshold": SPOOF_SCORE_THRESHOLD,
             "screen": screen_detail,
         }
-
         if score >= SPOOF_SCORE_THRESHOLD:
             return False, "Foto terindikasi spoofing (foto cetak/layar). Harap ambil selfie langsung dari kamera.", detail
         return True, "ok", detail
 
-    def detect_glasses(self, face_region: np.ndarray) -> Tuple[bool, str]:
-        """
-        Deteksi kacamata (termasuk kacamata bening) menggunakan beberapa metode.
-        Ditingkatkan dengan pengecekan simetri dan penolakan tepi masker.
-        """
-        try:
-            height, width = face_region.shape[:2]
-            
-            # Region mata (fokus pada area lensa, hindari hidung/masker bawah)
-            eye_region_y1 = int(height * 0.24) 
-            eye_region_y2 = int(height * 0.45) # Dikurangi dari 0.50 agar tidak mengambil tepi masker
-            eye_region = face_region[eye_region_y1:eye_region_y2, :]
-            
-            if eye_region.size == 0:
-                return False, "Region mata tidak valid"
-            
-            gray_eye = cv2.cvtColor(eye_region, cv2.COLOR_RGB2GRAY)
-            
-            # 1. Deteksi tepi (Canny)
-            median_val = np.median(gray_eye)
-            lower = int(max(0, (1.0 - 0.33) * median_val))
-            upper = int(min(255, (1.0 + 0.33) * median_val))
-            edges = cv2.Canny(gray_eye, lower, upper)
-            
-            # 2. Deteksi Garis Horizontal (Bingkai)
-            horizontal_lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=45, minLineLength=30, maxLineGap=10)
-            line_count = 0
-            if horizontal_lines is not None:
-                for line in horizontal_lines:
-                    _, y_a, _, y_b = line[0]
-                    # Tolak garis yang berada di 10% area terbawah (kemungkinan tepi masker)
-                    if y_a > (eye_region.shape[0] * 0.9) or y_b > (eye_region.shape[0] * 0.9):
-                        continue
-                    line_count += 1
-
-            # 3. Pengecekan simetri Tepi
-            w_mid = width // 2
-            left_edges = edges[:, :w_mid]
-            right_edges = edges[:, w_mid:]
-            left_density = np.sum(left_edges > 0) / left_edges.size if left_edges.size > 0 else 0
-            right_density = np.sum(right_edges > 0) / right_edges.size if right_edges.size > 0 else 0
-            
-            # 4. Deteksi refleksi/silau (Specular Reflection)
-            _, specular_mask = cv2.threshold(gray_eye, 242, 255, cv2.THRESH_BINARY)
-            specular_ratio = np.sum(specular_mask > 0) / specular_mask.size
-            
-            # Simetri Refleksi
-            left_spec = np.sum(specular_mask[:, :w_mid] > 0)
-            right_spec = np.sum(specular_mask[:, w_mid:] > 0)
-            has_spec_symmetry = (left_spec > 0 and right_spec > 0)
-
-            # 5. Analisis tekstur (Entropy)
-            from skimage.feature import local_binary_pattern
-            lbp = local_binary_pattern(gray_eye, 16, 2, method='uniform')
-            lbp_hist, _ = np.histogram(lbp.ravel(), bins=np.arange(0, 19), range=(0, 18))
-            lbp_hist = lbp_hist / (lbp_hist.sum() + 1e-8)
-            entropy = -np.sum(lbp_hist * np.log2(lbp_hist + 1e-8))
-            
-            brightness_std = np.std(gray_eye)
-
-            # VALIDASI KULIT
-            cheek_y1, cheek_y2 = int(height * 0.6), int(height * 0.8)
-            cheek_region = face_region[cheek_y1:cheek_y2, int(width*0.25):int(width*0.75)]
-            if cheek_region.size > 0:
-                cheek_std = np.std(cv2.cvtColor(cheek_region, cv2.COLOR_RGB2GRAY))
-                skin_similarity = abs(brightness_std - cheek_std) / (cheek_std + 1e-8)
-            else:
-                skin_similarity = 1.0
-
-            # ====================================================
-            # LOGIKA KEPUTUSAN
-            # ====================================================
-            
-            # Rule 1: Refleksi Spekular (Simetris atau Sangat Kuat)
-            if specular_ratio > 0.015: 
-                return True, f"Terdeteksi refleksi cahaya kuat (ratio={specular_ratio:.3f})"
-            if specular_ratio > 0.005 and has_spec_symmetry:
-                return True, "Terdeteksi refleksi cahaya simetris (kacamata)"
-
-            # Rule 2: Bingkai kacamata (Edge) simetris
-            edge_density = (left_density + right_density) / 2
-            if edge_density > 0.30 and skin_similarity > 0.35:
-                if min(left_density, right_density) / (max(left_density, right_density) + 1e-8) > 0.5:
-                    return True, f"Terdeteksi bingkai kacamata simetris (density={edge_density:.2f})"
-
-            # Rule 3: Garis horizontal valid (bukan tepi masker)
-            if line_count >= 4 and skin_similarity > 0.35:
-                return True, f"Terdeteksi bingkai horizontal kacamata (count={line_count})"
-
-            # Rule 4: Kacamata bening
-            if entropy < 1.95 and skin_similarity > 0.45:
-                return True, f"Terdeteksi pola kacamata bening (entropy={entropy:.2f})"
-
-            # Log untuk debugging
-            logger.info(f"[GLASSES] L_den={left_density:.3f}, R_den={right_density:.3f}, ent={entropy:.2f}, spec={specular_ratio:.3f}, lines={line_count}")
-            
-            return False, "Tidak terdeteksi kacamata"
-            
-        except Exception as e:
-            logger.error(f"Error detecting glasses: {e}")
-            return False, "Error deteksi kacamata"
-
     def detect_mask(self, face_region: np.ndarray) -> Tuple[bool, str]:
-        """
-        Deteksi masker menggunakan analisis warna, tekstur, dan kehalusan permukaan.
-        Dioptimalkan untuk berbagai jenis masker (medis, kain, N95).
-        """
         try:
             height, width = face_region.shape[:2]
-            
-            # Region mulut dan dagu (sepertiga bawah wajah)
             mouth_region_y1 = int(height * 0.62)
             mouth_region_y2 = int(height * 0.95)
             mouth_region = face_region[mouth_region_y1:mouth_region_y2, :]
-            
             if mouth_region.size == 0:
                 return False, "Region mulut tidak valid"
-            
-            # ====================================================
-            # AMBIL SAMPEL KULIT ASLI (dari pipi/dahi)
-            # ====================================================
-            # Ambil region kulit dari bagian atas wajah (pipi/dahi)
             skin_region_y1 = int(height * 0.3)
             skin_region_y2 = int(height * 0.5)
             skin_region = face_region[skin_region_y1:skin_region_y2, int(width*0.3):int(width*0.7)]
-            
-            # ====================================================
-            # ANALISIS WARNA
-            # ====================================================
             hsv_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2HSV)
             hsv_skin = cv2.cvtColor(skin_region, cv2.COLOR_RGB2HSV) if skin_region.size > 0 else None
-            
-            # Hitung statistik warna area mulut
             mouth_hue_mean = np.mean(hsv_mouth[:,:,0])
             mouth_sat_mean = np.mean(hsv_mouth[:,:,1])
             mouth_val_mean = np.mean(hsv_mouth[:,:,2])
-            
-            # Statistik kulit sebagai pembanding
             if hsv_skin is not None and hsv_skin.size > 0:
                 skin_hue_mean = np.mean(hsv_skin[:,:,0])
                 skin_sat_mean = np.mean(hsv_skin[:,:,1])
                 skin_val_mean = np.mean(hsv_skin[:,:,2])
-                
                 hue_diff = abs(mouth_hue_mean - skin_hue_mean)
                 sat_diff = abs(mouth_sat_mean - skin_sat_mean)
                 val_diff = abs(mouth_val_mean - skin_val_mean)
             else:
                 hue_diff, sat_diff, val_diff = 30, 50, 50
-            
-            # ====================================================
-            # DETEKSI WARNA MASKER UMUM
-            # ====================================================
             total_pixels = mouth_region.shape[0] * mouth_region.shape[1]
-            
-            # Masker biru (medis)
             blue_mask = np.sum((hsv_mouth[:,:,0] > 85) & (hsv_mouth[:,:,0] < 135) & 
                             (hsv_mouth[:,:,1] > 60) & (hsv_mouth[:,:,2] > 50))
             blue_ratio = blue_mask / total_pixels
-            
-            # Masker hijau (medis)
             green_mask = np.sum((hsv_mouth[:,:,0] > 35) & (hsv_mouth[:,:,0] < 90) & 
                             (hsv_mouth[:,:,1] > 50) & (hsv_mouth[:,:,2] > 50))
             green_ratio = green_mask / total_pixels
-            
-            # Masker hitam/gelap
             black_mask = np.sum((hsv_mouth[:,:,2] < 55) & (hsv_mouth[:,:,1] < 60))
             black_ratio = black_mask / total_pixels
-            
-            # Masker putih/cerah
             white_mask = np.sum((hsv_mouth[:,:,2] > 190) & (hsv_mouth[:,:,1] < 35))
             white_ratio = white_mask / total_pixels
-
-            # Masker abu-abu/grey (tambahan)
             grey_mask = np.sum((hsv_mouth[:,:,1] < 25) & (hsv_mouth[:,:,2] > 80) & (hsv_mouth[:,:,2] < 180))
             grey_ratio = grey_mask / total_pixels
-            
-            # ====================================================
-            # DETEKSI TEKSTUR & KEHALUSAN
-            # ====================================================
             gray_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2GRAY)
-            
-            # Kehalusan permukaan (Laplacian variance)
-            # Masker cenderung memiliki permukaan yang lebih "datar" secara tekstur dibanding bibir/dagu
             laplacian_var = cv2.Laplacian(gray_mouth, cv2.CV_64F).var()
-            
-            # Edge density
             edges = cv2.Canny(gray_mouth, 40, 120)
             edge_density = np.sum(edges > 0) / total_pixels if total_pixels > 0 else 0
-            
-            # Validasi bibir (merah)
             lab_mouth = cv2.cvtColor(mouth_region, cv2.COLOR_RGB2LAB)
             a_channel = lab_mouth[:,:,1]
-            # Bibir biasanya memiliki nilai 'a' yang tinggi (merah)
-            lip_mask = a_channel > 145 # Threshold empiris untuk warna kemerahan bibir
+            lip_mask = a_channel > 145 
             lip_ratio = np.sum(lip_mask) / total_pixels if total_pixels > 0 else 0
-            
-            # ====================================================
-            # THRESHOLDS
-            # ====================================================
             COLOR_THR = 0.22
-            LAPLACIAN_THR = 80.0 # Jika < 80, area sangat halus (curiga masker)
-            LIP_THR = 0.08      # Jika < 8% area adalah bibir, kemungkinan tertutup
-            
-            # ====================================================
-            # LOGIKA KEPUTUSAN
-            # ====================================================
-            
-            # LOG 1: Deteksi Warna Dominan
-            if blue_ratio > COLOR_THR: return True, f"Terdeteksi masker medis biru ({blue_ratio:.2f})"
-            if green_ratio > COLOR_THR: return True, f"Terdeteksi masker medis hijau ({green_ratio:.2f})"
-            if black_ratio > 0.35: return True, f"Terdeteksi masker hitam ({black_ratio:.2f})"
-            if white_ratio > 0.30: return True, f"Terdeteksi masker putih ({white_ratio:.2f})"
-            if grey_ratio > 0.30: return True, f"Terdeteksi masker abu-abu ({grey_ratio:.2f})"
-            
-            # LOG 2: Deteksi Berdasarkan Kehalusan Permukaan & Absensi Bibir
-            # Jika area mulut sangat halus DAN tidak terdeteksi bibir merah wajar
+            LAPLACIAN_THR = 80.0 
+            LIP_THR = 0.08      
+            if blue_ratio > COLOR_THR: return True, f"Terdeteksi masker"
+            if green_ratio > COLOR_THR: return True, f"Terdeteksi masker"
+            if black_ratio > 0.35: return True, f"Terdeteksi masker"
+            if white_ratio > 0.30: return True, f"Terdeteksi masker"
+            if grey_ratio > 0.30: return True, f"Terdeteksi masker"
             if laplacian_var < LAPLACIAN_THR and lip_ratio < LIP_THR:
-                if sat_diff > 35 or val_diff > 40: # Validasi dengan perbedaan warna kulit
+                if sat_diff > 35 or val_diff > 40: 
                     return True, f"Area mulut tertutup material halus (var={laplacian_var:.1f})"
-            
-            # LOG 3: Perbedaan Warna Kontras dengan Kulit
             if hue_diff > 25 and sat_diff > 45 and lip_ratio < 0.05:
                 return True, "Warna area mulut tidak wajar (kemungkinan masker kain)"
-            
-            # Log untuk debugging
             logger.info(f"[MASK] b={blue_ratio:.2f}, k={black_ratio:.2f}, w={white_ratio:.2f}, lip={lip_ratio:.2f}, lap={laplacian_var:.1f}")
-            
             return False, "Tidak terdeteksi masker"
-            
         except Exception as e:
             logger.error(f"Error detecting mask: {e}")
             return False, "Error deteksi masker"
 
     def detect_hat(self, face_region: np.ndarray, full_image: np.ndarray, box: list) -> Tuple[bool, str]:
-        """
-        Deteksi topi/aksesoris kepala dengan menganalisis area di atas wajah.
-        Mendeteksi tepi tajam, konsistensi warna, dan warna mencolok.
-        """
         try:
             x1, y1, x2, y2 = [int(b) for b in box]
-
-            # Area di atas wajah — ambil sekitar 45% dari tinggi wajah ke atas
             head_h = int((y2 - y1) * 0.45)
             head_top = max(0, y1 - head_h)
             head_region = full_image[head_top:y1, x1:x2]
-
             if head_region.size == 0:
                 return False, "Region kepala tidak valid"
-
             total_pixels = head_region.shape[0] * head_region.shape[1]
             if total_pixels < 50:
                 return False, "Region terlalu kecil"
-
             gray_head = cv2.cvtColor(head_region, cv2.COLOR_RGB2GRAY)
             hsv_head  = cv2.cvtColor(head_region, cv2.COLOR_RGB2HSV)
-
-            # ── 1. Deteksi Tepi Tajam (Sharp Edges) ─────────────────────────
-            # Topi memiliki tepi yang jauh lebih tajam dibanding rambut.
             edges = cv2.Canny(gray_head, 100, 200)
             edge_density = np.sum(edges > 0) / edges.size
-            
-            # Deteksi garis lurus/lengkung panjang (khas topi)
             lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=40,
                                     minLineLength=int(head_region.shape[1] * 0.4),
                                     maxLineGap=15)
-            
-            # ── 2. Analisis Warna & Konsistensi ──────────────────────────────
             hue, sat, val = hsv_head[:,:,0], hsv_head[:,:,1], hsv_head[:,:,2]
-            
-            # Mask untuk warna yang BUKAN rambut alami
-            # Rambut alami: Saturation rendah (hitam/putih/abu) atau Hue coklat/pirang dengan Sat sedang
             is_natural_hair = (
-                (sat < 65) |                                  # Hitam/Putih/Abu/Botak
-                ((hue >= 5) & (hue <= 35) & (sat < 160)) |    # Coklat/Pirang
-                (val < 45)                                    # Sangat gelap (bayangan/rambut hitam)
+                (sat < 65) |                                  
+                ((hue >= 5) & (hue <= 35) & (sat < 160)) |    
+                (val < 45)                                    
             )
-            
             non_hair_mask = ~is_natural_hair
             non_hair_ratio = np.sum(non_hair_mask) / total_pixels
-            
-            # Deteksi warna solid mencolok (Topi seringkali satu warna solid)
-            # Hitung standar deviasi warna pada area non-rambut
             if np.sum(non_hair_mask) > 10:
                 color_std = np.std(hue[non_hair_mask])
             else:
-                color_std = 100 # Default tinggi (tidak konsisten)
-
-            # ── 3. Logika Keputusan ──────────────────────────────────────────
-            
-            # LOG 1: Tepi Tajam & Garis (Topi Baseball/Keras)
+                color_std = 100 
             if edge_density > 0.15 and lines is not None and len(lines) >= 2:
-                return True, f"Terdeteksi struktur kaku di kepala (edge={edge_density:.2f})"
-            
-            # LOG 2: Warna Mencolok & Konsisten (Topi Warna)
-            # Jika ada area non-rambut yang cukup luas DAN warnanya konsisten (std rendah)
+                return True, f"Terdeteksi topi atau aksesoris kepala"
             if non_hair_ratio > 0.45 and color_std < 25:
-                return True, f"Terdeteksi material berwarna solid di kepala (ratio={non_hair_ratio:.2f})"
-            
-            # LOG 3: Deteksi Warna Spesifik (Sangat Kuat)
-            # Biru, Merah, Hijau terang
+                return True, f"Terdeteksi topi atau aksesoris"
             bright_color = np.sum(non_hair_mask & (sat > 150) & (val > 100)) / total_pixels
             if bright_color > 0.25:
-                return True, f"Terdeteksi warna aksesoris mencolok (ratio={bright_color:.2f})"
-
-            # LOG 4: Deteksi Topi Hitam/Gelap (Tantangan Utama)
-            # Jika area di atas dahi sangat datar (var rendah) tapi bukan kulit
+                return True, f"Terdeteksi topi atau aksesoris "
             laplacian_head = cv2.Laplacian(gray_head, cv2.CV_64F).var()
             if laplacian_head < 40 and non_hair_ratio > 0.5:
-                return True, "Terdeteksi penutup kepala datar/gelap"
-
-            # Log untuk debugging
+                return True, "Terdeteksi topi atau aksesoris "
             logger.info(f"[HAT] edge={edge_density:.2f}, non_hair={non_hair_ratio:.2f}, std={color_std:.1f}, lap={laplacian_head:.1f}")
-            
             return False, "Tidak terdeteksi topi"
-
         except Exception as e:
             logger.error(f"Error detecting hat: {e}")
             return False, "Error deteksi topi"
 
     def check_accessories(self, image_bytes: bytes, boxes: list) -> Tuple[bool, str]:
-        """
-        Periksa apakah ada aksesoris yang menutupi wajah.
-        Urutan diubah: Masker dideteksi terlebih dahulu untuk menghindari false positive pada kacamata.
-        """
         try:
             img_array = self._decode_image(image_bytes)
-            
             if len(boxes) == 0:
                 return False, "Tidak ada wajah terdeteksi"
-            
-            # Ambil wajah pertama (yang terbesar) untuk diperiksa
             largest_box = max(boxes, key=lambda b: (b[2]-b[0]) * (b[3]-b[1]))
             x1, y1, x2, y2 = [int(b) for b in largest_box]
-            
-            # Pastikan koordinat dalam batas gambar
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(img_array.shape[1], x2), min(img_array.shape[0], y2)
-            
             face_region = img_array[y1:y2, x1:x2]
-            
             if face_region.size == 0:
                 return False, "Region wajah tidak valid"
-            
-            # 1. Deteksi masker (Dahulukan karena sering menutupi sebagian area kacamata)
             has_mask, mask_msg = self.detect_mask(face_region)
             if has_mask:
                 return False, f"{mask_msg}. Harap lepas masker."
-            
-            # 2. Deteksi kacamata
-            has_glasses, glasses_msg = self.detect_glasses(face_region)
-            if has_glasses:
-                return False, f"{glasses_msg}. Harap lepas kacamata."
-            
-            # 3. Deteksi topi
             has_hat, hat_msg = self.detect_hat(face_region, img_array, largest_box)
             if has_hat:
                 return False, f"{hat_msg}. Harap lepas topi/aksesoris kepala."
-            
             return True, "Wajah valid, tidak ada aksesoris terdeteksi"
         except Exception as e:
             logger.error(f"Error checking accessories: {e}")
@@ -872,35 +574,15 @@ class FaceService:
 
     @torch.no_grad()
     def extract_embedding(self, image_bytes: bytes) -> list[float]:
-        """
-        Ekstrak 512-dim embedding dari foto wajah.
-        Raise exception jika tidak ada wajah atau lebih dari 1 wajah.
-        """
-        # Deteksi wajah
         has_face, face_count, boxes = self.detect_faces(image_bytes)
-        
         if not has_face:
             raise ValueError("Tidak ada wajah terdeteksi dalam foto")
-        
         if face_count > 1:
             raise ValueError(f"Terdeteksi {face_count} wajah. Hanya satu wajah yang diperbolehkan")
-
         is_valid, message = self.check_accessories(image_bytes, boxes)
         if not is_valid:
             raise ValueError(message)
-
-        face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
-        img_rgb = self._decode_image(image_bytes)
-
-        if SCREEN_SPOOF_ENABLED:
-            screen_is_spoof, _ = self.screen_spoof_check(img_rgb, box_xyxy)
-            if screen_is_spoof:
-                raise ValueError("Spoofing detected")
-
-        is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
-        if not is_real:
-            raise ValueError("Spoofing detected")
-
+        face_crop, _ = self._crop_largest_face_rgb(image_bytes, boxes)
         return self.extract_embedding_from_crop(face_crop)
 
     def cosine_similarity(self, emb1: list, emb2: list) -> float:
@@ -917,25 +599,18 @@ class FaceService:
         stored_embedding: list[float],
         threshold: float = None,
     ) -> dict:
-        """
-        Bandingkan foto wajah vs embedding acuan yang dikirim dari Golang.
-        """
         thr = threshold or SIMILARITY_THRESHOLD
-
         try:
             has_face, face_count, boxes = self.detect_faces(image_bytes)
             if not has_face:
                 raise ValueError("Tidak ada wajah terdeteksi dalam foto")
             if face_count > 1:
                 raise ValueError(f"Terdeteksi {face_count} wajah. Hanya satu wajah yang diperbolehkan")
-
             is_valid, message = self.check_accessories(image_bytes, boxes)
             if not is_valid:
                 raise ValueError(message)
-
             face_crop, box_xyxy = self._crop_largest_face_rgb(image_bytes, boxes)
             img_rgb = self._decode_image(image_bytes)
-
             if SCREEN_SPOOF_ENABLED:
                 screen_is_spoof, _ = self.screen_spoof_check(img_rgb, box_xyxy)
                 if screen_is_spoof:
@@ -946,9 +621,8 @@ class FaceService:
                         "final_score": 0.0,
                         "confidence": 0.0,
                         "threshold": thr,
-                        "message": "Spoofing detected",
+                        "message": "Terdeteksi Kecurangan",
                     }
-
             is_real, real_score, spoof_score = self.detect_spoof(face_crop, img_rgb)
             if not is_real:
                 return {
@@ -960,20 +634,17 @@ class FaceService:
                     "final_score": round(0.3 * float(real_score), 4),
                     "confidence": round(0.3 * float(real_score), 4),
                     "threshold": thr,
-                    "message": "Spoofing detected",
+                    "message": "Terdeteksi Kecurangan",
                 }
-
             live_emb = torch.tensor(self.extract_embedding_from_crop(face_crop), dtype=torch.float32)
             stored = torch.tensor(stored_embedding, dtype=torch.float32)
             similarity = float(F.cosine_similarity(live_emb, stored, dim=0).item())
             final_score = float((0.7 * similarity) + (0.3 * float(real_score)))
-
             matched = bool(
                 (similarity >= float(thr))
                 and is_real
                 and (final_score >= float(FINAL_SCORE_THRESHOLD))
             )
-
             msg = "Wajah cocok" if matched else "Wajah tidak valid"
             return {
                 "matched": matched,
@@ -998,39 +669,21 @@ class FaceService:
             }
 
 
-# Inisialisasi face_svc
 face_svc = FaceService()
 
 
-# =============================================================================
-# SCHEMAS
-# =============================================================================
 class VerifyRequest(BaseModel):
-    """
-    Request body untuk verifikasi wajah.
-    stored_embedding dikirim dari Golang (diambil dari DB Golang).
-    """
     stored_embedding: list[float]
     employee_id: str
     threshold: Optional[float] = None
 
 
-# =============================================================================
-# SECURITY — API KEY
-# =============================================================================
 def verify_api_key(x_api_key: str = Header(..., alias="X-API-Key")):
-    """
-    Semua endpoint dilindungi API Key.
-    Golang menyertakan header: X-API-Key: <key>
-    """
     if x_api_key != API_KEY:
         raise HTTPException(401, "API Key tidak valid")
     return x_api_key
 
 
-# =============================================================================
-# APP
-# =============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Memuat model FaceNet...")
@@ -1042,16 +695,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Face Recognition — Hotel Labersa Toba",
-    description="""
-**Internal untuk face recognition.
-Dipanggil oleh Golang Backend, bukan langsung oleh client.
-
-### Alur:
-1. **Registrasi wajah**: Golang kirim foto → FastAPI ekstrak embedding → 
-   kembalikan `embedding[]` → Golang simpan di DB-nya
-2. **Verifikasi**: Golang ambil embedding dari DB → kirim ke FastAPI bersama foto baru → 
-   FastAPI bandingkan → kembalikan `matched: true/false`
-    """,
+    description="Internal face recognition service",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -1064,11 +708,6 @@ app.add_middleware(
 )
 
 
-# =============================================================================
-# ENDPOINTS
-# =============================================================================
-
-# ── Health Check ──────────────────────────────────────────────────────────────
 @app.get("/health", summary="Status service")
 def health():
     return {
@@ -1083,7 +722,6 @@ def health():
     }
 
 
-# ── Konfigurasi Anti-Spoofing HF Ensemble ─────────────────────────────────────
 @app.get("/face/antispoof/config", summary="Lihat threshold & weight anti-spoofing HF")
 def get_antispoof_config(_=Depends(verify_api_key)):
     if not face_svc.loaded:
@@ -1141,8 +779,7 @@ async def predict_antispoof_only(
     }
 
 
-# ── 1. Ekstrak Embedding (saat registrasi wajah) ──────────────────────────────
-@app.post("/face/extract", summary="📸 Ekstrak embedding dari foto wajah")
+@app.post("/face/extract", summary="Ekstrak embedding dari foto wajah")
 async def extract_embedding_endpoint(
     photo: UploadFile = File(..., description="Foto wajah (JPG/PNG/WEBP)"),
     employee_id: str = Form(..., description="ID pegawai untuk logging"),
@@ -1150,20 +787,13 @@ async def extract_embedding_endpoint(
 ):
     _validate_image_file(photo)
     image_bytes = await photo.read()
-
     t0 = time.time()
-
     try:
-        # Pastikan service sudah loaded
         if not face_svc.loaded:
             face_svc.load()
-
-        # Panggil method extract_embedding (sudah include validasi multi-face dan aksesoris)
         embedding = face_svc.extract_embedding(image_bytes)
         elapsed = round((time.time() - t0) * 1000, 1)
-
         logger.info(f"[EXTRACT] employee={employee_id} elapsed={elapsed}ms | embedding dim={len(embedding)}")
-
         return {
             "success": True,
             "employee_id": employee_id,
@@ -1173,7 +803,6 @@ async def extract_embedding_endpoint(
             "message": "Embedding berhasil diekstrak",
         }
     except ValueError as e:
-        # Tidak ada wajah, lebih dari 1 wajah, atau aksesoris terdeteksi
         logger.warning(f"[EXTRACT] Validation error: {e}")
         return JSONResponse(
             status_code=400,
@@ -1195,45 +824,35 @@ async def extract_embedding_endpoint(
         )
 
 
-# ── 2. Verifikasi Wajah (saat absensi) ───────────────────────────────────────
-@app.post("/face/verify", summary="🔍 Cocokkan foto vs embedding acuan")
+@app.post("/face/verify", summary="Cocokkan foto vs embedding acuan")
 async def verify_face(
     photo: UploadFile = File(..., description="Foto selfie saat absen"),
     data: str = Form(..., description='JSON: {"employee_id":"...","stored_embedding":[...],"threshold":0.75}'),
     liveness: str = Form(..., description='String "true" if liveness steps performed'),
     _=Depends(verify_api_key),
 ):
-    # Enforce liveness check: must be "true"
     if LIVENESS_ENABLED and liveness.lower() != "true":
         raise HTTPException(400, "Liveness verification belum terpenuhi. Arahkan wajah ke kiri dan kanan sebelum mengirim foto.")
-    # Parse JSON body dari form field
     try:
         req = VerifyRequest(**json.loads(data))
     except Exception as e:
         raise HTTPException(400, f"Format 'data' tidak valid: {e}")
-
     if len(req.stored_embedding) != 512:
-        raise HTTPException(400, f"stored_embedding harus 512 dimensi, dapat {len(req.stored_embedding)}")
-
+        # raise HTTPException(400, f"stored_embedding harus 512 dimensi, dapat {len(req.stored_embedding)}")
+        raise HTTPException(400, f"Wajah kurang jelas, coba lagi")
     _validate_image_file(photo)
     image_bytes = await photo.read()
-
     t0 = time.time()
-
     try:
-        # Pastikan service sudah loaded
         if not face_svc.loaded:
             face_svc.load()
-
         result = face_svc.verify(image_bytes, req.stored_embedding, req.threshold)
         elapsed = round((time.time() - t0) * 1000, 1)
-
         logger.info(
             f"[VERIFY] employee={req.employee_id} "
             f"matched={result['matched']} sim={result['similarity']:.3f} "
             f"elapsed={elapsed}ms"
         )
-
         return {
             **result,
             "employee_id": req.employee_id,
@@ -1253,9 +872,6 @@ async def verify_face(
         }
 
 
-# =============================================================================
-# HELPER
-# =============================================================================
 ALLOWED_EXT = {"jpg", "jpeg", "png", "webp"}
 
 def _validate_image_file(file: UploadFile):
@@ -1264,9 +880,6 @@ def _validate_image_file(file: UploadFile):
         raise HTTPException(400, f"Format tidak didukung. Gunakan: {ALLOWED_EXT}")
 
 
-# =============================================================================
-# RUN
-# =============================================================================
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(

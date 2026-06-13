@@ -87,15 +87,120 @@ class _MainNavigationPageState extends State<MainNavigationPage>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: _buildBottomNav(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 800) {
+          // Large screen layout
+          return Scaffold(
+            body: Row(
+              children: [
+                _buildNavigationRail(),
+                Expanded(
+                  child: IndexedStack(index: _selectedIndex, children: _pages),
+                ),
+              ],
+            ),
+          );
+        } else {
+          // Small screen layout
+          return Scaffold(
+            body: IndexedStack(index: _selectedIndex, children: _pages),
+            bottomNavigationBar: _buildBottomNav(),
+          );
+        }
+      },
+    );
+  }
+
+  Widget _buildNavigationRail() {
+    return NavigationRail(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: (int index) {
+        setState(() => _selectedIndex = index);
+        if (index == 2) {
+          SSEService().hasNewLeaveRequest.value = false;
+        } else if (index == 3) {
+          SSEService().hasNewOvertime.value = false;
+          SSEService().hasNewAssignment.value = false;
+        }
+      },
+      labelType: NavigationRailLabelType.all,
+      selectedLabelTextStyle: const TextStyle(
+        color: Color(0xFF135BEC),
+        fontWeight: FontWeight.bold,
+      ),
+      unselectedLabelTextStyle: const TextStyle(
+        color: Color(0xFF94A3B8),
+        fontWeight: FontWeight.w500,
+      ),
+      selectedIconTheme: const IconThemeData(color: Color(0xFF135BEC)),
+      unselectedIconTheme: const IconThemeData(color: Color(0xFF94A3B8)),
+      destinations: _navItems.asMap().entries.map((entry) {
+        final index = entry.key;
+        final item = entry.value;
+        return NavigationRailDestination(
+          icon: _buildRailIcon(index, item.icon, false),
+          selectedIcon: _buildRailIcon(index, item.activeIcon, true),
+          label: Text(item.label),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildRailIcon(int index, IconData iconData, bool isSelected) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(iconData),
+        if (index == 2)
+          ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewLeaveRequest,
+            builder: (context, hasNew, _) {
+              if (!hasNew) return const SizedBox.shrink();
+              return Positioned(
+                top: -2,
+                right: -2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          ),
+        if (index == 3)
+          ValueListenableBuilder<bool>(
+            valueListenable: SSEService().hasNewOvertime,
+            builder: (context, hasOvertime, _) {
+              return ValueListenableBuilder<bool>(
+                valueListenable: SSEService().hasNewAssignment,
+                builder: (context, hasAssignment, _) {
+                  if (!hasOvertime && !hasAssignment) return const SizedBox.shrink();
+                  return Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+      ],
     );
   }
 
   Widget _buildBottomNav() {
     return Container(
-      height: 76,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),

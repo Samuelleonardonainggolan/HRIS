@@ -64,7 +64,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   List<List<double>> _boxesSeq = [];
 
   // Step labels for the status bar
-  final List<String> _stepLabels = ['Lihat Lurus', 'Tengok Kiri', 'Tengok Kanan'];
+  final List<String> _stepLabels = ['Lihat Lurus', 'Lihat Kiri', 'Lihat Kanan'];
 
   // ─── Clock ───────────────────────────────────────────────────────────────────
   late Timer _clockTimer;
@@ -81,9 +81,9 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     if (_livenessStep >= _activeChallenges.length) return 'Selesai!';
     switch (_activeChallenges[_livenessStep]) {
       case LivenessChallenge.lookLeft:
-        return 'Tengok ke Kiri';
+        return 'Lihat ke Kiri';
       case LivenessChallenge.lookRight:
-        return 'Tengok ke Kanan';
+        return 'Lihat ke Kanan';
       case LivenessChallenge.smile:
         return 'Tersenyum Lebar';
       case LivenessChallenge.blink:
@@ -757,24 +757,44 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
+                  color: const Color(0xFFFFEBEE),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFBFDBFE)),
+                  border: Border.all(color: AppTheme.errorColor),
                 ),
-                child: Row(
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline,
-                        color: Color(0xFF135BEC), size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _isFaceVerified
-                            ? '✅ Verifikasi wajah berhasil!\nKlik tombol di bawah untuk konfirmasi absensi.'
-                            : '1. Pastikan Anda dalam area geofence\n2. Ikuti instruksi liveness (lurus, kiri, kanan)\n3. Tanpa kacamata/masker',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade700,
-                            height: 1.4),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: AppTheme.errorColor,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'SYARAT WAJIB:',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.errorColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      '✓ HANYA SATU ORANG dalam frame\n'
+                      '✓ LEPAS KACAMATA (termasuk bening)\n'
+                      '✓ LEPAS MASKER\n'
+                      '✓ LEPAS TOPI/AKSESORIS KEPALA\n'
+                      '✓ Wajah terlihat jelas, pencahayaan cukup\n'
+                      '✓ Ekspresi normal (tidak tersenyum lebar)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFB71C1C),
+                        height: 1.5,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],

@@ -14,7 +14,7 @@ type Config struct {
 	MongoURI               string
 	DatabaseName           string
 	JWTSecret              string
-	JWTExpiry              string 
+	JWTExpiry              string
 	FaceServiceURL         string
 	FaceAPIKey             string
 	FaceHTTPTimeout        string
@@ -33,20 +33,19 @@ func LoadConfig() *Config {
 		log.Println("Warning: .env file not found, using environment variables")
 	}
 
-	
 	jwtExpiryStr := getEnv("JWT_EXPIRY", "4h")
 
 	return &Config{
-		ServerPort:             getEnv("SERVER_PORT", "8080"),
+		ServerPort:             getEnv("PORT", getEnv("SERVER_PORT", "8080")),
 		Environment:            getEnv("ENVIRONMENT", "development"),
-		MongoURI:               getEnv("MONGO_URI", "mongodb://localhost:27017"),
+		MongoURI:               getEnv("MONGO_URI", "mongodb+srv://hris_admin:HRISAdmin2026@sotardok.phjkfd2.mongodb.net/?retryWrites=true&w=majority&appName=Sotardok&connectTimeoutMS=60000&serverSelectionTimeoutMS=60000&socketTimeoutMS=60000&maxIdleTimeMS=60000"),
 		DatabaseName:           getEnv("DATABASE_NAME", "hris_db"),
 		JWTSecret:              getEnv("JWT_SECRET", "your-secret-key"),
 		JWTExpiry:              jwtExpiryStr,
-		FaceServiceURL:         getEnv("FACE_SERVICE_URL", "http://localhost:5000"),
+		FaceServiceURL:         getEnv("FACE_SERVICE_URL", "https://Yosiagurning-hris-api-model.hf.space"),
 		FaceAPIKey:             getEnv("FACE_API_KEY", ""),
 		FaceHTTPTimeout:        getEnv("FACE_HTTP_TIMEOUT", "30s"),
-		PublicBaseURL:          getEnv("PUBLIC_BASE_URL", "http://localhost:8080"),
+		PublicBaseURL:          getEnv("PUBLIC_BASE_URL", "https://Yosiagurning-hris-api-model.hf.space"),
 		FaceImageDir:           getEnv("FACE_IMAGE_DIR", "uploads/face"),
 		PengajuanDocDir:        getEnv("PENGAJUAN_DOC_DIR", "uploads/pengajuan"),
 		SupabaseURL:            getEnv("SUPABASE_URL", ""),

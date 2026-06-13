@@ -66,17 +66,6 @@ class HFAntiSpoofResult:
 
 
 class HFAntiSpoofEnsemble:
-    """
-    Wrapper untuk memanggil ensemble anti-spoofing HuggingFace dari FastAPI lama.
-
-    Catatan penting:
-    - HF_REPO_DIR harus menunjuk ke folder repo HF asli yang berisi IADG.py, SASF.py,
-      infer_cdcnpp.py, src/, dan weights/.
-    - Threshold per model adalah threshold untuk spoof_prob.
-    - Output wrapper ini mengubahnya menjadi real_score = 1 - spoof_score agar cocok
-      dengan pipeline FastAPI lama.
-    """
-
     def __init__(self, prefer_finetuned: bool = True, config_path: Optional[str] = None):
         self.prefer_finetuned = prefer_finetuned
         self.config_path = config_path or os.getenv("HF_ANTISPOOF_CONFIG_PATH", _default_config_path())
@@ -166,7 +155,4 @@ class HFAntiSpoofEnsemble:
         )
 
     def predict_on_face_crop(self, face_crop_rgb: np.ndarray) -> HFAntiSpoofResult:
-        # Tetap disediakan untuk kompatibilitas dengan pipeline lama.
-        # Namun untuk model HF ensemble, predict_on_image(full_image_rgb) lebih disarankan
-        # karena detector HF membutuhkan bbox dan landmark.
         return self.predict_on_image(face_crop_rgb)

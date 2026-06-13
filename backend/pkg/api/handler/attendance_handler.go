@@ -149,17 +149,7 @@ func (h *AttendanceHandler) ProcessAttendance(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"status":  "error",
 			"message": result.Message,
-			"data": gin.H{
-				"face_similarity":      result.FaceSimilarity,
-				"location_valid":       result.LocationValid,
-				"distance_m":           result.Distance,
-				"is_clock_in_allowed":  result.IsClockInAllowed,
-				"is_clock_out_allowed": result.IsClockOutAllowed,
-				"clock_in_window":      result.ClockInWindow,
-				"clock_out_window":     result.ClockOutWindow,
-				"work_schedule_found":  result.WorkScheduleFound,
-				"next_window_open":     result.NextWindowOpen,
-			},
+			"data":    result, // ✅ Kirim seluruh objek result agar Flutter dapat detail Face & Geo
 		})
 		return
 	}

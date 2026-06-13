@@ -102,18 +102,20 @@ func isInAllowedBreakWindow(nowWIB time.Time) (bool, string) {
 }
 
 type AttendanceProcessResult struct {
-	Success           bool               `json:"success"`
-	Message           string             `json:"message"`
-	FaceSimilarity    float64            `json:"face_similarity"`
-	LocationValid     bool               `json:"location_valid"`
-	Distance          float64            `json:"distance_m"`
-	Attendance        *models.Attendance `json:"attendance,omitempty"`
-	IsClockInAllowed  bool               `json:"is_clock_in_allowed,omitempty"`
-	IsClockOutAllowed bool               `json:"is_clock_out_allowed,omitempty"`
-	ClockInWindow     string             `json:"clock_in_window,omitempty"`
-	ClockOutWindow    string             `json:"clock_out_window,omitempty"`
-	NextWindowOpen    string             `json:"next_window_open,omitempty"`
-	WorkScheduleFound bool               `json:"work_schedule_found,omitempty"`
+	Success           bool                   `json:"success"`
+	Message           string                 `json:"message"`
+	FaceSimilarity    float64                `json:"face_similarity"`
+	LocationValid     bool                   `json:"location_valid"`
+	Distance          float64                `json:"distance_m"`
+	Attendance        *models.Attendance     `json:"attendance,omitempty"`
+	Face              *faceclient.FaceResult `json:"face,omitempty"`
+	Geo               *faceclient.GeoResult  `json:"geo,omitempty"`
+	IsClockInAllowed  bool                   `json:"is_clock_in_allowed,omitempty"`
+	IsClockOutAllowed bool                   `json:"is_clock_out_allowed,omitempty"`
+	ClockInWindow     string                 `json:"clock_in_window,omitempty"`
+	ClockOutWindow    string                 `json:"clock_out_window,omitempty"`
+	NextWindowOpen    string                 `json:"next_window_open,omitempty"`
+	WorkScheduleFound bool                   `json:"work_schedule_found,omitempty"`
 }
 
 type ScheduleInfoResponse struct {
@@ -1129,6 +1131,22 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 	}
 
 	// 4. Periksa hasil verifikasi
+	faceResult := &faceclient.FaceResult{
+		Matched:    verifyResp.Matched,
+		Similarity: verifyResp.Similarity,
+		Confidence: verifyResp.Confidence,
+		Threshold:  verifyResp.Threshold,
+		RealScore:  verifyResp.RealScore,
+		SpoofScore: verifyResp.SpoofScore,
+		Message:    verifyResp.Message,
+	}
+
+	geoResult := &faceclient.GeoResult{
+		IsValid:   locationValid,
+		DistanceM: distance,
+		Message:   locationMsg,
+	}
+
 	if !verifyResp.Matched {
 		return &AttendanceProcessResult{
 			Success:        false,
@@ -1136,6 +1154,8 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 			FaceSimilarity: verifyResp.Similarity,
 			LocationValid:  locationValid,
 			Distance:       distance,
+			Face:           faceResult,
+			Geo:            geoResult,
 		}, nil
 	}
 
@@ -1147,7 +1167,11 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 		return &AttendanceProcessResult{
 			Success:        true,
 			Message:        "Verifikasi berhasil - klik Konfirmasi untuk menyimpan",
-			FaceSimilarity: similarity, LocationValid: locationValid, Distance: distance,
+			FaceSimilarity: similarity,
+			LocationValid:  locationValid,
+			Distance:       distance,
+			Face:           faceResult,
+			Geo:            geoResult,
 		}, nil
 	}
 
@@ -1193,8 +1217,12 @@ func (s *attendanceService) ProcessAttendanceWithFace(
 
 	return &AttendanceProcessResult{
 		Success: true, Message: actionMsg + " berhasil dicatat",
-		FaceSimilarity: similarity, LocationValid: locationValid, Distance: distance,
-		Attendance: attendance,
+		FaceSimilarity: similarity,
+		LocationValid:  locationValid,
+		Distance:       distance,
+		Attendance:     attendance,
+		Face:           faceResult,
+		Geo:            geoResult,
 	}, nil
 }
 

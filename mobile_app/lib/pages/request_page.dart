@@ -700,7 +700,7 @@ class _RequestPageState extends State<RequestPage> {
           }
         },
         backgroundColor: const Color(0xFF135BEC),
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

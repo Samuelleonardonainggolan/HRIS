@@ -1,10 +1,24 @@
-FROM golang:1.21.0-bookworm
+FROM golang:1.24-bookworm AS builder
+
 WORKDIR /app
+
 COPY go.mod go.sum ./
 RUN go mod download
+
 COPY . .
-RUN go mod vendor
-RUN go install github.com/swaggo/swag/cmd/swag@latest
-RUN swag init -g ./cmd/server/main.go -o ./docs
-RUN CGO_ENABLED=1 go build -o bin/server cmd/server/main.go
-CMD ./bin/server
+
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=mod -o /server ./cmd/server
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /server ./server
+
+RUN mkdir -p uploads/face uploads/pengajuan uploads/profile
+
+EXPOSE 10000
+
+CMD ["./server"]
