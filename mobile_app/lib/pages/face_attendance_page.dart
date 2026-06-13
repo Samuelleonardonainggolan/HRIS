@@ -32,13 +32,13 @@ class FaceAttendancePage extends StatefulWidget {
 
 class _FaceAttendancePageState extends State<FaceAttendancePage>
     with SingleTickerProviderStateMixin {
-  // ─── Location ───────────────────────────────────────────────────────────────
+  // --- Location ---------------------------------------------------------------
   Position? _currentPosition;
   String _locationStatus = 'Mendeteksi lokasi...';
   bool _isLocationValid = false;
   bool _isLocationPermissionGranted = false;
 
-  // ─── Status ──────────────────────────────────────────────────────────────────
+  // --- Status ------------------------------------------------------------------
   String _faceStatus = 'Arahkan wajah ke kamera';
   bool _isLoading = false;
   bool _isFaceVerified = false;
@@ -49,7 +49,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   Map<String, dynamic>? _verificationResult;
   File? _capturedImage;
 
-  // ─── Liveness inline ────────────────────────────────────────────────────────
+  // --- Liveness inline --------------------------------------------------------
   CameraController? _cameraController;
   late FaceDetector _faceDetector;
   bool _cameraInitialized = false;
@@ -66,12 +66,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
   // Step labels for the status bar
   final List<String> _stepLabels = ['Lihat Lurus', 'Lihat Kiri', 'Lihat Kanan'];
 
-  // ─── Clock ───────────────────────────────────────────────────────────────────
+  // --- Clock -------------------------------------------------------------------
   late Timer _clockTimer;
   String _currentTime = '';
   String _currentDate = '';
 
-  // ─── Animation ───────────────────────────────────────────────────────────────
+  // --- Animation ---------------------------------------------------------------
   late AnimationController _pulseCtrl;
   late Animation<double> _pulseAnim;
 
@@ -105,7 +105,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     }
   }
 
-  // ────────────────────────────────────────────────────────────────────────────
+  // ----------------------------------------------------------------------------
   @override
   void initState() {
     super.initState();
@@ -145,7 +145,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     super.dispose();
   }
 
-  // ─── Clock ───────────────────────────────────────────────────────────────────
+  // --- Clock -------------------------------------------------------------------
   void _updateClock() {
     final now = DateTime.now();
     setState(() {
@@ -154,7 +154,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     });
   }
 
-  // ─── Permissions ─────────────────────────────────────────────────────────────
+  // --- Permissions -------------------------------------------------------------
   Future<void> _loadUserId() async {
     final userId = await ApiService.getUserId();
     setState(() => _userId = userId ?? '');
@@ -202,7 +202,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     if (status.isGranted) _initCamera();
   }
 
-  // ─── Camera / Liveness ───────────────────────────────────────────────────────
+  // --- Camera / Liveness -------------------------------------------------------
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
@@ -384,7 +384,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     _activeChallenges = [first, second, third];
   }
 
-  // ─── Location ───────────────────────────────────────────────────────────────
+  // --- Location ---------------------------------------------------------------
   Future<void> _getCurrentLocation() async {
     if (!_isLocationPermissionGranted) return;
     setState(() => _locationStatus = 'Mendapatkan lokasi...');
@@ -426,8 +426,8 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         if (result.isValid) {
           final name = (result.geofenceName ?? '').trim();
           _locationStatus = name.isNotEmpty
-              ? 'Dalam area $name (${result.distanceM.toStringAsFixed(0)}m) ✓'
-              : 'Dalam area geofence ✓';
+              ? 'Dalam area $name (${result.distanceM.toStringAsFixed(0)}m) ?'
+              : 'Dalam area geofence ?';
         } else {
           _locationStatus =
               result.message.isNotEmpty ? result.message : 'Di luar area geofence';
@@ -442,7 +442,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     }
   }
 
-  // ─── Face Verification ────────────────────────────────────────────────────────
+  // --- Face Verification --------------------------------------------------------
   Future<void> _runVerification(String imagePath) async {
     try {
       final token = await ApiService.getAccessToken();
@@ -478,7 +478,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         setState(() {
           _isFaceVerified = true;
           _faceSimilarity = similarity;
-          _faceStatus = '✓ Wajah terverifikasi';
+          _faceStatus = '? Wajah terverifikasi';
           _isLoading = false;
         });
       } else {
@@ -491,7 +491,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       if (!mounted) return;
       setState(() {
         _isFaceVerified = false;
-        _faceStatus = '✗ $clean';
+        _faceStatus = '? $clean';
         _isLoading = false;
       });
       _showErrorSnackBar(clean);
@@ -501,7 +501,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     }
   }
 
-  // ─── Confirm Attendance ──────────────────────────────────────────────────────
+  // --- Confirm Attendance ------------------------------------------------------
   Future<void> _confirmAttendance() async {
     if (_attendanceSuccess || _capturedImage == null || !_isFaceVerified) return;
     setState(() => _isLoading = true);
@@ -511,7 +511,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         photoPath: _capturedImage!.path,
-        // Always send "true" — liveness was completed on-device before photo was taken
+        // Always send "true" liveness was completed on-device before photo was taken
         liveness: 'true',
       );
       if (result.success) {
@@ -526,13 +526,13 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
         _showErrorSnackBar(result.message);
       }
     } catch (e) {
-      _showErrorSnackBar('Gagal melakukan absensi: $e');
+      _showErrorSnackBar('Gagal melakukan absensi: ${e.toString().replaceAll("Exception: ", "")}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ─── Dialogs / Snackbars ─────────────────────────────────────────────────────
+  // --- Dialogs / Snackbars -----------------------------------------------------
   void _showSuccessDialog({required String title, required double similarity}) {
     showDialog(
       context: context,
@@ -652,7 +652,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     );
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────────
+  // --- Build --------------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     final headerColor = widget.type == 'clock_in'
@@ -684,7 +684,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Header / Clock ──────────────────────────────────────────────
+              // -- Header / Clock ----------------------------------------------
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -743,17 +743,17 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
               const SizedBox(height: 24),
 
-              // ── Location ────────────────────────────────────────────────────
+              // -- Location ----------------------------------------------------
               _buildLocationCard(),
 
               const SizedBox(height: 16),
 
-              // ── Inline Camera / Face Verification ──────────────────────────
+              // -- Inline Camera / Face Verification --------------------------
               _buildCameraCard(),
 
               const SizedBox(height: 16),
 
-              // ── Info ────────────────────────────────────────────────────────
+              // -- Info --------------------------------------------------------
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -784,12 +784,12 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                     ),
                     SizedBox(height: 8),
                     Text(
-                      '✓ HANYA SATU ORANG dalam frame\n'
-                      '✓ LEPAS KACAMATA (termasuk bening)\n'
-                      '✓ LEPAS MASKER\n'
-                      '✓ LEPAS TOPI/AKSESORIS KEPALA\n'
-                      '✓ Wajah terlihat jelas, pencahayaan cukup\n'
-                      '✓ Ekspresi normal (tidak tersenyum lebar)',
+                      '? HANYA SATU ORANG dalam frame\n'
+                      '? LEPAS KACAMATA (termasuk bening)\n'
+                      '? LEPAS MASKER\n'
+                      '? LEPAS TOPI/AKSESORIS KEPALA\n'
+                      '? Wajah terlihat jelas, pencahayaan cukup\n'
+                      '? Ekspresi normal (tidak tersenyum lebar)',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color(0xFFB71C1C),
@@ -803,7 +803,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
               const SizedBox(height: 24),
 
-              // ── Confirm Button ───────────────────────────────────────────────
+              // -- Confirm Button -----------------------------------------------
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -822,7 +822,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
                       size: 20),
                   label: Text(
                     _attendanceSuccess
-                        ? '✅ Absensi Berhasil'
+                        ? '? Absensi Berhasil'
                         : (_isFaceVerified
                             ? 'Konfirmasi Absensi'
                             : 'Tunggu Verifikasi Wajah'),
@@ -867,7 +867,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     );
   }
 
-  // ─── Location Card ────────────────────────────────────────────────────────────
+  // --- Location Card ------------------------------------------------------------
   Widget _buildLocationCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -938,7 +938,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     );
   }
 
-  // ─── Camera Card (Inline Liveness) ───────────────────────────────────────────
+  // --- Camera Card (Inline Liveness) -------------------------------------------
   Widget _buildCameraCard() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -995,7 +995,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
           ),
           const SizedBox(height: 16),
 
-          // ── Camera / Result preview box ──────────────────────────────────
+          // -- Camera / Result preview box ----------------------------------
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
@@ -1020,7 +1020,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
 
           const SizedBox(height: 12),
 
-          // ── Status bar below camera ───────────────────────────────────────
+          // -- Status bar below camera ---------------------------------------
           _buildStatusBar(),
         ],
       ),
@@ -1159,7 +1159,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Camera preview – properly scaled
+        // Camera preview properly scaled
         FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -1263,7 +1263,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       bg = AppTheme.successColor.withOpacity(0.1);
       fg = AppTheme.successColor;
       icon = Icons.check_circle;
-      text = '✓ Wajah terverifikasi';
+      text = '? Wajah terverifikasi';
     } else if (_capturedImage != null) {
       bg = AppTheme.errorColor.withOpacity(0.1);
       fg = AppTheme.errorColor;
@@ -1273,7 +1273,7 @@ class _FaceAttendancePageState extends State<FaceAttendancePage>
       bg = const Color(0xFF135BEC).withOpacity(0.08);
       fg = const Color(0xFF135BEC);
       icon = Icons.info_outline;
-      text = 'Langkah ${_livenessStep + 1}/3 – ${_livenessStep < 3 ? _stepLabels[_livenessStep] : "Selesai"}';
+      text = 'Langkah ${_livenessStep + 1}/3 : ${_livenessStep < 3 ? _stepLabels[_livenessStep] : "Selesai"}';
     }
 
     return Container(

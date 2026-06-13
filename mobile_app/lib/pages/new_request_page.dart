@@ -247,7 +247,7 @@ class _NewRequestPageState extends State<NewRequestPage> {
       }
     } catch (e) {
       if (mounted) {
-        _showSnack('Gagal mengirimkan pengajuan: $e', isError: true);
+        _showSnack('Gagal mengirimkan pengajuan: ${e.toString().replaceAll("Exception: ", "")}', isError: true);
       }
     } finally {
       if (mounted) setState(() => _submitting = false);

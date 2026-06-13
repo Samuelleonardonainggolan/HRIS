@@ -153,7 +153,7 @@ class _RequestPageState extends State<RequestPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Gagal membatalkan pengajuan: $e'),
+          content: Text('Gagal membatalkan pengajuan: ${e.toString().replaceAll("Exception: ", "")}'),
           backgroundColor: const Color(0xFFEF4444),
         ),
       );

@@ -307,7 +307,7 @@ class _SlipGajiPageState extends State<SlipGajiPage>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gagal membuat PDF: $e'),
+            content: Text('Gagal membuat PDF: ${e.toString().replaceAll("Exception: ", "")}'),
             backgroundColor: _red,
             behavior: SnackBarBehavior.floating,
             shape:

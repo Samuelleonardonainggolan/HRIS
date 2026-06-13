@@ -15,7 +15,7 @@ import '../models/geofence_model.dart';
 import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://10.50.34.119:8080/api/v1';
+  static const String baseUrl = 'https://hris-backend-phi.vercel.app/api/v1';
 
   static final ValueNotifier<User?> currentUser = ValueNotifier<User?>(null);
 

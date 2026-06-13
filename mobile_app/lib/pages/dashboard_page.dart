@@ -170,7 +170,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         });
       }
     } catch (e) {
-      print('Error loading geofences: $e');
+      print('Error loading geofences: ${e.toString().replaceAll("Exception: ", "")}');
     }
   }
 
@@ -225,7 +225,7 @@ class _EmployeeDashboardPageState extends State<EmployeeDashboardPage>
         });
       }
     } catch (e) {
-      print('[Dashboard] Error checking replacement day off: $e');
+      print('[Dashboard] Error checking replacement day off: ${e.toString().replaceAll("Exception: ", "")}');
     }
   }
 

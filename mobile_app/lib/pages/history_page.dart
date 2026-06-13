@@ -320,7 +320,7 @@ class _HistoryPageState extends State<HistoryPage> {
       print('[History] _loadData error: $e\n$st');
       if (mounted) {
         setState(() {
-          _error = 'Gagal memuat data: $e';
+          _error = 'Gagal memuat data: ${e.toString().replaceAll("Exception: ", "")}';
           _isLoading = false;
         });
       }
@@ -1783,7 +1783,7 @@ class _HistoryPageState extends State<HistoryPage> {
     } catch (e) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Gagal export PDF: $e')));
+      ).showSnackBar(SnackBar(content: Text('Gagal export PDF: ${e.toString().replaceAll("Exception: ", "")}')));
     }
   }
 

@@ -81,7 +81,7 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
-        _snack('Gagal menyimpan: $e', AppTheme.errorColor);
+        _snack('Gagal menyimpan: ${e.toString().replaceAll("Exception: ", "")}', AppTheme.errorColor);
       }
     }
   }
@@ -1189,7 +1189,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           AppTheme.successColor,
                         );
                       } catch (e) {
-                        _snack('Gagal: $e', AppTheme.errorColor);
+                        _snack('Gagal: ${e.toString().replaceAll("Exception: ", "")}', AppTheme.errorColor);
                       }
                     },
                     child: const Row(
