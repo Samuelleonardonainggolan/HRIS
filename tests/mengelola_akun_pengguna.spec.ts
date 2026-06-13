@@ -4,8 +4,10 @@ test.describe("Modul Mengelola Akun Pengguna", () => {
   // Hook untuk login sebelum setiap tes
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    // Asumsi menggunakan Quick Login sebagai Manager HR agar memiliki akses penuh ke fitur Manajemen Karyawan
-    await page.getByRole("button", { name: "Manager HR" }).click();
+    // Login menggunakan kredensial asli sebagai Manager HR agar memiliki akses penuh ke fitur Manajemen Karyawan
+    await page.getByLabel("Email").fill("manager.hr@company.com");
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Masuk" }).click();
     await expect(page).toHaveURL(/dashboard/);
     
     // Navigasi ke halaman Manajemen Pegawai

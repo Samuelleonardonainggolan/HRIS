@@ -23,7 +23,10 @@ test.describe("Modul Mengelola Data Jabatan", () => {
   // Hook untuk login sebelum setiap tes
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await page.getByRole("button", { name: "Manager HR" }).click();
+    // Gunakan kredensial Manager HR asli
+    await page.getByLabel("Email").fill("manager.hr@company.com");
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Masuk" }).click();
     await expect(page).toHaveURL(/dashboard/);
   });
 

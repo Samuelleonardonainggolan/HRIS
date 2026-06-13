@@ -4,8 +4,10 @@ test.describe("Modul Mengelola Jam Kerja Karyawan", () => {
   // Hook untuk login sebelum setiap tes
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    // Gunakan Quick Login sebagai Manager HR
-    await page.getByRole("button", { name: "Manager HR" }).click();
+    // Login menggunakan kredensial asli
+    await page.getByLabel("Email").fill("manager.hr@company.com");
+    await page.getByLabel("Password").fill("password123");
+    await page.getByRole("button", { name: "Masuk" }).click();
     await expect(page).toHaveURL(/dashboard/);
 
     // Navigasi ke halaman Manajemen Jam Kerja
